@@ -1251,6 +1251,7 @@ name = "cyberfiles-fs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cyberfiles-platform-windows",
  "flume",
  "lnk",
  "notify 8.2.0",

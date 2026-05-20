@@ -18,8 +18,8 @@ use cyberfiles_core::{
 };
 use cyberfiles_fs::{
     column_trail_for, copy_items, create_directory, create_file, delete_paths,
-    filter_items_by_query, home_navigation_path, move_items, read_directory, recycle_paths,
-    rename_path, unique_new_file_name, unique_new_folder_name, ClipboardOperation,
+    filter_items_by_query, home_navigation_path, move_items, read_directory, read_recycle_bin,
+    recycle_paths, rename_path, unique_new_file_name, unique_new_folder_name, ClipboardOperation,
     DirectoryReadOptions, DirectoryWatcher, FileClipboard, FileItem, FileItemKind, SortDirection,
     SortOption, SortPreferences,
 };
@@ -35,7 +35,6 @@ use gpui_component::{
     dialog::DialogButtonProps,
     h_flex,
     input::{Input, InputState},
-    menu::ContextMenuExt,
     scroll::{ScrollableElement as _, ScrollbarAxis},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     VirtualListScrollHandle, WindowExt as _,
@@ -110,8 +109,15 @@ struct RenameState {
     input: Entity<InputState>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BrowseLocation {
+    Directory,
+    RecycleBin,
+}
+
 pub struct FileBrowser {
     focus_handle: FocusHandle,
+    browse_location: BrowseLocation,
     current_dir: PathBuf,
     back_stack: Vec<PathBuf>,
     forward_stack: Vec<PathBuf>,
@@ -174,6 +180,7 @@ impl FileBrowser {
 
         Self {
             focus_handle: cx.focus_handle(),
+            browse_location: BrowseLocation::Directory,
             current_dir,
             back_stack: Vec::new(),
             forward_stack: Vec::new(),
@@ -258,6 +265,10 @@ impl FileBrowser {
         self._watcher_task.take();
         self._directory_watcher.take();
 
+        if self.browse_location != BrowseLocation::Directory {
+            return;
+        }
+
         let Ok((watcher, events)) =
             DirectoryWatcher::watch(&self.current_dir, Duration::from_millis(300))
         else {
@@ -322,6 +333,7 @@ impl FileBrowser {
     }
 
     pub fn open_directory_reset_history(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.browse_location = BrowseLocation::Directory;
         self.back_stack.clear();
         self.forward_stack.clear();
         self.current_dir = path;
@@ -330,13 +342,37 @@ impl FileBrowser {
         self.restart_directory_watcher(cx);
     }
 
+    pub fn open_recycle_bin(&mut self, cx: &mut Context<Self>) {
+        self.browse_location = BrowseLocation::RecycleBin;
+        self.back_stack.clear();
+        self.forward_stack.clear();
+        self.current_dir = platform::recycle_bin_folder().unwrap_or_else(home_navigation_path);
+        self.clear_selection();
+        self._watcher_task.take();
+        self._directory_watcher.take();
+        self.watched_dir = None;
+        self.refresh();
+        cx.notify();
+    }
+
     fn refresh(&mut self) {
-        let (items, error) =
-            load_files_dir(&self.current_dir, self.read_options, self.sort_preferences);
+        let (items, error) = match self.browse_location {
+            BrowseLocation::Directory => {
+                load_files_dir(&self.current_dir, self.read_options, self.sort_preferences)
+            }
+            BrowseLocation::RecycleBin => match read_recycle_bin(
+                self.read_options,
+                self.sort_preferences,
+            ) {
+                Ok(items) => (items, None),
+                Err(error) => (Vec::new(), Some(error.to_string())),
+            },
+        };
         self.items = items;
         self.error = error;
         self.apply_filter();
-        if self.view_mode == ViewMode::Columns {
+        if self.view_mode == ViewMode::Columns && self.browse_location == BrowseLocation::Directory
+        {
             self.refresh_column_listings();
         }
         self.reconcile_selection();
@@ -403,6 +439,9 @@ impl FileBrowser {
     }
 
     fn navigate_to(&mut self, path: PathBuf) {
+        if self.browse_location == BrowseLocation::RecycleBin {
+            self.browse_location = BrowseLocation::Directory;
+        }
         if path == self.current_dir {
             return;
         }
@@ -944,6 +983,7 @@ impl FileBrowser {
         let kind = item.kind;
         let name = item.display_name.clone();
         let item_click = item.clone();
+        let aux_path = item.path.clone();
         h_flex()
             .id(format!("file-column-row-{col_index}-{name}"))
             .w_full()
@@ -964,6 +1004,12 @@ impl FileBrowser {
                 } else if event.click_count() == 2 {
                     this.open_item(item_click.path.clone(), kind);
                 }
+                cx.notify();
+            }))
+            .on_aux_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                this.selected_paths.clear();
+                this.selected_paths.insert(aux_path.clone());
+                this.show_native_shell_context_menu(window, cx);
                 cx.notify();
             }))
             .on_drag(DraggedFilePaths(drag_paths), |paths, _offset, _window, cx| {
@@ -1133,6 +1179,9 @@ impl FileBrowser {
                 }
                 cx.notify();
             }))
+            .on_aux_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                this.on_aux_click_item(index, event, window, cx);
+            }))
             .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
                 cx.new(|_| DragPathPreview {
                     label: drag_preview_label(&paths.0).into(),
@@ -1229,6 +1278,9 @@ impl FileBrowser {
                     this.handle_row_click(index, event);
                 }
                 cx.notify();
+            }))
+            .on_aux_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                this.on_aux_click_item(index, event, window, cx);
             }))
             .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
                 cx.new(|_| DragPathPreview {
@@ -1472,12 +1524,7 @@ impl FileBrowser {
         }
     }
 
-    fn on_shell_context_menu(
-        &mut self,
-        _: &ShellContextMenu,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn show_native_shell_context_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let paths = self.selected_paths_vec();
         if paths.is_empty() {
             return;
@@ -1488,6 +1535,40 @@ impl FileBrowser {
                 cx,
             );
         }
+    }
+
+    fn on_aux_click_item(
+        &mut self,
+        index: usize,
+        event: &ClickEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(item) = self.display_items.get(index) else {
+            return;
+        };
+        let path = item.path.clone();
+        if !event.modifiers().shift && !event.modifiers().secondary() {
+            if !self.selected_paths.contains(&path) {
+                self.selected_paths.clear();
+                self.selected_paths.insert(path);
+                self.anchor_index = Some(index);
+                self.focused_index = Some(index);
+            }
+        } else {
+            self.handle_row_click(index, event);
+        }
+        self.show_native_shell_context_menu(window, cx);
+        cx.notify();
+    }
+
+    fn on_shell_context_menu(
+        &mut self,
+        _: &ShellContextMenu,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_native_shell_context_menu(window, cx);
     }
 }
 
@@ -1507,7 +1588,7 @@ impl Render for FileBrowser {
         ));
         let show_hidden = self.read_options.show_hidden_items;
         let sort_label = self.sort_label();
-        let in_recycle_bin = platform::is_recycle_bin_path(&self.current_dir);
+        let in_recycle_bin = self.browse_location == BrowseLocation::RecycleBin;
 
         v_flex()
             .id("files-page")
@@ -1730,25 +1811,7 @@ impl Render for FileBrowser {
                     .overflow_hidden()
                     .child(self.file_list(cx)),
             )
-            .context_menu(file_context_menu)
     }
-}
-
-fn file_context_menu(
-    menu: gpui_component::menu::PopupMenu,
-    _: &mut Window,
-    _: &mut Context<gpui_component::menu::PopupMenu>,
-) -> gpui_component::menu::PopupMenu {
-    menu.menu(t!("files.menu.open"), Box::new(OpenItem))
-        .menu(t!("files.menu.rename"), Box::new(RenameItem))
-        .separator()
-        .menu(t!("files.menu.copy"), Box::new(CopyItems))
-        .menu(t!("files.menu.cut"), Box::new(CutItems))
-        .menu(t!("files.menu.paste"), Box::new(PasteItems))
-        .separator()
-        .menu(t!("files.menu.delete"), Box::new(DeleteItems))
-        .menu(t!("files.menu.properties"), Box::new(ShellProperties))
-        .menu(t!("files.menu.shell_menu"), Box::new(ShellContextMenu))
 }
 
 fn load_files_dir(

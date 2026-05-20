@@ -282,4 +282,4 @@ Each step should compile independently and preserve the existing settings/theme 
 - **MainPage**：TabBar、侧栏、Omnibar、双栏 `ShellPanes`、InfoPane（Details + Preview）、StatusBar。
 - **M3**：新建文件、应用内复制/剪切/粘贴、回收站删除（`trash`）、Pinned 写入 `settings.json`。
 - **M4（首轮）**：`notify` 目录监视、`filter_items_by_query` 搜索框、详情/网格视图切换。
-- **`platform-windows` crate**：图标类型提示、CF_HDROP 粘贴、回收站已知文件夹、属性对话框、Explorer 回退式“上下文菜单”。
+- **`platform-windows` crate**：图标类型提示、CF_HDROP 粘贴、回收站 Shell 枚举、`SHCreateDefaultContextMenu` 右键菜单、属性对话框。

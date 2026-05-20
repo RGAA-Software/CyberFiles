@@ -230,7 +230,10 @@ impl MainPage {
 
     fn info_selection(&self, cx: &App) -> Option<cyberfiles_fs::FileItem> {
         let pane = self.active_pane(cx);
-        if !matches!(pane.read(cx).target(), NavigationTarget::Path(_)) {
+        if !matches!(
+            pane.read(cx).target(),
+            NavigationTarget::Path(_) | NavigationTarget::RecycleBin
+        ) {
             return None;
         }
         pane.read(cx)
@@ -310,13 +313,19 @@ impl MainPage {
         let pane = self.active_pane(cx);
         let target = pane.read(cx).target().clone();
         let browser = pane.read(cx).file_browser();
-        let (can_back, can_forward, can_up) = if matches!(target, NavigationTarget::Path(_)) {
+        let (can_back, can_forward, can_up) = if matches!(
+            target,
+            NavigationTarget::Path(_) | NavigationTarget::RecycleBin
+        ) {
             let b = browser.read(cx);
             (b.can_go_back(), b.can_go_forward(), b.can_go_up())
         } else {
             (false, false, false)
         };
-        let show_file_ops = matches!(target, NavigationTarget::Path(_));
+        let show_file_ops = matches!(
+            target,
+            NavigationTarget::Path(_) | NavigationTarget::RecycleBin
+        );
 
         h_flex()
             .id("navigation-toolbar")
@@ -483,17 +492,17 @@ impl MainPage {
         let target = pane.read(cx).target().clone();
 
         let (items, selected, hint) = match target {
-            NavigationTarget::Path(_) => {
+            NavigationTarget::Path(_) | NavigationTarget::RecycleBin => {
                 let b = pane.read(cx).file_browser().read(cx);
-                (
-                    b.item_count(),
-                    b.selected_count(),
-                    t!("files.status.local").to_string(),
-                )
+                let hint = if matches!(target, NavigationTarget::RecycleBin) {
+                    t!("main.status.recycle_bin").to_string()
+                } else {
+                    t!("files.status.local").to_string()
+                };
+                (b.item_count(), b.selected_count(), hint)
             }
             NavigationTarget::Home => (0, 0, t!("main.status.home").to_string()),
             NavigationTarget::Settings => (0, 0, t!("main.status.settings").to_string()),
-            NavigationTarget::RecycleBin => (0, 0, t!("main.status.recycle_bin").to_string()),
         };
 
         h_flex()
@@ -584,11 +593,7 @@ impl MainPage {
                         SidebarMenuItem::new(t!("nav.recycle_bin"))
                             .icon(IconName::Delete)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                if let Some(path) = platform::recycle_bin_folder() {
-                                    this.navigate_to(NavigationTarget::Path(path), cx);
-                                } else {
-                                    this.navigate_to(NavigationTarget::RecycleBin, cx);
-                                }
+                                this.navigate_to(NavigationTarget::RecycleBin, cx);
                             })),
                     ),
                 ),

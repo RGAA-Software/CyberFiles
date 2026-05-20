@@ -3,9 +3,13 @@
 #[cfg(windows)]
 mod clipboard;
 #[cfg(windows)]
+mod context_menu;
+#[cfg(windows)]
 mod icons;
 #[cfg(windows)]
 mod paths;
+#[cfg(windows)]
+mod recycle;
 #[cfg(windows)]
 mod shell;
 
@@ -15,6 +19,8 @@ pub use clipboard::read_clipboard_file_paths;
 pub use icons::{icon_hint_for_path, ShellIconHint};
 #[cfg(windows)]
 pub use paths::{is_recycle_bin_path, recycle_bin_folder};
+#[cfg(windows)]
+pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 #[cfg(windows)]
 pub use shell::{open_item_properties, show_shell_context_menu};
 
@@ -53,6 +59,18 @@ mod stubs {
 
     pub fn show_shell_context_menu(_paths: &[PathBuf]) -> anyhow::Result<()> {
         Ok(())
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct RecycleBinEntry {
+        pub display_name: String,
+        pub shell_path: PathBuf,
+        pub size: Option<u64>,
+        pub modified: Option<std::time::SystemTime>,
+    }
+
+    pub fn list_recycle_bin_entries() -> Vec<RecycleBinEntry> {
+        Vec::new()
     }
 
     pub fn open_item_properties(_path: &Path) -> anyhow::Result<()> {
