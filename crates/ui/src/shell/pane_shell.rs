@@ -10,6 +10,7 @@ use crate::shell::navigation::NavigationTarget;
 pub struct PaneShell {
     target: NavigationTarget,
     file_browser: Entity<FileBrowser>,
+    home: Entity<HomePage>,
 }
 
 impl PaneShell {
@@ -21,6 +22,7 @@ impl PaneShell {
         Self {
             target,
             file_browser: cx.new(|cx| FileBrowser::for_shell(cx, initial_path)),
+            home: cx.new(|_| HomePage),
         }
     }
 
@@ -47,7 +49,7 @@ impl PaneShell {
 impl Render for PaneShell {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         match &self.target {
-            NavigationTarget::Home => HomePage::render(cx).into_any_element(),
+            NavigationTarget::Home => self.home.clone().into_any_element(),
             NavigationTarget::Settings => div()
                 .id("settings-page")
                 .size_full()

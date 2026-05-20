@@ -1,6 +1,8 @@
+mod app_state;
 mod file_browser;
 mod home;
 mod i18n;
+mod info_pane;
 mod main_page;
 mod settings_view;
 mod shell;

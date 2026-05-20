@@ -20,6 +20,14 @@ pub struct AppConfig {
     pub list_active_highlight: bool,
     pub window_width: f32,
     pub window_height: f32,
+    #[serde(default)]
+    pub pinned_folders: Vec<String>,
+    #[serde(default = "default_show_info_pane")]
+    pub show_info_pane: bool,
+}
+
+fn default_show_info_pane() -> bool {
+    true
 }
 
 impl Default for AppConfig {
@@ -34,8 +42,22 @@ impl Default for AppConfig {
             list_active_highlight: false,
             window_width: WINDOW_WIDTH,
             window_height: WINDOW_HEIGHT,
+            pinned_folders: Vec::new(),
+            show_info_pane: true,
         }
     }
+}
+
+pub fn pinned_folder_paths() -> Vec<PathBuf> {
+    load_config()
+        .map(|c| {
+            c.pinned_folders
+                .into_iter()
+                .map(PathBuf::from)
+                .filter(|p| p.exists())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub fn config_path() -> Option<PathBuf> {

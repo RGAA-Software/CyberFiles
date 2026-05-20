@@ -1,3 +1,4 @@
+use cyberfiles_core::{load_config, pinned_folder_paths, save_config};
 use cyberfiles_fs::{home_navigation_path, list_drives};
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -12,6 +13,7 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
+use crate::info_pane::InfoPane;
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::PaneShell;
 use cyberfiles_core::APP_NAME;
@@ -26,33 +28,72 @@ pub struct MainPage {
     tabs: Vec<TabEntry>,
     active_tab: usize,
     next_tab_id: u64,
+    show_info_pane: bool,
 }
 
 impl MainPage {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        let show_info_pane = load_config()
+            .map(|c| c.show_info_pane)
+            .unwrap_or(true);
         let pane = cx.new(|cx| PaneShell::new(cx, NavigationTarget::Home));
         Self {
             focus_handle: cx.focus_handle(),
             tabs: vec![TabEntry { id: 0, pane }],
             active_tab: 0,
             next_tab_id: 1,
+            show_info_pane,
         }
     }
 
-    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
-        cx.new(|cx| Self::new(cx))
+    pub fn view(_window: &mut Window, cx: &mut App) -> Entity<Self> {
+        let page = cx.new(|cx| Self::new(cx));
+        crate::app_state::AppNavigation::set(page.clone(), cx);
+        page
     }
 
     fn active_pane(&self) -> Entity<PaneShell> {
         self.tabs[self.active_tab].pane.clone()
     }
 
-    fn navigate_active(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
+    pub fn navigate_to(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
         let pane = self.active_pane();
         pane.update(cx, |shell, cx| {
             shell.navigate(target, cx);
         });
         cx.notify();
+    }
+
+    fn pin_current_folder(&mut self, cx: &mut Context<Self>) {
+        let pane = self.active_pane();
+        let path = pane.read(cx).file_browser().read(cx).current_directory().clone();
+        let path_string = path.to_string_lossy().to_string();
+        let mut config = load_config().unwrap_or_default();
+        if !config.pinned_folders.iter().any(|p| p == &path_string) {
+            config.pinned_folders.push(path_string);
+            let _ = save_config(&config);
+        }
+        cx.notify();
+    }
+
+    fn toggle_info_pane(&mut self, cx: &mut Context<Self>) {
+        self.show_info_pane = !self.show_info_pane;
+        let mut config = load_config().unwrap_or_default();
+        config.show_info_pane = self.show_info_pane;
+        let _ = save_config(&config);
+        cx.notify();
+    }
+
+    fn info_selection(&self, cx: &App) -> Option<cyberfiles_fs::FileItem> {
+        let pane = self.active_pane();
+        if !matches!(pane.read(cx).target(), NavigationTarget::Path(_)) {
+            return None;
+        }
+        pane.read(cx)
+            .file_browser()
+            .read(cx)
+            .primary_selected_item()
+            .cloned()
     }
 
     fn add_tab(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
@@ -92,7 +133,24 @@ impl MainPage {
         }
     }
 
+    fn render_main_column(&self, active_pane: Entity<PaneShell>, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .min_h_0()
+            .child(self.render_navigation_toolbar(cx))
+            .child(
+                div()
+                    .id("main-content")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_hidden()
+                    .child(active_pane),
+            )
+            .child(self.render_status_bar(cx))
+    }
+
     fn render_navigation_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let show_info_pane = self.show_info_pane;
         let pane = self.active_pane();
         let target = pane.read(cx).target().clone();
         let path_label = target.toolbar_path_label();
@@ -200,7 +258,29 @@ impl MainPage {
                             cx.notify();
                         })),
                 )
+                .child(
+                    Button::new("nav-pin-folder")
+                        .small()
+                        .outline()
+                        .icon(IconName::Star)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.pin_current_folder(cx);
+                        })),
+                )
             })
+            .child(
+                Button::new("nav-toggle-info")
+                    .small()
+                    .ghost()
+                    .icon(if show_info_pane {
+                        IconName::PanelRightClose
+                    } else {
+                        IconName::PanelRightOpen
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.toggle_info_pane(cx);
+                    })),
+            )
             .child(
                 div()
                     .flex_1()
@@ -257,6 +337,7 @@ impl MainPage {
 
     fn render_sidebar(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let drives = list_drives();
+        let pinned = pinned_folder_paths();
 
         Sidebar::new("files-sidebar")
             .w(relative(1.))
@@ -296,20 +377,25 @@ impl MainPage {
                             SidebarMenuItem::new(t!("nav.home"))
                                 .icon(IconName::LayoutDashboard)
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    this.navigate_active(NavigationTarget::Home, cx);
+                                    this.navigate_to(NavigationTarget::Home, cx);
                                 })),
                         ),
                     ),
             )
             .child(
-                SidebarGroup::new(t!("sidebar.section.pinned"))
-                    .child(
-                        SidebarMenu::new().w_full().child(
-                            SidebarMenuItem::new(t!("sidebar.pinned.placeholder"))
-                                .icon(IconName::Star)
-                                .disable(true),
-                        ),
-                    ),
+                SidebarGroup::new(t!("sidebar.section.pinned")).child(
+                    SidebarMenu::new().w_full().children(pinned.into_iter().map(|path| {
+                        let label = path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| path.to_string_lossy().to_string());
+                        SidebarMenuItem::new(label)
+                            .icon(IconName::Star)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.navigate_to(NavigationTarget::Path(path.clone()), cx);
+                            }))
+                    })),
+                ),
             )
             .child(
                 SidebarGroup::new(t!("sidebar.section.drives"))
@@ -319,7 +405,7 @@ impl MainPage {
                             SidebarMenuItem::new(drive.label.clone())
                                 .icon(IconName::HardDrive)
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.navigate_active(NavigationTarget::Path(path.clone()), cx);
+                                    this.navigate_to(NavigationTarget::Path(path.clone()), cx);
                                 }))
                         })),
                     ),
@@ -342,7 +428,7 @@ impl MainPage {
                             SidebarMenuItem::new(t!("nav.settings"))
                                 .icon(IconName::Settings2)
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    this.navigate_active(NavigationTarget::Settings, cx);
+                                    this.navigate_to(NavigationTarget::Settings, cx);
                                 })),
                         )
                         .render("sidebar-settings", window, cx),
@@ -361,6 +447,8 @@ impl Render for MainPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let active = self.active_tab;
         let active_pane = self.active_pane();
+        let show_info_pane = self.show_info_pane;
+        let info_item = self.info_selection(cx);
 
         v_flex()
             .id("main-page")
@@ -423,23 +511,30 @@ impl Render for MainPage {
                             .child(self.render_sidebar(window, cx)),
                     )
                     .child(
-                        resizable_panel()
-                            .flex_1()
-                            .child(
-                                v_flex()
-                                    .size_full()
-                                    .min_h_0()
-                                    .child(self.render_navigation_toolbar(cx))
-                                    .child(
-                                        div()
-                                            .id("main-content")
-                                            .flex_1()
-                                            .min_h_0()
-                                            .overflow_hidden()
-                                            .child(active_pane),
+                        resizable_panel().flex_1().child(
+                            div()
+                                .size_full()
+                                .min_h_0()
+                                .when(show_info_pane, |this| {
+                                    this.child(
+                                        h_resizable("main-with-info-pane")
+                                            .child(
+                                                resizable_panel()
+                                                    .flex_1()
+                                                    .child(self.render_main_column(active_pane.clone(), cx)),
+                                            )
+                                            .child(
+                                                resizable_panel()
+                                                    .size(px(300.))
+                                                    .size_range(px(220.)..px(480.))
+                                                    .child(InfoPane::render(info_item.as_ref(), cx)),
+                                            ),
                                     )
-                                    .child(self.render_status_bar(cx)),
-                            ),
+                                })
+                                .when(!show_info_pane, |this| {
+                                    this.child(self.render_main_column(active_pane, cx))
+                                }),
+                        ),
                     ),
                     ),
             )

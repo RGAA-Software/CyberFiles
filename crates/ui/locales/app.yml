@@ -71,6 +71,38 @@ home.widget.quick_access.placeholder:
   en: Pinned and frequent folders will appear here.
   zh-CN: 固定与常用文件夹将显示在此处。
   zh-HK: 固定與常用資料夾將顯示於此處。
+home.widget.quick_access.empty:
+  en: Pin a folder from the toolbar (star) while browsing.
+  zh-CN: 浏览文件夹时点击工具栏星标即可固定。
+  zh-HK: 瀏覽資料夾時點擊工具列星號即可固定。
+info_pane.tab.details:
+  en: Details
+  zh-CN: 详细信息
+  zh-HK: 詳細資訊
+info_pane.tab.preview:
+  en: Preview
+  zh-CN: 预览
+  zh-HK: 預覽
+info_pane.empty:
+  en: Select a single item to see details.
+  zh-CN: 选择单个项目以查看详细信息。
+  zh-HK: 選取單一項目以查看詳細資訊。
+info_pane.path:
+  en: Path
+  zh-CN: 路径
+  zh-HK: 路徑
+info_pane.type:
+  en: Type
+  zh-CN: 类型
+  zh-HK: 類型
+info_pane.size:
+  en: Size
+  zh-CN: 大小
+  zh-HK: 大小
+info_pane.modified:
+  en: Modified
+  zh-CN: 修改时间
+  zh-HK: 修改時間
 home.widget.drives:
   en: Drives
   zh-CN: 驱动器

@@ -126,5 +126,11 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         list_active_highlight: cx.theme().list.active_highlight,
         window_width,
         window_height,
+        pinned_folders: cyberfiles_core::load_config()
+            .map(|c| c.pinned_folders)
+            .unwrap_or_default(),
+        show_info_pane: cyberfiles_core::load_config()
+            .map(|c| c.show_info_pane)
+            .unwrap_or(true),
     }
 }

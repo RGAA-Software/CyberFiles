@@ -321,11 +321,27 @@ impl FileBrowser {
         }
     }
 
-    fn primary_path(&self) -> Option<PathBuf> {
-        if let Some(index) = self.focused_index {
-            return self.items.get(index).map(|item| item.path.clone());
+    pub fn primary_selected_item(&self) -> Option<&FileItem> {
+        if self.selected_paths.len() == 1 {
+            let path = self.selected_paths.iter().next()?;
+            return self.items.iter().find(|item| &item.path == path);
         }
-        self.selected_paths.iter().next().cloned()
+        if !self.selected_paths.is_empty() {
+            return None;
+        }
+        let index = self.focused_index?;
+        self.items.get(index)
+    }
+
+    fn primary_path(&self) -> Option<PathBuf> {
+        self.primary_selected_item()
+            .map(|item| item.path.clone())
+            .or_else(|| {
+                if let Some(index) = self.focused_index {
+                    return self.items.get(index).map(|item| item.path.clone());
+                }
+                self.selected_paths.iter().next().cloned()
+            })
     }
 
     fn selected_paths_vec(&self) -> Vec<PathBuf> {
