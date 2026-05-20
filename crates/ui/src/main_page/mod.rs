@@ -65,13 +65,12 @@ impl MainPage {
             return input;
         }
 
-        let page = cx.entity();
         let input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(t!("search.placeholder"))
         });
-        self._search_subscription = Some(cx.subscribe(&input, move |_, _, event: &InputEvent, cx| {
+        self._search_subscription = Some(cx.subscribe(&input, move |page, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {
-                page.update(cx, |page, cx| page.apply_search_from_input(cx));
+                page.apply_search_from_input(cx);
             }
         }));
         self.search_input = Some(input.clone());
@@ -149,13 +148,12 @@ impl MainPage {
         }
 
         let path = self.omnibar_text(cx);
-        let page = cx.entity();
         let input = cx.new(|cx| {
             InputState::new(window, cx)
                 .default_value(path)
                 .placeholder(t!("nav.path.placeholder"))
         });
-        self._omnibar_subscription = Some(cx.subscribe(&input, move |_, _, event: &InputEvent, cx| {
+        self._omnibar_subscription = Some(cx.subscribe(&input, move |page, _, event: &InputEvent, cx| {
             if matches!(
                 event,
                 InputEvent::PressEnter {
@@ -163,7 +161,7 @@ impl MainPage {
                     ..
                 }
             ) {
-                page.update(cx, |page, cx| page.submit_omnibar(cx));
+                page.submit_omnibar(cx);
             }
         }));
         self.path_input = Some(input.clone());
