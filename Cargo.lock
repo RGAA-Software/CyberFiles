@@ -1184,9 +1184,27 @@ name = "cyberfiles"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cyberfiles-core",
+ "cyberfiles-ui",
  "gpui",
  "gpui-component",
  "gpui_platform",
+]
+
+[[package]]
+name = "cyberfiles-core"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+]
+
+[[package]]
+name = "cyberfiles-ui"
+version = "0.1.0"
+dependencies = [
+ "cyberfiles-core",
+ "gpui",
+ "gpui-component",
 ]
 
 [[package]]
