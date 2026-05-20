@@ -47,29 +47,13 @@ fn update_app_menu(cx: &mut App) {
 }
 
 fn build_menus(title: impl Into<SharedString>) -> Vec<Menu> {
-    vec![
-        Menu {
-            name: title.into(),
-            items: vec![
-                MenuItem::action(t!("menu.about"), About),
-                MenuItem::Separator,
-                MenuItem::action(t!("menu.quit"), Quit),
-            ],
-            disabled: false,
-        },
-        Menu {
-            name: t!("menu.edit").into(),
-            items: vec![
-                MenuItem::action(t!("menu.undo"), gpui_component::input::Undo),
-                MenuItem::action(t!("menu.redo"), gpui_component::input::Redo),
-                MenuItem::separator(),
-                MenuItem::action(t!("menu.cut"), gpui_component::input::Cut),
-                MenuItem::action(t!("menu.copy"), gpui_component::input::Copy),
-                MenuItem::action(t!("menu.paste"), gpui_component::input::Paste),
-                MenuItem::separator(),
-                MenuItem::action(t!("menu.select_all"), gpui_component::input::SelectAll),
-            ],
-            disabled: false,
-        },
-    ]
+    vec![Menu {
+        name: title.into(),
+        items: vec![
+            MenuItem::action(t!("menu.about"), About),
+            MenuItem::Separator,
+            MenuItem::action(t!("menu.quit"), Quit),
+        ],
+        disabled: false,
+    }]
 }

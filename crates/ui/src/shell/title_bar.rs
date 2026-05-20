@@ -5,13 +5,13 @@ use gpui::{
     ParentElement as _, Render, SharedString, Styled as _, Window, div,
 };
 use gpui_component::{
-    ActiveTheme as _, IconName, Sizable as _, TitleBar, WindowExt as _,
+    ActiveTheme as _, Icon, IconName, ThemeMode, Sizable as _, TitleBar, WindowExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
-    label::Label,
 };
 
 use super::app_menus;
+use super::preferences::apply_theme_mode;
 
 pub struct AppTitleBar {
     app_menu_bar: Entity<gpui_component::menu::AppMenuBar>,
@@ -36,6 +36,12 @@ impl AppTitleBar {
 impl Render for AppTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let notifications_count = window.notifications(cx).len();
+        let is_dark = cx.theme().mode.is_dark();
+        let theme_icon = if is_dark {
+            IconName::Moon
+        } else {
+            IconName::Sun
+        };
 
         TitleBar::new()
             .child(div().flex().items_center().child(self.app_menu_bar.clone()))
@@ -49,9 +55,18 @@ impl Render for AppTitleBar {
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child((self.child.clone())(window, cx))
                     .child(
-                        Label::new("theme:")
-                            .secondary(cx.theme().theme_name())
-                            .text_sm(),
+                        Button::new("theme-toggle")
+                            .small()
+                            .ghost()
+                            .icon(Icon::new(theme_icon))
+                            .on_click(move |_, _, cx| {
+                                let mode = if cx.theme().mode.is_dark() {
+                                    ThemeMode::Light
+                                } else {
+                                    ThemeMode::Dark
+                                };
+                                apply_theme_mode(mode, cx);
+                            }),
                     )
                     .child(
                         Button::new("github")
