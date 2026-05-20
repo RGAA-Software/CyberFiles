@@ -16,9 +16,9 @@ cyberfiles-ui = { path = "crates/ui" }
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", package = "gpui_platform", features = ["font-kit"] }
 
-# longbridge/gpui-component
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", package = "gpui-component-assets" }
+# Local path: ../gpui-component (see docs/gpui-component-analysis.md)
+gpui-component = { path = "../gpui-component/crates/ui" }
+gpui-component-assets = { path = "../gpui-component/crates/assets" }
 
 anyhow = "1.0"
 rust-i18n = "4"

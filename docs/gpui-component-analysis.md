@@ -1,7 +1,8 @@
 # GPUI Component 项目分析文档
 
-> 分析来源：`D:\source\gpui-component`（版本约 **0.5.2**）  
+> 分析来源：本地依赖 `../gpui-component`（版本约 **0.5.2**）  
 > 用途：在 CyberFiles 等项目中选用控件、查阅 API 与示例时的参考手册。  
+> 路径约定：下文中的 `../gpui-component/...` 均相对于 **CyberFiles 仓库根目录**。  
 > 官方文档：<https://longbridge.github.io/gpui-component/> | <https://docs.rs/gpui-component>
 
 ---
@@ -25,14 +26,14 @@
 
 | 路径 | Crate | 作用 |
 |------|-------|------|
-| `crates/ui` | `gpui-component` | **主 UI 库** |
-| `crates/macros` | `gpui-component-macros` | 过程宏：`icon_named!`、`IntoPlot` |
-| `crates/assets` | `gpui-component-assets` | 内置 99 个 SVG 图标 + `AssetSource` |
-| `crates/story` | `story` | 组件画廊（交互演示，等同官方 Gallery） |
-| `crates/story-web` | — | Gallery 的 WASM 构建 |
-| `crates/webview` | — | 实验性 `wry` WebView 嵌入 |
-| `examples/*` | 11 个示例 | 单功能最小示例 |
-| `docs/` | VitePress | 中英文站点与组件文档 |
+| `../gpui-component/crates/ui` | `gpui-component` | **主 UI 库** |
+| `../gpui-component/crates/macros` | `gpui-component-macros` | 过程宏：`icon_named!`、`IntoPlot` |
+| `../gpui-component/crates/assets` | `gpui-component-assets` | 内置 99 个 SVG 图标 + `AssetSource` |
+| `../gpui-component/crates/story` | `story` | 组件画廊（交互演示，等同官方 Gallery） |
+| `../gpui-component/crates/story-web` | — | Gallery 的 WASM 构建 |
+| `../gpui-component/crates/webview` | — | 实验性 `wry` WebView 嵌入 |
+| `../gpui-component/examples/*` | 11 个示例 | 单功能最小示例 |
+| `../gpui-component/docs/` | VitePress | 中英文站点与组件文档 |
 
 ---
 
@@ -40,13 +41,21 @@
 
 ### 2.1 依赖（Cargo.toml）
 
+CyberFiles 的 UI 组件**全部来自本地** `../gpui-component`（与仓库根目录同级，通过 Cargo path 依赖）：
+
 ```toml
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
-# 可选：内置图标资源
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
+gpui-component = { path = "../gpui-component/crates/ui" }
+gpui-component-assets = { path = "../gpui-component/crates/assets" }
 anyhow = "1.0"
+```
+
+上游若未克隆本地仓库，可临时改回 Git：
+
+```toml
+gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", package = "gpui-component-assets" }
 ```
 
 ### 2.2 应用入口
@@ -155,7 +164,7 @@ impl Render for MyView {
 
 - 内置 **99** 个 Lucide 风格 SVG（`gpui-component-assets`）。
 - `Icon::new(IconName::Search)`、`.small()`、`.path("icons/foo.svg")`。
-- 自定义：`icon_named!` 宏扫描目录生成枚举；或实现 `AssetSource`（见 `examples/app_assets`）。
+- 自定义：`icon_named!` 宏扫描目录生成枚举；或实现 `AssetSource`（见 `../gpui-component/examples/app_assets`）。
 
 ### 3.6 其他基础设施
 
@@ -343,7 +352,7 @@ impl Render for MyView {
 | Focus Trap | `focus_trap.rs` | `.focus_trap()` |
 | Searchable List | `searchable_list/` | Select/Combobox 底层 |
 | Inspector | `inspector`（feature） | 调试组件检查器 |
-| WebView | `crates/webview` | 实验性网页嵌入（`wry`） |
+| WebView | `../gpui-component/crates/webview` | 实验性网页嵌入（`wry`） |
 
 ---
 
@@ -358,9 +367,9 @@ impl Render for MyView {
 
 ---
 
-## 7. 示例项目（`examples/`）
+## 7. 示例项目（`../gpui-component/examples/`）
 
-每个示例聚焦**单一功能**；综合演示请运行 **`crates/story`**（Gallery）。
+每个示例聚焦**单一功能**；综合演示请运行 **`../gpui-component/crates/story`**（Gallery）。
 
 | 示例 | 演示内容 |
 |------|----------|
@@ -379,30 +388,31 @@ impl Render for MyView {
 **运行 Gallery：**
 
 ```bash
-cd D:\source\gpui-component
+cd ../gpui-component
 cargo run -p story
 ```
 
 **运行单个示例：**
 
 ```bash
+cd ../gpui-component
 cargo run --example hello_world
-# 或进入 examples/hello_world 目录 cargo run
+# 或进入 ../gpui-component/examples/hello_world 目录 cargo run
 ```
 
 ---
 
-## 8. Story 画廊模块（`crates/story`）
+## 8. Story 画廊模块（`../gpui-component/crates/story`）
 
 与文档组件一一对应的交互演示（节选）：
 
 `AccordionStory`, `AlertStory`, `AlertDialogStory`, `AvatarStory`, `BadgeStory`, `BreadcrumbStory`, `ButtonStory`, `CalendarStory`, `ChartStory`, `CheckboxStory`, `ClipboardStory`, `CollapsibleStory`, `ColorPickerStory`, `ComboboxStory`, `DataTableStory`, `DatePickerStory`, `DescriptionListStory`, `DialogStory`, `DropdownButtonStory`, `EditorStory`, `FormStory`, `GroupBoxStory`, `HoverCardStory`, `IconStory`, `ImageStory`, `InputStory`, `KbdStory`, `LabelStory`, `ListStory`, `MenuStory`, `NotificationStory`, `NumberInputStory`, `OtpInputStory`, `PaginationStory`, `PopoverStory`, `ProgressStory`, `RadioStory`, `RatingStory`, `ResizableStory`, `ScrollbarStory`, `SelectStory`, `SeparatorStory`, `SettingsStory`, `SheetStory`, `SidebarStory`, `SkeletonStory`, `SliderStory`, `SpinnerStory`, `StepperStory`, `SwitchStory`, `TableStory`, `TabsStory`, `TagStory`, `TextareaStory`, `ThemeColorsStory`, `ToggleStory`, `TooltipStory`, `TreeStory`, `VirtualListStory`, `WelcomeStory`
 
-**查用法时建议：** 先在本表定位 Story 名 → 在 `crates/story/src/stories/*_story.rs` 阅读源码。
+**查用法时建议：** 先在本表定位 Story 名 → 在 `../gpui-component/crates/story/src/stories/*_story.rs` 阅读源码。
 
 ---
 
-## 9. 官方文档目录（`docs/docs/`）
+## 9. 官方文档目录（`../gpui-component/docs/docs/`）
 
 ### 9.1 非组件文档
 
@@ -418,7 +428,7 @@ cargo run --example hello_world
 
 ### 9.2 组件文档索引（59 页）
 
-与 §4 分类一致，在线入口：`docs/docs/components/index.md`。
+与 §4 分类一致，在线入口：`../gpui-component/docs/docs/components/index.md`。
 
 **Basic：** Accordion, Alert, Avatar, Badge, Button, Checkbox, Collapsible, DropdownButton, Icon, Image, Kbd, Label, Pagination, Progress, Radio, Rating, Skeleton, Slider, Spinner, Stepper, Switch, Tag, Toggle, Tooltip  
 
@@ -434,7 +444,7 @@ cargo run --example hello_world
 
 ## 10. 内置图标列表（99 个）
 
-路径：`crates/assets/assets/icons/*.svg`（Lucide 风格）。
+路径：`../gpui-component/crates/assets/assets/icons/*.svg`（Lucide 风格）。
 
 | 图标名 | | 图标名 | | 图标名 |
 |--------|--|--------|--|--------|
@@ -468,16 +478,16 @@ cargo run --example hello_world
 
 ## 11. CyberFiles 项目选用速查
 
-当前 CyberFiles（`d:\source\CyberFiles`）已集成 `gpui-component`，窗口 1280×720。
+本仓库通过 **path** 依赖 `../gpui-component`，默认窗口 1366×768。
 
 | 需求 | 推荐控件 | 参考 |
 |------|----------|------|
-| 主布局 + 侧栏 | `sidebar` + `resizable` / `dock` | `examples/sidebar`, `SidebarStory` |
+| 主布局 + 侧栏 | `sidebar` + `resizable` / `dock` | `../gpui-component/examples/sidebar`, `SidebarStory` |
 | 文件列表 | `list` 或 `virtual_list` | `ListStory`, `VirtualListStory` |
 | 文件表格 | `DataTable` | `DataTableStory`, `system_monitor` |
 | 目录树 | `tree` | `TreeStory` |
 | 工具栏按钮 | `button`, `ButtonIcon`, `Toggle` | `ButtonStory` |
-| 搜索框 | `Input` + `InputState` | `examples/input` |
+| 搜索框 | `Input` + `InputState` | `../gpui-component/examples/input` |
 | 设置页 | `setting` | `SettingsStory` |
 | 关于/确认框 | `open_alert_dialog` | `AlertDialogStory` |
 | 详情面板 | `open_sheet` | `SheetStory` |
@@ -492,21 +502,21 @@ cargo run --example hello_world
 
 | 目标 | 路径 |
 |------|------|
-| 所有组件模块声明 | `crates/ui/src/lib.rs` |
-| 组件实现 | `crates/ui/src/<module>/` |
-| 窗口扩展 API | `crates/ui/src/window_ext.rs` |
-| Root 实现 | `crates/ui/src/root.rs` |
-| 主题 JSON | `crates/ui/src/theme/default-theme.json` |
-| 交互演示 | `crates/story/src/stories/` |
-| 最小示例 | `examples/*/src/main.rs` |
-| 中英文文档站 | `docs/docs/`, `docs/zh-CN/` |
+| 所有组件模块声明 | `../gpui-component/crates/ui/src/lib.rs` |
+| 组件实现 | `../gpui-component/crates/ui/src/<module>/` |
+| 窗口扩展 API | `../gpui-component/crates/ui/src/window_ext.rs` |
+| Root 实现 | `../gpui-component/crates/ui/src/root.rs` |
+| 主题 JSON | `../gpui-component/crates/ui/src/theme/default-theme.json` |
+| 交互演示 | `../gpui-component/crates/story/src/stories/` |
+| 最小示例 | `../gpui-component/examples/*/src/main.rs` |
+| 中英文文档站 | `../gpui-component/docs/docs/`, `../gpui-component/docs/zh-CN/` |
 
 ---
 
 ## 13. 版本与维护说明
 
-- 本文档基于本地 `D:\source\gpui-component` 源码梳理，crate 版本 **0.5.2**。
-- GPUI 与 gpui-component 均从 **Git** 依赖，API 可能随上游变更；升级后请对照 `lib.rs` 与 Gallery。
+- 本文档基于 `../gpui-component` 源码梳理，crate 版本 **0.5.2**。
+- 本仓库的 **gpui-component** 使用 path 依赖 `../gpui-component`；**GPUI** 仍从 Zed Git 拉取。改组件或查 API 时以 `../gpui-component` 与 Gallery（在 `../gpui-component` 下执行 `cargo run -p story`）为准。
 - 更完整的交互行为以 **Story 源码** 与 **官方站点** 为准。
 
 ---
