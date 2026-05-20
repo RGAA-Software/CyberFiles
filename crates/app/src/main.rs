@@ -1,4 +1,4 @@
-use cyberfiles_ui::{AppView, Assets, init, open_main_window};
+use cyberfiles_ui::{Assets, MainPage, init, open_main_window};
 
 fn main() {
     let app = gpui_platform::application().with_assets(Assets);
@@ -8,7 +8,7 @@ fn main() {
         cx.activate(true);
 
         open_main_window(
-            move |window, cx| AppView::view(window, cx),
+            move |window, cx| MainPage::view(window, cx),
             cx,
         );
     });

@@ -11,8 +11,9 @@ use cyberfiles_commands::{
     NavigateUp, NewFolder, OpenItem, RefreshDirectory, RenameItem, SelectAll, FILE_BROWSER,
 };
 use cyberfiles_fs::{
-    create_directory, delete_paths, read_directory, rename_path, unique_new_folder_name,
-    DirectoryReadOptions, FileItem, FileItemKind, SortDirection, SortOption, SortPreferences,
+    create_directory, delete_paths, home_navigation_path, read_directory, rename_path,
+    unique_new_folder_name, DirectoryReadOptions, FileItem, FileItemKind, SortDirection,
+    SortOption, SortPreferences,
 };
 use gpui::{
     actions, prelude::*, ClipboardItem, ClickEvent, Entity, FocusHandle,
@@ -63,13 +64,26 @@ pub struct FileBrowser {
     anchor_index: Option<usize>,
     focused_index: Option<usize>,
     renaming: Option<RenameState>,
+    show_toolbar: bool,
     _subscriptions: Vec<Subscription>,
 }
 
 impl FileBrowser {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let current_dir = default_files_dir();
-        let (items, error) = load_files_dir(&current_dir, DirectoryReadOptions::default(), SortPreferences::default());
+        Self::with_options(cx, home_navigation_path(), true)
+    }
+
+    /// File list for embedding in MainPage (navigation chrome lives on the shell).
+    pub fn for_shell(cx: &mut Context<Self>, initial_dir: PathBuf) -> Self {
+        Self::with_options(cx, initial_dir, false)
+    }
+
+    fn with_options(cx: &mut Context<Self>, current_dir: PathBuf, show_toolbar: bool) -> Self {
+        let (items, error) = load_files_dir(
+            &current_dir,
+            DirectoryReadOptions::default(),
+            SortPreferences::default(),
+        );
         let focused_index = items.first().map(|_| 0);
 
         Self {
@@ -87,8 +101,63 @@ impl FileBrowser {
             anchor_index: focused_index,
             focused_index,
             renaming: None,
+            show_toolbar,
             _subscriptions: Vec::new(),
         }
+    }
+
+    pub fn current_directory(&self) -> &PathBuf {
+        &self.current_dir
+    }
+
+    pub fn item_count(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn selected_count(&self) -> usize {
+        self.selected_paths.len().max(usize::from(
+            self.selected_paths.is_empty() && self.focused_index.is_some(),
+        ))
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        !self.back_stack.is_empty()
+    }
+
+    pub fn can_go_forward(&self) -> bool {
+        !self.forward_stack.is_empty()
+    }
+
+    pub fn can_go_up(&self) -> bool {
+        self.current_dir.parent().is_some()
+    }
+
+    pub fn go_back(&mut self) {
+        self.navigate_back();
+    }
+
+    pub fn go_forward(&mut self) {
+        self.navigate_forward();
+    }
+
+    pub fn go_up(&mut self) {
+        self.navigate_parent();
+    }
+
+    pub fn reload(&mut self) {
+        self.refresh();
+    }
+
+    pub fn open_directory(&mut self, path: PathBuf) {
+        self.navigate_to(path);
+    }
+
+    pub fn open_directory_reset_history(&mut self, path: PathBuf) {
+        self.back_stack.clear();
+        self.forward_stack.clear();
+        self.current_dir = path;
+        self.clear_selection();
+        self.refresh();
     }
 
     fn refresh(&mut self) {
@@ -305,7 +374,7 @@ impl FileBrowser {
         self.renaming = None;
     }
 
-    fn create_new_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn create_new_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let name = unique_new_folder_name(&self.current_dir);
         match create_directory(&self.current_dir, &name) {
             Ok(path) => {
@@ -763,7 +832,8 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_sort_type))
             .on_action(cx.listener(Self::on_toggle_sort_direction))
             .on_action(cx.listener(Self::on_toggle_show_hidden))
-            .child(
+            .when(self.show_toolbar, |this| {
+                this.child(
                 h_flex()
                     .gap_2()
                     .items_center()
@@ -870,7 +940,8 @@ impl Render for FileBrowser {
                             .text_ellipsis()
                             .child(current_dir),
                     ),
-            )
+                )
+            })
             .when_some(self.rename_bar(window, cx), |this, bar| this.child(bar))
             .when_some(self.error.as_ref(), |this, error| {
                 this.child(
@@ -900,14 +971,6 @@ impl Render for FileBrowser {
                     .child(t!("files.status.local")),
             )
     }
-}
-
-fn default_files_dir() -> PathBuf {
-    std::env::var_os("USERPROFILE")
-        .map(PathBuf::from)
-        .filter(|path| path.exists())
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn load_files_dir(

@@ -31,6 +31,74 @@ sidebar.main:
   en: Main
   zh-CN: 主菜单
   zh-HK: 主選單
+sidebar.section.main:
+  en: Main
+  zh-CN: 主区域
+  zh-HK: 主區域
+sidebar.section.pinned:
+  en: Pinned
+  zh-CN: 固定
+  zh-HK: 固定
+sidebar.section.drives:
+  en: Drives
+  zh-CN: 驱动器
+  zh-HK: 磁碟機
+sidebar.section.network:
+  en: Network
+  zh-CN: 网络
+  zh-HK: 網路
+sidebar.pinned.placeholder:
+  en: Pin folders in settings (coming soon)
+  zh-CN: 在设置中固定文件夹（即将推出）
+  zh-HK: 在設定中固定資料夾（即將推出）
+sidebar.network.placeholder:
+  en: Network locations (coming soon)
+  zh-CN: 网络位置（即将推出）
+  zh-HK: 網路位置（即將推出）
+main.status.home:
+  en: Home
+  zh-CN: 首页
+  zh-HK: 首頁
+main.status.settings:
+  en: Settings
+  zh-CN: 设置
+  zh-HK: 設定
+home.widget.quick_access:
+  en: Quick access
+  zh-CN: 快速访问
+  zh-HK: 快速存取
+home.widget.quick_access.placeholder:
+  en: Pinned and frequent folders will appear here.
+  zh-CN: 固定与常用文件夹将显示在此处。
+  zh-HK: 固定與常用資料夾將顯示於此處。
+home.widget.drives:
+  en: Drives
+  zh-CN: 驱动器
+  zh-HK: 磁碟機
+home.widget.network:
+  en: Network
+  zh-CN: 网络
+  zh-HK: 網路
+home.widget.network.placeholder:
+  en: Network computers and shares (coming soon).
+  zh-CN: 网络计算机与共享（即将推出）。
+  zh-HK: 網路電腦與共用（即將推出）。
+home.widget.tags:
+  en: File tags
+  zh-CN: 文件标签
+  zh-HK: 檔案標籤
+home.widget.tags.placeholder:
+  en: Tagged files widget (coming soon).
+  zh-CN: 标签文件小部件（即将推出）。
+  zh-HK: 標籤檔案小工具（即將推出）。
+home.widget.recent:
+  en: Recent files
+  zh-CN: 最近文件
+  zh-HK: 最近檔案
+home.widget.recent.placeholder:
+  en: Recently opened files (coming soon).
+  zh-CN: 最近打开的文件（即将推出）。
+  zh-HK: 最近開啟的檔案（即將推出）。
 search.placeholder:
   en: Search...
   zh-CN: 搜索...

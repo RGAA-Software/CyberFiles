@@ -272,3 +272,7 @@ Done when:
 5. Add basic operations.
 
 Each step should compile independently and preserve the existing settings/theme work.
+
+## Path B: 一比一复刻追踪
+
+长期功能对照与状态见 **[files-parity-roadmap.md](./files-parity-roadmap.md)**。当前已实现 **MainPage** 骨架（应用 TabBar、Files 式侧栏分区、NavigationToolbar、PaneShell、StatusBar）。
