@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
@@ -7,15 +7,19 @@ use std::{
 
 use chrono::{DateTime, Local};
 use cyberfiles_commands::{
-    CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, NavigateBack,
-    NavigateForward, NavigateNext, NavigatePrevious, NavigateUp, NewFolder, OpenItem,
-    PasteItems, RefreshDirectory, RenameItem, SelectAll, FILE_BROWSER,
+    CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch, NavigateBack,
+    NavigateForward, NavigateNext, NavigatePrevious, NavigateUp, NewFile, NewFolder, OpenItem,
+    PasteItems, RefreshDirectory, RenameItem, SelectAll, ShellContextMenu, ShellProperties,
+    ViewDetails, ViewGrid, FILE_BROWSER,
 };
 use cyberfiles_fs::{
-    copy_items, create_directory, delete_paths, home_navigation_path, move_items, read_directory,
-    recycle_paths, rename_path, unique_new_folder_name, ClipboardOperation, DirectoryReadOptions,
-    FileItem, FileItemKind, SortDirection, SortOption, SortPreferences,
+    copy_items, create_directory, create_file, delete_paths, filter_items_by_query,
+    home_navigation_path, move_items, read_directory, recycle_paths, rename_path,
+    unique_new_file_name, unique_new_folder_name, ClipboardOperation, DirectoryReadOptions,
+    DirectoryWatcher, FileClipboard, FileItem, FileItemKind, SortDirection, SortOption,
+    SortPreferences,
 };
+use cyberfiles_platform_windows::{self as platform, ShellIconHint};
 use crate::app_state::AppFileClipboard;
 use gpui::{
     actions, prelude::*, ClipboardItem, ClickEvent, Entity, FocusHandle,
@@ -45,6 +49,13 @@ actions!(
 );
 
 const FILE_ROW_SIZE: Size<Pixels> = size(px(1.), px(36.));
+const GRID_CELL_SIZE: Size<Pixels> = size(px(112.), px(96.));
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    Details,
+    Grid,
+}
 
 struct RenameState {
     path: PathBuf,
@@ -67,6 +78,12 @@ pub struct FileBrowser {
     focused_index: Option<usize>,
     renaming: Option<RenameState>,
     show_toolbar: bool,
+    view_mode: ViewMode,
+    search_query: String,
+    display_items: Vec<FileItem>,
+    _directory_watcher: Option<DirectoryWatcher>,
+    _watcher_task: Option<Task<()>>,
+    watched_dir: Option<PathBuf>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -87,13 +104,14 @@ impl FileBrowser {
             SortPreferences::default(),
         );
         let focused_index = items.first().map(|_| 0);
+        let display_items = filter_items_by_query(&items, "");
 
         Self {
             focus_handle: cx.focus_handle(),
             current_dir,
             back_stack: Vec::new(),
             forward_stack: Vec::new(),
-            item_sizes: item_sizes_for(items.len()),
+            item_sizes: item_sizes_for(display_items.len(), ViewMode::Details),
             scroll_handle: VirtualListScrollHandle::new(),
             items,
             read_options: DirectoryReadOptions::default(),
@@ -104,8 +122,64 @@ impl FileBrowser {
             focused_index,
             renaming: None,
             show_toolbar,
+            view_mode: ViewMode::Details,
+            search_query: String::new(),
+            display_items,
+            _directory_watcher: None,
+            _watcher_task: None,
+            watched_dir: None,
             _subscriptions: Vec::new(),
         }
+    }
+
+    pub fn view_mode(&self) -> ViewMode {
+        self.view_mode
+    }
+
+    pub fn set_search_query(&mut self, query: String, cx: &mut Context<Self>) {
+        self.search_query = query;
+        self.apply_filter();
+        cx.notify();
+    }
+
+    pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Search input lives on MainPage; FileBrowser only holds the query string.
+        let _ = (window, cx);
+    }
+
+    fn apply_filter(&mut self) {
+        self.display_items = filter_items_by_query(&self.items, &self.search_query);
+        self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode);
+        self.clamp_focused_index();
+    }
+
+    fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
+        if self.view_mode != mode {
+            self.view_mode = mode;
+            self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode);
+            cx.notify();
+        }
+    }
+
+    fn restart_directory_watcher(&mut self, cx: &mut Context<Self>) {
+        self._watcher_task.take();
+        self._directory_watcher.take();
+
+        let Ok((watcher, events)) =
+            DirectoryWatcher::watch(&self.current_dir, Duration::from_millis(300))
+        else {
+            return;
+        };
+
+        self._directory_watcher = Some(watcher);
+        self._watcher_task = Some(cx.spawn(async move |browser, cx| {
+            while events.recv_async().await.is_ok() {
+                let _ = browser.update(cx, |browser, cx| {
+                    browser.refresh();
+                    cx.notify();
+                });
+            }
+        }));
     }
 
     pub fn current_directory(&self) -> &PathBuf {
@@ -113,7 +187,7 @@ impl FileBrowser {
     }
 
     pub fn item_count(&self) -> usize {
-        self.items.len()
+        self.display_items.len()
     }
 
     pub fn selected_count(&self) -> usize {
@@ -154,20 +228,21 @@ impl FileBrowser {
         self.navigate_to(path);
     }
 
-    pub fn open_directory_reset_history(&mut self, path: PathBuf) {
+    pub fn open_directory_reset_history(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.back_stack.clear();
         self.forward_stack.clear();
         self.current_dir = path;
         self.clear_selection();
         self.refresh();
+        self.restart_directory_watcher(cx);
     }
 
     fn refresh(&mut self) {
         let (items, error) =
             load_files_dir(&self.current_dir, self.read_options, self.sort_preferences);
-        self.item_sizes = item_sizes_for(items.len());
         self.items = items;
         self.error = error;
+        self.apply_filter();
         self.reconcile_selection();
         self.clamp_focused_index();
     }
@@ -215,11 +290,11 @@ impl FileBrowser {
     fn clear_selection(&mut self) {
         self.selected_paths.clear();
         self.anchor_index = None;
-        self.focused_index = self.items.first().map(|_| 0);
+        self.focused_index = self.display_items.first().map(|_| 0);
     }
 
     fn handle_row_click(&mut self, index: usize, event: &ClickEvent) {
-        let Some(item) = self.items.get(index) else {
+        let Some(item) = self.display_items.get(index) else {
             return;
         };
         let path = item.path.clone();
@@ -234,7 +309,7 @@ impl FileBrowser {
             };
             self.selected_paths.clear();
             for i in start..=end {
-                if let Some(item) = self.items.get(i) {
+                if let Some(item) = self.display_items.get(i) {
                     self.selected_paths.insert(item.path.clone());
                 }
             }
@@ -269,7 +344,7 @@ impl FileBrowser {
         let Some(index) = self.focused_index else {
             return;
         };
-        let Some(item) = self.items.get(index) else {
+        let Some(item) = self.display_items.get(index) else {
             return;
         };
         self.open_item(item.path.clone(), item.kind);
@@ -277,18 +352,18 @@ impl FileBrowser {
 
     fn reconcile_selection(&mut self) {
         self.selected_paths
-            .retain(|path| self.items.iter().any(|item| &item.path == path));
+            .retain(|path| self.display_items.iter().any(|item| &item.path == path));
         if self.selected_paths.is_empty() {
             if let Some(index) = self.focused_index {
-                if index >= self.items.len() {
-                    self.focused_index = self.items.first().map(|_| 0);
+                if index >= self.display_items.len() {
+                    self.focused_index = self.display_items.first().map(|_| 0);
                 }
             }
         }
     }
 
     fn clamp_focused_index(&mut self) {
-        if self.items.is_empty() {
+        if self.display_items.is_empty() {
             self.focused_index = None;
             return;
         }
@@ -296,28 +371,33 @@ impl FileBrowser {
             self.focused_index = Some(0);
         }
         if let Some(index) = self.focused_index {
-            if index >= self.items.len() {
-                self.focused_index = Some(self.items.len() - 1);
+            if index >= self.display_items.len() {
+                self.focused_index = Some(self.display_items.len() - 1);
             }
         }
     }
 
     fn move_focus(&mut self, delta: isize) {
-        if self.items.is_empty() {
+        if self.display_items.is_empty() {
             return;
         }
         let index = self.focused_index.unwrap_or(0);
-        let next = (index as isize + delta).clamp(0, self.items.len() as isize - 1) as usize;
+        let next = (index as isize + delta)
+            .clamp(0, self.display_items.len() as isize - 1) as usize;
         self.focused_index = Some(next);
         self.scroll_handle
             .scroll_to_item(next, ScrollStrategy::Center);
     }
 
     fn select_all(&mut self) {
-        self.selected_paths = self.items.iter().map(|item| item.path.clone()).collect();
+        self.selected_paths = self
+            .display_items
+            .iter()
+            .map(|item| item.path.clone())
+            .collect();
         if let Some(index) = self.focused_index {
             self.anchor_index = Some(index);
-        } else if !self.items.is_empty() {
+        } else if !self.display_items.is_empty() {
             self.anchor_index = Some(0);
             self.focused_index = Some(0);
         }
@@ -326,13 +406,13 @@ impl FileBrowser {
     pub fn primary_selected_item(&self) -> Option<&FileItem> {
         if self.selected_paths.len() == 1 {
             let path = self.selected_paths.iter().next()?;
-            return self.items.iter().find(|item| &item.path == path);
+            return self.display_items.iter().find(|item| &item.path == path);
         }
         if !self.selected_paths.is_empty() {
             return None;
         }
         let index = self.focused_index?;
-        self.items.get(index)
+        self.display_items.get(index)
     }
 
     fn primary_path(&self) -> Option<PathBuf> {
@@ -340,7 +420,10 @@ impl FileBrowser {
             .map(|item| item.path.clone())
             .or_else(|| {
                 if let Some(index) = self.focused_index {
-                    return self.items.get(index).map(|item| item.path.clone());
+                    return self
+                        .display_items
+                        .get(index)
+                        .map(|item| item.path.clone());
                 }
                 self.selected_paths.iter().next().cloned()
             })
@@ -398,7 +481,7 @@ impl FileBrowser {
             Ok(path) => {
                 self.error = None;
                 self.refresh();
-                if let Some(index) = self.items.iter().position(|item| item.path == path) {
+                if let Some(index) = self.display_items.iter().position(|item| item.path == path) {
                     self.focused_index = Some(index);
                     self.selected_paths.clear();
                     self.selected_paths.insert(path);
@@ -409,6 +492,26 @@ impl FileBrowser {
                         SharedString::from(t!("files.new_folder.success")),
                         cx,
                     );
+                }
+            }
+            Err(error) => self.error = Some(error.to_string()),
+        }
+    }
+
+    pub fn create_new_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let name = unique_new_file_name(&self.current_dir);
+        match create_file(&self.current_dir, &name) {
+            Ok(path) => {
+                self.error = None;
+                self.refresh();
+                if let Some(index) = self.display_items.iter().position(|item| item.path == path) {
+                    self.focused_index = Some(index);
+                    self.selected_paths.clear();
+                    self.selected_paths.insert(path);
+                    self.anchor_index = self.focused_index;
+                    self.begin_rename(window, cx);
+                } else {
+                    window.push_notification(SharedString::from(t!("files.new_file.success")), cx);
                 }
             }
             Err(error) => self.error = Some(error.to_string()),
@@ -445,7 +548,11 @@ impl FileBrowser {
     }
 
     fn paste_items(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(clipboard) = AppFileClipboard::take(cx) else {
+        let clipboard = AppFileClipboard::take(cx).or_else(|| {
+            let paths = platform::read_clipboard_file_paths();
+            (!paths.is_empty()).then(|| FileClipboard::new(ClipboardOperation::Copy, paths))
+        });
+        let Some(clipboard) = clipboard else {
             return;
         };
         if clipboard.paths.is_empty() {
@@ -597,7 +704,14 @@ impl FileBrowser {
         format!("{field} {arrow}")
     }
 
-    fn table(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn file_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        match self.view_mode {
+            ViewMode::Details => self.details_table(cx).into_any_element(),
+            ViewMode::Grid => self.grid_view(cx).into_any_element(),
+        }
+    }
+
+    fn details_table(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .flex_1()
             .min_h_0()
@@ -635,7 +749,7 @@ impl FileBrowser {
                                 let focused_index = this.focused_index;
                                 visible_range
                                     .filter_map(|index| {
-                                        let item = this.items.get(index)?.clone();
+                                        let item = this.display_items.get(index)?.clone();
                                         let selected =
                                             this.selected_paths.contains(&item.path);
                                         let focused = focused_index == Some(index);
@@ -650,6 +764,40 @@ impl FileBrowser {
             )
     }
 
+    fn grid_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let cells = self
+            .display_items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let item = item.clone();
+                let selected = self.selected_paths.contains(&item.path);
+                let focused = self.focused_index == Some(index);
+                Self::grid_cell(index, item, selected, focused, cx)
+            })
+            .collect::<Vec<_>>();
+
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .overflow_hidden()
+            .child(
+                div()
+                    .id("files-grid-wrap")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_2()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .children(cells),
+            )
+    }
+
     fn row(
         index: usize,
         item: FileItem,
@@ -660,11 +808,7 @@ impl FileBrowser {
         let open_path = item.path.clone();
         let double_click_path = item.path.clone();
         let kind = item.kind;
-        let icon = match item.kind {
-            FileItemKind::Folder => IconName::Folder,
-            FileItemKind::Symlink => IconName::ExternalLink,
-            FileItemKind::File | FileItemKind::Other => IconName::File,
-        };
+        let icon = icon_for_item(&item);
         h_flex()
             .id(("file-row", index))
             .w_full()
@@ -740,6 +884,64 @@ impl FileBrowser {
                             cx.notify();
                         })),
                 ),
+            )
+            .into_any_element()
+    }
+
+    fn grid_cell(
+        index: usize,
+        item: FileItem,
+        selected: bool,
+        focused: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let open_path = item.path.clone();
+        let double_click_path = item.path.clone();
+        let kind = item.kind;
+        let name = item.display_name.clone();
+        v_flex()
+            .id(("file-grid-cell", index))
+            .w(px(112.))
+            .h(px(96.))
+            .flex_none()
+            .p_2()
+            .gap_1()
+            .items_center()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .hover(|this| this.bg(cx.theme().accent))
+            .when(selected || focused, |this| {
+                this.bg(cx.theme().accent)
+                    .text_color(cx.theme().accent_foreground)
+            })
+            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                if event.click_count() == 2 {
+                    this.open_item(double_click_path.clone(), kind);
+                } else {
+                    this.handle_row_click(index, event);
+                }
+                cx.notify();
+            }))
+            .child(Icon::new(icon_for_item(&item)).small())
+            .child(
+                div()
+                    .w_full()
+                    .text_center()
+                    .text_xs()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(name),
+            )
+            .child(
+                Button::new(format!("grid-open-{index}"))
+                    .xsmall()
+                    .ghost()
+                    .icon(IconName::ExternalLink)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.open_item(open_path.clone(), kind);
+                        cx.notify();
+                    })),
             )
             .into_any_element()
     }
@@ -922,10 +1124,58 @@ impl FileBrowser {
         self.refresh();
         cx.notify();
     }
+
+    fn on_new_file(&mut self, _: &NewFile, window: &mut Window, cx: &mut Context<Self>) {
+        self.create_new_file(window, cx);
+        cx.notify();
+    }
+
+    fn on_view_details(&mut self, _: &ViewDetails, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_view_mode(ViewMode::Details, cx);
+    }
+
+    fn on_view_grid(&mut self, _: &ViewGrid, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_view_mode(ViewMode::Grid, cx);
+    }
+
+    fn on_shell_properties(&mut self, _: &ShellProperties, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = self.primary_path() else {
+            return;
+        };
+        if let Err(error) = platform::open_item_properties(&path) {
+            window.push_notification(
+                SharedString::from(format!("{}: {error}", t!("files.properties.error"))),
+                cx,
+            );
+        }
+    }
+
+    fn on_shell_context_menu(
+        &mut self,
+        _: &ShellContextMenu,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
+            return;
+        }
+        if let Err(error) = platform::show_shell_context_menu(&paths) {
+            window.push_notification(
+                SharedString::from(format!("{}: {error}", t!("files.context_menu.error"))),
+                cx,
+            );
+        }
+    }
 }
 
 impl Render for FileBrowser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.watched_dir.as_ref() != Some(&self.current_dir) {
+            self.watched_dir = Some(self.current_dir.clone());
+            self.restart_directory_watcher(cx);
+        }
+
         let current_dir = self.current_dir.to_string_lossy().to_string();
         let can_go_back = !self.back_stack.is_empty();
         let can_go_forward = !self.forward_stack.is_empty();
@@ -953,6 +1203,11 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_delete))
             .on_action(cx.listener(Self::on_delete_permanent))
             .on_action(cx.listener(Self::on_new_folder))
+            .on_action(cx.listener(Self::on_new_file))
+            .on_action(cx.listener(Self::on_view_details))
+            .on_action(cx.listener(Self::on_view_grid))
+            .on_action(cx.listener(Self::on_shell_properties))
+            .on_action(cx.listener(Self::on_shell_context_menu))
             .on_action(cx.listener(Self::on_copy_path))
             .on_action(cx.listener(Self::on_copy_items))
             .on_action(cx.listener(Self::on_cut_items))
@@ -1026,6 +1281,35 @@ impl Render for FileBrowser {
                             })),
                     )
                     .child(
+                        Button::new("files-new-file-btn")
+                            .small()
+                            .outline()
+                            .icon(IconName::File)
+                            .label(t!("files.new_file"))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.create_new_file(window, cx);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("files-view-details")
+                            .small()
+                            .ghost()
+                            .icon(IconName::GalleryVerticalEnd)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_view_mode(ViewMode::Details, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("files-view-grid")
+                            .small()
+                            .ghost()
+                            .icon(IconName::LayoutDashboard)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_view_mode(ViewMode::Grid, cx);
+                            })),
+                    )
+                    .child(
                         Button::new("files-delete-btn")
                             .small()
                             .outline()
@@ -1088,7 +1372,7 @@ impl Render for FileBrowser {
                         .child(error.clone()),
                 )
             })
-            .child(self.table(cx))
+            .child(self.file_list(cx))
             .child(
                 h_flex()
                     .justify_between()
@@ -1096,7 +1380,7 @@ impl Render for FileBrowser {
                     .text_color(cx.theme().muted_foreground)
                     .child(format!(
                         "{} {}, {} {}",
-                        self.items.len(),
+                        self.display_items.len(),
                         t!("files.status.items"),
                         selected_count,
                         t!("files.status.selected"),
@@ -1117,8 +1401,23 @@ fn load_files_dir(
     }
 }
 
-fn item_sizes_for(count: usize) -> Rc<Vec<Size<Pixels>>> {
-    Rc::new(vec![FILE_ROW_SIZE; count])
+fn item_sizes_for(count: usize, mode: ViewMode) -> Rc<Vec<Size<Pixels>>> {
+    let size = match mode {
+        ViewMode::Details => FILE_ROW_SIZE,
+        ViewMode::Grid => GRID_CELL_SIZE,
+    };
+    Rc::new(vec![size; count])
+}
+
+fn icon_for_item(item: &FileItem) -> IconName {
+    match platform::icon_hint_for_path(&item.path) {
+        ShellIconHint::Folder => IconName::Folder,
+        ShellIconHint::Symlink => IconName::ExternalLink,
+        ShellIconHint::Executable => IconName::Settings2,
+        ShellIconHint::Image => IconName::File,
+        ShellIconHint::Archive => IconName::Folder,
+        ShellIconHint::File => IconName::File,
+    }
 }
 
 fn item_type_label(item: &FileItem) -> String {

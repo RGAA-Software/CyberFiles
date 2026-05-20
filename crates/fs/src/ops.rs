@@ -62,6 +62,34 @@ pub fn recycle_paths(paths: &[PathBuf]) -> anyhow::Result<()> {
     }
 }
 
+pub fn create_file(parent: &Path, name: &str) -> anyhow::Result<PathBuf> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("file name cannot be empty");
+    }
+
+    let path = parent.join(trimmed);
+    if path.exists() {
+        anyhow::bail!("{} already exists", path.display());
+    }
+
+    std::fs::write(&path, [])?;
+    Ok(path)
+}
+
+pub fn unique_new_file_name(parent: &Path) -> String {
+    let base = "New Text Document.txt";
+    let mut candidate = base.to_string();
+    let mut counter = 2;
+
+    while parent.join(&candidate).exists() {
+        candidate = format!("New Text Document ({counter}).txt");
+        counter += 1;
+    }
+
+    candidate
+}
+
 pub fn unique_new_folder_name(parent: &Path) -> String {
     let base = "New folder";
     let mut candidate = base.to_string();

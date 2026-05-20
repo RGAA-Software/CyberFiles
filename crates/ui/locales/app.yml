@@ -159,8 +159,24 @@ home.widget.recent.empty:
   en: No recent files found.
   zh-CN: 暂无最近文件。
   zh-HK: 暫無最近檔案。
+nav.recycle_bin:
+  en: Recycle Bin
+  zh-CN: 回收站
+  zh-HK: 資源回收筒
+nav.recycle_bin.placeholder:
+  en: Open the Recycle Bin from the sidebar to browse deleted items in Explorer, or use Delete to send files here.
+  zh-CN: 从侧栏打开回收站文件夹；删除文件时会移入回收站。
+  zh-HK: 從側欄開啟資源回收筒；刪除檔案時會移入回收筒。
+sidebar.section.places:
+  en: Places
+  zh-CN: 位置
+  zh-HK: 位置
+main.status.recycle_bin:
+  en: Recycle Bin
+  zh-CN: 回收站
+  zh-HK: 資源回收筒
 search.placeholder:
-  en: Search...
+  en: Filter folder...
   zh-CN: 搜索...
   zh-HK: 搜尋...
 page.home.welcome:
@@ -239,6 +255,22 @@ files.new_folder.success:
   en: Folder created.
   zh-CN: 文件夹已创建。
   zh-HK: 資料夾已建立。
+files.new_file:
+  en: New file
+  zh-CN: 新建文件
+  zh-HK: 新增檔案
+files.new_file.success:
+  en: File created.
+  zh-CN: 文件已创建。
+  zh-HK: 檔案已建立。
+files.properties.error:
+  en: Properties failed
+  zh-CN: 无法打开属性
+  zh-HK: 無法開啟內容
+files.context_menu.error:
+  en: Context menu failed
+  zh-CN: 无法打开上下文菜单
+  zh-HK: 無法開啟內容選單
 files.rename.prompt:
   en: Rename
   zh-CN: 重命名

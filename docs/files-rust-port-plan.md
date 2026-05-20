@@ -37,7 +37,7 @@ crates/commands
   Command registry, hotkeys, command enablement, command labels/icons.
 
 crates/platform-windows
-  Windows-only Shell/COM/Win32 integration.
+  Windows-only Shell paths, CF_HDROP clipboard, icon hints, properties dialog.
 
 crates/previews
   Preview provider abstraction and built-in text/image/markdown/folder previews.
@@ -55,7 +55,7 @@ crates/git
   Git status and commit metadata.
 ```
 
-Only `crates/fs` is created first. The other crates should be added when their boundary becomes concrete.
+Workspace crates today: `app`, `core`, `fs`, `commands`, `ui`, `platform-windows`. Additional crates (`previews`, `search`, `tags`, …) are added when their boundary becomes concrete.
 
 ## Source Project Capability Map
 
@@ -275,4 +275,11 @@ Each step should compile independently and preserve the existing settings/theme 
 
 ## Path B: 一比一复刻追踪
 
-长期功能对照与状态见 **[files-parity-roadmap.md](./files-parity-roadmap.md)**。当前已实现 **MainPage** 骨架（应用 TabBar、Files 式侧栏分区、NavigationToolbar、PaneShell、StatusBar）。
+长期功能对照与状态见 **[files-parity-roadmap.md](./files-parity-roadmap.md)**。
+
+**当前进度（2026-05）：**
+
+- **MainPage**：TabBar、侧栏、Omnibar、双栏 `ShellPanes`、InfoPane（Details + Preview）、StatusBar。
+- **M3**：新建文件、应用内复制/剪切/粘贴、回收站删除（`trash`）、Pinned 写入 `settings.json`。
+- **M4（首轮）**：`notify` 目录监视、`filter_items_by_query` 搜索框、详情/网格视图切换。
+- **`platform-windows` crate**：图标类型提示、CF_HDROP 粘贴、回收站已知文件夹、属性对话框、Explorer 回退式“上下文菜单”。

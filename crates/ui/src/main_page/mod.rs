@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use cyberfiles_core::{load_config, pinned_folder_paths, save_config};
 use cyberfiles_fs::{home_navigation_path, list_drives};
+use cyberfiles_platform_windows as platform;
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
@@ -35,6 +36,8 @@ pub struct MainPage {
     info_pane: Entity<InfoPane>,
     path_input: Option<Entity<InputState>>,
     _omnibar_subscription: Option<Subscription>,
+    search_input: Option<Entity<InputState>>,
+    _search_subscription: Option<Subscription>,
 }
 
 impl MainPage {
@@ -52,7 +55,43 @@ impl MainPage {
             info_pane: cx.new(|_| InfoPane::new()),
             path_input: None,
             _omnibar_subscription: None,
+            search_input: None,
+            _search_subscription: None,
         }
+    }
+
+    fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+        if let Some(input) = self.search_input.clone() {
+            return input;
+        }
+
+        let page = cx.entity();
+        let input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t!("search.placeholder"))
+        });
+        self._search_subscription = Some(cx.subscribe(&input, move |_, _, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                page.update(cx, |page, cx| page.apply_search_from_input(cx));
+            }
+        }));
+        self.search_input = Some(input.clone());
+        input
+    }
+
+    fn apply_search_from_input(&mut self, cx: &mut Context<Self>) {
+        let query = self
+            .search_input
+            .as_ref()
+            .map(|input| input.read(cx).value().to_string())
+            .unwrap_or_default();
+        let pane = self.active_pane(cx);
+        pane.update(cx, |shell, cx| {
+            if matches!(shell.target(), NavigationTarget::Path(_)) {
+                shell.file_browser().update(cx, |browser, cx| {
+                    browser.set_search_query(query, cx);
+                });
+            }
+        });
     }
 
     pub fn view(_window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -378,6 +417,22 @@ impl MainPage {
                             this.pin_current_folder(cx);
                         })),
                 )
+                .child(
+                    Button::new("nav-new-file")
+                        .small()
+                        .outline()
+                        .icon(IconName::File)
+                        .label(t!("files.new_file"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            let pane = this.active_pane(cx);
+                            pane.update(cx, |shell, cx| {
+                                shell.file_browser().update(cx, |b, cx| {
+                                    b.create_new_file(window, cx);
+                                });
+                            });
+                            cx.notify();
+                        })),
+                )
             })
             .child(
                 Button::new("nav-split-pane")
@@ -408,6 +463,15 @@ impl MainPage {
                     .min_w_0()
                     .child(Input::new(&path_input).w_full().small()),
             )
+            .when(show_file_ops, |bar| {
+                let search_input = self.ensure_search_input(window, cx);
+                bar.child(
+                    div()
+                        .w(px(200.))
+                        .min_w(px(140.))
+                        .child(Input::new(&search_input).w_full().small()),
+                )
+            })
     }
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -425,6 +489,7 @@ impl MainPage {
             }
             NavigationTarget::Home => (0, 0, t!("main.status.home").to_string()),
             NavigationTarget::Settings => (0, 0, t!("main.status.settings").to_string()),
+            NavigationTarget::RecycleBin => (0, 0, t!("main.status.recycle_bin").to_string()),
         };
 
         h_flex()
@@ -507,6 +572,21 @@ impl MainPage {
                                 this.navigate_to(NavigationTarget::Path(path.clone()), cx);
                             }))
                     })),
+                ),
+            )
+            .child(
+                SidebarGroup::new(t!("sidebar.section.places")).child(
+                    SidebarMenu::new().w_full().child(
+                        SidebarMenuItem::new(t!("nav.recycle_bin"))
+                            .icon(IconName::Delete)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(path) = platform::recycle_bin_folder() {
+                                    this.navigate_to(NavigationTarget::Path(path), cx);
+                                } else {
+                                    this.navigate_to(NavigationTarget::RecycleBin, cx);
+                                }
+                            })),
+                    ),
                 ),
             )
             .child(

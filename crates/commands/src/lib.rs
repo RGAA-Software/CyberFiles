@@ -13,12 +13,18 @@ actions!(
         DeleteItems,
         DeleteItemsPermanent,
         NewFolder,
+        NewFile,
         CopyPath,
         CopyItems,
         CutItems,
         PasteItems,
         NavigatePrevious,
         NavigateNext,
+        FocusSearch,
+        ViewDetails,
+        ViewGrid,
+        ShellProperties,
+        ShellContextMenu,
     ]
 );
 
@@ -38,12 +44,20 @@ pub fn file_browser_key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("up", NavigatePrevious, Some(FILE_BROWSER)),
         KeyBinding::new("down", NavigateNext, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-shift-n", NewFolder, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-shift-m", NewFile, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-f", FocusSearch, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-1", ViewDetails, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-2", ViewGrid, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-shift-c", CopyPath, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-c", CopyItems, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-x", CutItems, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-v", PasteItems, Some(FILE_BROWSER)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-n", NewFolder, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-m", NewFile, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-f", FocusSearch, Some(FILE_BROWSER)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-c", CopyPath, Some(FILE_BROWSER)),
         #[cfg(target_os = "macos")]

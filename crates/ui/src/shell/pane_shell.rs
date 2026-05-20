@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
 use gpui::{prelude::*, *};
+use gpui_component::ActiveTheme as _;
 
 use crate::file_browser::FileBrowser;
 use crate::home::HomePage;
 use crate::settings_view::build_settings;
 use crate::shell::navigation::NavigationTarget;
+use rust_i18n::t;
 
 pub struct PaneShell {
     target: NavigationTarget,
@@ -38,7 +40,7 @@ impl PaneShell {
         self.target = target;
         if let NavigationTarget::Path(path) = &self.target {
             self.file_browser.update(cx, |browser, cx| {
-                browser.open_directory_reset_history(path.clone());
+                browser.open_directory_reset_history(path.clone(), cx);
                 cx.notify();
             });
         }
@@ -58,6 +60,17 @@ impl Render for PaneShell {
                 .child(build_settings(cx))
                 .into_any_element(),
             NavigationTarget::Path(_) => self.file_browser.clone().into_any_element(),
+            NavigationTarget::RecycleBin => div()
+                .id("recycle-bin-page")
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .p_6()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(t!("nav.recycle_bin.placeholder"))
+                .into_any_element(),
         }
     }
 }

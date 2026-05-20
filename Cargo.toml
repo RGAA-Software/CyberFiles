@@ -4,6 +4,7 @@ members = [
     "crates/commands",
     "crates/core",
     "crates/fs",
+    "crates/platform-windows",
     "crates/ui",
 ]
 default-members = ["crates/app"]
@@ -18,6 +19,7 @@ publish = false
 cyberfiles-commands = { path = "crates/commands" }
 cyberfiles-core = { path = "crates/core" }
 cyberfiles-fs = { path = "crates/fs" }
+cyberfiles-platform-windows = { path = "crates/platform-windows" }
 cyberfiles-ui = { path = "crates/ui" }
 
 # zed-industries/zed
