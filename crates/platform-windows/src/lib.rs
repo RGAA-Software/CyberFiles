@@ -1,6 +1,8 @@
 //! Windows-only Shell helpers (icons, clipboard file lists, known folders).
 
 #[cfg(windows)]
+mod com;
+#[cfg(windows)]
 mod clipboard;
 #[cfg(windows)]
 mod context_menu;

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use windows::core::{Interface, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{BOOL, HWND, POINT};
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+use crate::com::ensure_com_apartment;
 use windows::Win32::UI::Shell::{
     CMINVOKECOMMANDINFO, CMF_EXTENDEDVERBS, CMF_NORMAL, IContextMenu, IContextMenu3,
     ILFree, IShellFolder, SHBindToParent, SHCreateDefaultContextMenu, DEFCONTEXTMENU,
@@ -224,16 +224,12 @@ pub fn query_shell_context_menu_items(
         return Ok(Vec::new());
     }
 
+    ensure_com_apartment()?;
     unsafe {
-        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
-        let result = (|| {
-            let handle = create_context_menu(paths, extended_verbs)?;
-            let entries = enumerate_popup_menu(handle.popup)?;
-            handle.release();
-            Ok(entries)
-        })();
-        CoUninitialize();
-        result
+        let handle = create_context_menu(paths, extended_verbs)?;
+        let entries = enumerate_popup_menu(handle.popup)?;
+        handle.release();
+        Ok(entries)
     }
 }
 
@@ -243,22 +239,18 @@ pub fn invoke_shell_context_menu_item(paths: &[PathBuf], command_offset: u32) ->
         anyhow::bail!("invalid paths for shell menu invoke");
     }
 
+    ensure_com_apartment()?;
     unsafe {
-        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
-        let result = (|| {
-            let handle = create_context_menu(paths, false)?;
-            let hwnd = GetForegroundWindow();
-            let mut info = CMINVOKECOMMANDINFO::default();
-            info.cbSize = std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32;
-            info.hwnd = hwnd;
-            info.lpVerb = PCSTR::from_raw(command_offset as usize as *const u8);
-            info.nShow = 1;
-            handle.menu.InvokeCommand(&info)?;
-            handle.release();
-            Ok(())
-        })();
-        CoUninitialize();
-        result
+        let handle = create_context_menu(paths, false)?;
+        let hwnd = GetForegroundWindow();
+        let mut info = CMINVOKECOMMANDINFO::default();
+        info.cbSize = std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32;
+        info.hwnd = hwnd;
+        info.lpVerb = PCSTR::from_raw(command_offset as usize as *const u8);
+        info.nShow = 1;
+        handle.menu.InvokeCommand(&info)?;
+        handle.release();
+        Ok(())
     }
 }
 
@@ -272,12 +264,8 @@ pub fn show_shell_context_menu(paths: &[PathBuf]) -> anyhow::Result<()> {
         return show_shell_context_menu_fallback(paths);
     }
 
-    unsafe {
-        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
-        let result = show_shell_context_menu_inner(paths);
-        CoUninitialize();
-        result
-    }
+    ensure_com_apartment()?;
+    unsafe { show_shell_context_menu_inner(paths) }
 }
 
 unsafe fn show_shell_context_menu_inner(paths: &[PathBuf]) -> anyhow::Result<()> {
