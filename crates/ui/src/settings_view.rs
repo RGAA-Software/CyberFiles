@@ -1,10 +1,9 @@
 use cyberfiles_core::APP_NAME;
-use gpui::{App, IntoElement, ParentElement, SharedString, Styled};
+use gpui::{App, ParentElement, SharedString, Styled};
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, ThemeMode, ThemeRegistry,
+    ActiveTheme as _, Icon, IconName, ThemeMode, ThemeRegistry,
     group_box::GroupBoxVariant,
     label::Label,
-    scroll::ScrollbarShow,
     setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     v_flex,
 };

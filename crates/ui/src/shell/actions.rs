@@ -1,3 +1,3 @@
-use gpui::{Action, actions};
+use gpui::actions;
 
 actions!(cyberfiles_shell, [About, Quit]);
