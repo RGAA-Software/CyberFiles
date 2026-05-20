@@ -2,7 +2,13 @@ use std::ops::Deref;
 
 use rust_i18n::t;
 
-/// Detect system locale and apply `en` or `zh-CN` for the app and gpui-component.
+/// Unified Traditional Chinese locale (HK/TW/MO/SG and `zh-Hant`).
+pub const LOCALE_ZH_HANT: &str = "zh-HK";
+
+/// Simplified Chinese locale.
+pub const LOCALE_ZH_HANS: &str = "zh-CN";
+
+/// Detect system locale and apply `en`, `zh-CN`, or `zh-HK`.
 pub fn init_locale() {
     let locale = detect_locale();
     set_locale(&locale);
@@ -25,12 +31,33 @@ fn detect_locale() -> String {
         .unwrap_or_else(|| "en".to_string())
 }
 
-fn normalize_locale(locale: &str) -> &'static str {
-    if locale.starts_with("zh") {
-        "zh-CN"
-    } else {
-        "en"
+/// Map region/script tags to `en`, `zh-CN`, or unified Traditional `zh-HK`.
+pub fn normalize_locale(locale: &str) -> &'static str {
+    let l = locale.to_ascii_lowercase();
+
+    if l == "en" || l.starts_with("en-") {
+        return "en";
     }
+
+    if is_traditional_chinese(&l) {
+        return LOCALE_ZH_HANT;
+    }
+
+    if l.starts_with("zh") {
+        return LOCALE_ZH_HANS;
+    }
+
+    "en"
+}
+
+/// Taiwan, Hong Kong, Macau, Singapore, and explicit `zh-Hant` → one Traditional locale.
+fn is_traditional_chinese(locale: &str) -> bool {
+    locale.starts_with("zh-hk")
+        || locale.starts_with("zh-tw")
+        || locale.starts_with("zh-mo")
+        || locale.starts_with("zh-sg")
+        || locale.starts_with("zh-hant")
+        || locale.contains("-hant")
 }
 
 pub fn nav_name(id: &str) -> String {

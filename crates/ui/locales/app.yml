@@ -2,165 +2,220 @@ _version: 2
 nav.home:
   en: Home
   zh-CN: 首页
+  zh-HK: 首頁
 nav.files:
   en: Files
   zh-CN: 文件
+  zh-HK: 檔案
 nav.settings:
   en: Settings
   zh-CN: 设置
+  zh-HK: 設定
 nav.home.description:
   en: CyberFiles workspace
   zh-CN: CyberFiles 工作区
+  zh-HK: CyberFiles 工作區
 nav.files.description:
   en: Browse and manage files
   zh-CN: 浏览与管理文件
+  zh-HK: 瀏覽與管理檔案
 nav.settings.description:
   en: Application preferences
   zh-CN: 应用偏好设置
+  zh-HK: 應用程式偏好設定
 sidebar.workspace:
   en: Workspace
   zh-CN: 工作区
+  zh-HK: 工作區
 sidebar.main:
   en: Main
   zh-CN: 主菜单
+  zh-HK: 主選單
 search.placeholder:
   en: Search...
   zh-CN: 搜索...
+  zh-HK: 搜尋...
 page.home.welcome:
   en: Welcome to %{app}
   zh-CN: 欢迎使用 %{app}
+  zh-HK: 歡迎使用 %{app}
 page.home.overview:
   en: Main workspace overview.
   zh-CN: 主工作区概览。
+  zh-HK: 主工作區概覽。
 page.files.title:
   en: Files
   zh-CN: 文件
+  zh-HK: 檔案
 page.files.placeholder:
   en: File browser placeholder — list drives and folders here.
   zh-CN: 文件浏览器占位 — 在此列出驱动器与文件夹。
+  zh-HK: 檔案瀏覽器占位 — 在此列出磁碟與資料夾。
 page.settings.title:
   en: Settings
   zh-CN: 设置
+  zh-HK: 設定
 page.unknown:
   en: Unknown page
   zh-CN: 未知页面
+  zh-HK: 未知頁面
 menu.about:
   en: About
   zh-CN: 关于
+  zh-HK: 關於
 menu.appearance:
   en: Appearance
   zh-CN: 外观
+  zh-HK: 外觀
 menu.light:
   en: Light
   zh-CN: 浅色
+  zh-HK: 淺色
 menu.dark:
   en: Dark
   zh-CN: 深色
+  zh-HK: 深色
 menu.quit:
   en: Quit
   zh-CN: 退出
+  zh-HK: 退出
 menu.edit:
   en: Edit
   zh-CN: 编辑
+  zh-HK: 編輯
 menu.undo:
   en: Undo
   zh-CN: 撤销
+  zh-HK: 撤銷
 menu.redo:
   en: Redo
   zh-CN: 重做
+  zh-HK: 重做
 menu.cut:
   en: Cut
   zh-CN: 剪切
+  zh-HK: 剪下
 menu.copy:
   en: Copy
   zh-CN: 复制
+  zh-HK: 複製
 menu.paste:
   en: Paste
   zh-CN: 粘贴
+  zh-HK: 貼上
 menu.select_all:
   en: Select All
   zh-CN: 全选
+  zh-HK: 全選
 menu.theme:
   en: Theme
   zh-CN: 主题
+  zh-HK: 主題
 menu.language:
   en: Language
   zh-CN: 语言
+  zh-HK: 語言
 settings.page.general:
   en: General
   zh-CN: 常规
+  zh-HK: 一般
 settings.page.about:
   en: About
   zh-CN: 关于
+  zh-HK: 關於
 settings.group.appearance:
   en: Appearance
   zh-CN: 外观
+  zh-HK: 外觀
 settings.group.interface:
   en: Interface
   zh-CN: 界面
+  zh-HK: 介面
 settings.dark_mode:
   en: Dark Mode
   zh-CN: 深色模式
+  zh-HK: 深色模式
 settings.dark_mode.description:
   en: Switch between light and dark themes.
   zh-CN: 在浅色与深色主题之间切换。
+  zh-HK: 在淺色與深色主題之間切換。
 settings.language:
   en: Language
   zh-CN: 语言
+  zh-HK: 語言
 settings.language.description:
   en: Display language for CyberFiles and built-in components.
   zh-CN: CyberFiles 与内置组件的显示语言。
+  zh-HK: CyberFiles 與內建元件的顯示語言。
 settings.color_theme:
   en: Color Theme
   zh-CN: 配色主题
+  zh-HK: 配色主題
 settings.color_theme.description:
   en: Choose a color theme from the theme registry.
   zh-CN: 从主题库中选择配色方案。
+  zh-HK: 從主題庫中選擇配色方案。
 settings.font_size:
   en: Font Size
   zh-CN: 字号
+  zh-HK: 字級
 settings.font_size.description:
   en: Base font size for the application UI.
   zh-CN: 应用界面基础字号。
+  zh-HK: 應用程式介面基礎字級。
 settings.font_size.small:
   en: Small
   zh-CN: 小
+  zh-HK: 小
 settings.font_size.medium:
   en: Medium
   zh-CN: 中
+  zh-HK: 中
 settings.font_size.large:
   en: Large
   zh-CN: 大
+  zh-HK: 大
 settings.radius.default:
   en: 6px (default)
   zh-CN: 6px（默认）
+  zh-HK: 6px（預設）
 settings.border_radius:
   en: Border Radius
   zh-CN: 圆角
+  zh-HK: 圓角
 settings.border_radius.description:
   en: Corner radius for cards, inputs, and panels.
   zh-CN: 卡片、输入框与面板的圆角大小。
+  zh-HK: 卡片、輸入框與面板的圓角大小。
 settings.scrollbar:
   en: Scrollbar
   zh-CN: 滚动条
+  zh-HK: 捲軸
 settings.scrollbar.description:
   en: When scrollbars are shown in scrollable areas.
   zh-CN: 可滚动区域中滚动条的显示方式。
+  zh-HK: 可捲動區域中捲軸的顯示方式。
 settings.scrollbar.scrolling:
   en: Show while scrolling
   zh-CN: 滚动时显示
+  zh-HK: 捲動時顯示
 settings.scrollbar.hover:
   en: Show on hover
   zh-CN: 悬停时显示
+  zh-HK: 懸停時顯示
 settings.scrollbar.always:
   en: Always show
   zh-CN: 始终显示
+  zh-HK: 始終顯示
 settings.list_highlight:
   en: List Active Highlight
   zh-CN: 列表选中高亮
+  zh-HK: 列表選取高亮
 settings.list_highlight.description:
   en: Highlight the active row in lists and tables.
   zh-CN: 在列表与表格中高亮当前行。
+  zh-HK: 在列表與表格中高亮目前列。
 settings.about.description:
   en: A cross-platform file workspace built with GPUI and gpui-component.
   zh-CN: 基于 GPUI 与 gpui-component 的跨平台文件工作区。
+  zh-HK: 基於 GPUI 與 gpui-component 的跨平台檔案工作區。

@@ -30,6 +30,7 @@ pub fn build_settings(cx: &App) -> Settings {
     let language_options = vec![
         ("en".into(), "English".into()),
         ("zh-CN".into(), "简体中文".into()),
+        (crate::i18n::LOCALE_ZH_HANT.into(), "繁體中文".into()),
     ];
 
     let font_size_options = vec![
