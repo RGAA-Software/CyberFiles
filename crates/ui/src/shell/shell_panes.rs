@@ -84,7 +84,12 @@ impl ShellPanes {
 impl Render for ShellPanes {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.dual_pane {
-            return self.active_pane().into_any_element();
+            return div()
+                .id("shell-pane-single")
+                .size_full()
+                .min_h_0()
+                .child(self.active_pane())
+                .into_any_element();
         }
 
         let active = self.active;

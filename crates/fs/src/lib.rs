@@ -1,4 +1,5 @@
 mod clipboard;
+mod columns;
 mod drives;
 mod item;
 mod local;
@@ -10,6 +11,7 @@ mod sort;
 mod watcher;
 
 pub use clipboard::{copy_items, move_items, ClipboardOperation, FileClipboard};
+pub use columns::column_trail_for;
 pub use drives::{default_user_profile, home_navigation_path, list_drives, DriveInfo};
 pub use item::{DirectoryReadOptions, FileItem, FileItemKind};
 pub use local::read_directory;

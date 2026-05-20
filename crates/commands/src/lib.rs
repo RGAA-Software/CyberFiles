@@ -23,6 +23,7 @@ actions!(
         FocusSearch,
         ViewDetails,
         ViewGrid,
+        ViewColumns,
         ShellProperties,
         ShellContextMenu,
     ]
@@ -48,6 +49,7 @@ pub fn file_browser_key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("ctrl-f", FocusSearch, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-1", ViewDetails, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-2", ViewGrid, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-3", ViewColumns, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-shift-c", CopyPath, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-c", CopyItems, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-x", CutItems, Some(FILE_BROWSER)),

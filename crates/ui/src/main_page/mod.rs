@@ -78,6 +78,12 @@ impl MainPage {
         input
     }
 
+    pub fn focus_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let input = self.ensure_search_input(window, cx);
+        input.update(cx, |state, cx| state.focus(window, cx));
+        cx.notify();
+    }
+
     fn apply_search_from_input(&mut self, cx: &mut Context<Self>) {
         let query = self
             .search_input

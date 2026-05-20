@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::path::PathBuf;
 
 use cyberfiles_fs::{ClipboardOperation, FileClipboard};
-use gpui::{App, AppContext, Entity, Global};
+use gpui::{App, AppContext, Entity, Global, Window};
 
 use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;
@@ -22,6 +22,11 @@ impl AppNavigation {
         page.update(cx, |page, cx| {
             page.navigate_to(NavigationTarget::Path(path), cx);
         });
+    }
+
+    pub fn focus_search(window: &mut Window, cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| page.focus_search_input(window, cx));
     }
 }
 

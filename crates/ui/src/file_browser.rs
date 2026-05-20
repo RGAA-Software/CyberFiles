@@ -10,15 +10,20 @@ use cyberfiles_commands::{
     CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch, NavigateBack,
     NavigateForward, NavigateNext, NavigatePrevious, NavigateUp, NewFile, NewFolder, OpenItem,
     PasteItems, RefreshDirectory, RenameItem, SelectAll, ShellContextMenu, ShellProperties,
-    ViewDetails, ViewGrid, FILE_BROWSER,
+    ViewColumns, ViewDetails, ViewGrid, FILE_BROWSER,
+};
+use cyberfiles_core::{
+    file_sort_prefs_from_config, file_view_mode_from_config, save_file_browser_prefs, VIEW_COLUMNS,
+    VIEW_DETAILS, VIEW_GRID,
 };
 use cyberfiles_fs::{
-    copy_items, create_directory, create_file, delete_paths, filter_items_by_query,
-    home_navigation_path, move_items, read_directory, recycle_paths, rename_path,
-    unique_new_file_name, unique_new_folder_name, ClipboardOperation, DirectoryReadOptions,
-    DirectoryWatcher, FileClipboard, FileItem, FileItemKind, SortDirection, SortOption,
-    SortPreferences,
+    column_trail_for, copy_items, create_directory, create_file, delete_paths,
+    filter_items_by_query, home_navigation_path, move_items, read_directory, recycle_paths,
+    rename_path, unique_new_file_name, unique_new_folder_name, ClipboardOperation,
+    DirectoryReadOptions, DirectoryWatcher, FileClipboard, FileItem, FileItemKind, SortDirection,
+    SortOption, SortPreferences,
 };
+use crate::app_state::AppNavigation;
 use cyberfiles_platform_windows::{self as platform, ShellIconHint};
 use crate::app_state::AppFileClipboard;
 use gpui::{
@@ -30,6 +35,7 @@ use gpui_component::{
     dialog::DialogButtonProps,
     h_flex,
     input::{Input, InputState},
+    menu::ContextMenuExt,
     scroll::{ScrollableElement as _, ScrollbarAxis},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     VirtualListScrollHandle, WindowExt as _,
@@ -50,11 +56,53 @@ actions!(
 
 const FILE_ROW_SIZE: Size<Pixels> = size(px(1.), px(36.));
 const GRID_CELL_SIZE: Size<Pixels> = size(px(112.), px(96.));
+const COLUMN_ROW_SIZE: Size<Pixels> = size(px(1.), px(32.));
+const COLUMN_WIDTH: Pixels = px(200.);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
     Details,
     Grid,
+    Columns,
+}
+
+impl ViewMode {
+    fn from_config(value: &str) -> Self {
+        match value {
+            VIEW_GRID => Self::Grid,
+            VIEW_COLUMNS => Self::Columns,
+            _ => Self::Details,
+        }
+    }
+
+    fn config_value(self) -> &'static str {
+        match self {
+            Self::Details => VIEW_DETAILS,
+            Self::Grid => VIEW_GRID,
+            Self::Columns => VIEW_COLUMNS,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DraggedFilePaths(Vec<PathBuf>);
+
+struct DragPathPreview {
+    label: SharedString,
+}
+
+impl Render for DragPathPreview {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_2()
+            .py_1()
+            .rounded(cx.theme().radius)
+            .bg(cx.theme().popover)
+            .border_1()
+            .border_color(cx.theme().border)
+            .text_sm()
+            .child(self.label.clone())
+    }
 }
 
 struct RenameState {
@@ -81,6 +129,8 @@ pub struct FileBrowser {
     view_mode: ViewMode,
     search_query: String,
     display_items: Vec<FileItem>,
+    column_trail: Vec<PathBuf>,
+    column_listings: Vec<Vec<FileItem>>,
     _directory_watcher: Option<DirectoryWatcher>,
     _watcher_task: Option<Task<()>>,
     watched_dir: Option<PathBuf>,
@@ -98,13 +148,29 @@ impl FileBrowser {
     }
 
     fn with_options(cx: &mut Context<Self>, current_dir: PathBuf, show_toolbar: bool) -> Self {
-        let (items, error) = load_files_dir(
-            &current_dir,
-            DirectoryReadOptions::default(),
-            SortPreferences::default(),
-        );
+        let mut read_options = DirectoryReadOptions::default();
+        let mut sort_preferences = SortPreferences::default();
+        let (sort_option, sort_direction, show_hidden) = file_sort_prefs_from_config();
+        {
+            if let Some(option) = sort_option {
+                sort_preferences.option = sort_option_from_config(&option);
+            }
+            if let Some(direction) = sort_direction {
+                sort_preferences.direction = sort_direction_from_config(&direction);
+            }
+            if let Some(hidden) = show_hidden {
+                read_options.show_hidden_items = hidden;
+                read_options.show_dot_files = hidden;
+            }
+        }
+
+        let view_mode = ViewMode::from_config(&file_view_mode_from_config());
+        let (items, error) = load_files_dir(&current_dir, read_options, sort_preferences);
         let focused_index = items.first().map(|_| 0);
         let display_items = filter_items_by_query(&items, "");
+        let column_trail = column_trail_for(&current_dir);
+        let column_listings =
+            column_listings_for(&column_trail, &read_options, sort_preferences, "");
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -114,17 +180,19 @@ impl FileBrowser {
             item_sizes: item_sizes_for(display_items.len(), ViewMode::Details),
             scroll_handle: VirtualListScrollHandle::new(),
             items,
-            read_options: DirectoryReadOptions::default(),
-            sort_preferences: SortPreferences::default(),
+            read_options,
+            sort_preferences,
             error,
             selected_paths: BTreeSet::new(),
             anchor_index: focused_index,
             focused_index,
             renaming: None,
             show_toolbar,
-            view_mode: ViewMode::Details,
+            view_mode,
             search_query: String::new(),
             display_items,
+            column_trail,
+            column_listings,
             _directory_watcher: None,
             _watcher_task: None,
             watched_dir: None,
@@ -143,13 +211,15 @@ impl FileBrowser {
     }
 
     pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // Search input lives on MainPage; FileBrowser only holds the query string.
-        let _ = (window, cx);
+        AppNavigation::focus_search(window, cx);
     }
 
     fn apply_filter(&mut self) {
         self.display_items = filter_items_by_query(&self.items, &self.search_query);
         self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode);
+        if self.view_mode == ViewMode::Columns {
+            self.refresh_column_listings();
+        }
         self.clamp_focused_index();
     }
 
@@ -157,8 +227,31 @@ impl FileBrowser {
         if self.view_mode != mode {
             self.view_mode = mode;
             self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode);
+            if mode == ViewMode::Columns {
+                self.refresh_column_listings();
+            }
+            self.persist_prefs();
             cx.notify();
         }
+    }
+
+    fn persist_prefs(&self) {
+        let _ = save_file_browser_prefs(
+            self.view_mode.config_value(),
+            sort_option_config_value(self.sort_preferences.option),
+            sort_direction_config_value(self.sort_preferences.direction),
+            self.read_options.show_hidden_items,
+        );
+    }
+
+    fn refresh_column_listings(&mut self) {
+        self.column_trail = column_trail_for(&self.current_dir);
+        self.column_listings = column_listings_for(
+            &self.column_trail,
+            &self.read_options,
+            self.sort_preferences,
+            &self.search_query,
+        );
     }
 
     fn restart_directory_watcher(&mut self, cx: &mut Context<Self>) {
@@ -243,8 +336,70 @@ impl FileBrowser {
         self.items = items;
         self.error = error;
         self.apply_filter();
+        if self.view_mode == ViewMode::Columns {
+            self.refresh_column_listings();
+        }
         self.reconcile_selection();
         self.clamp_focused_index();
+    }
+
+    fn handle_drop(&mut self, paths: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
+        if paths.is_empty() {
+            return;
+        }
+        let dest = self.current_dir.clone();
+        if paths.iter().all(|p| p.parent() == Some(dest.as_path())) {
+            return;
+        }
+        let copy = window.modifiers().control;
+        let result = if copy {
+            copy_items(&paths, &dest)
+        } else {
+            move_items(&paths, &dest)
+        };
+        match result {
+            Ok(()) => {
+                self.refresh();
+                cx.notify();
+            }
+            Err(error) => {
+                window.push_notification(
+                    SharedString::from(format!("{}: {error}", t!("files.drop.error"))),
+                    cx,
+                );
+            }
+        }
+    }
+
+    fn drag_paths_for_item(&self, _index: usize, path: &Path) -> Vec<PathBuf> {
+        if self.selected_paths.contains(path) && !self.selected_paths.is_empty() {
+            return self.selected_paths_vec();
+        }
+        vec![path.to_path_buf()]
+    }
+
+    fn select_column_item(&mut self, col_index: usize, item: &FileItem) {
+        match item.kind {
+            FileItemKind::Folder => {
+                if self.current_dir != item.path {
+                    self.back_stack.push(self.current_dir.clone());
+                    self.forward_stack.clear();
+                }
+                self.current_dir = item.path.clone();
+                self.column_trail.truncate(col_index + 1);
+                self.column_trail.push(item.path.clone());
+                self.clear_selection();
+                self.refresh();
+            }
+            FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
+                self.open_item(item.path.clone(), item.kind);
+            }
+        }
+    }
+
+    fn column_selection_name(&self, col_index: usize) -> Option<String> {
+        let next = self.column_trail.get(col_index + 1)?;
+        next.file_name().map(|n| n.to_string_lossy().to_string())
     }
 
     fn navigate_to(&mut self, path: PathBuf) {
@@ -686,6 +841,7 @@ impl FileBrowser {
     fn set_sort_option(&mut self, option: SortOption) {
         self.sort_preferences.option = option;
         self.refresh();
+        self.persist_prefs();
     }
 
     fn sort_label(&self) -> String {
@@ -708,11 +864,142 @@ impl FileBrowser {
         match self.view_mode {
             ViewMode::Details => self.details_table(cx).into_any_element(),
             ViewMode::Grid => self.grid_view(cx).into_any_element(),
+            ViewMode::Columns => self.columns_view(cx).into_any_element(),
         }
+    }
+
+    fn columns_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let columns = self
+            .column_trail
+            .iter()
+            .enumerate()
+            .zip(self.column_listings.iter())
+            .map(|((col_index, col_path), items)| {
+                let title = col_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| col_path.to_string_lossy().to_string());
+                let selected_name = self.column_selection_name(col_index);
+                let cells = items
+                    .iter()
+                    .map(|item| {
+                        let item = item.clone();
+                        let is_selected =
+                            selected_name.as_deref() == Some(item.display_name.as_str());
+                        let drag_paths = vec![item.path.clone()];
+                        Self::column_cell(col_index, item, is_selected, drag_paths, cx)
+                    })
+                    .collect::<Vec<_>>();
+
+                v_flex()
+                    .id(("files-column", col_index))
+                    .w(COLUMN_WIDTH)
+                    .flex_none()
+                    .flex_1()
+                    .min_h_0()
+                    .border_r_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .h_8()
+                            .px_2()
+                            .flex_none()
+                            .items_center()
+                            .bg(cx.theme().muted)
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scrollbar()
+                            .children(cells),
+                    )
+            })
+            .collect::<Vec<_>>();
+
+        h_flex()
+            .id("files-columns-wrap")
+            .size_full()
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .overflow_x_scroll()
+            .children(columns)
+    }
+
+    fn column_cell(
+        col_index: usize,
+        item: FileItem,
+        selected: bool,
+        drag_paths: Vec<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let kind = item.kind;
+        let name = item.display_name.clone();
+        let item_click = item.clone();
+        h_flex()
+            .id(format!("file-column-row-{col_index}-{name}"))
+            .w_full()
+            .h_8()
+            .flex_none()
+            .px_2()
+            .gap_2()
+            .items_center()
+            .text_sm()
+            .hover(|this| this.bg(cx.theme().accent))
+            .when(selected, |this| {
+                this.bg(cx.theme().accent)
+                    .text_color(cx.theme().accent_foreground)
+            })
+            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                if kind == FileItemKind::Folder {
+                    this.select_column_item(col_index, &item_click);
+                } else if event.click_count() == 2 {
+                    this.open_item(item_click.path.clone(), kind);
+                }
+                cx.notify();
+            }))
+            .on_drag(DraggedFilePaths(drag_paths), |paths, _offset, _window, cx| {
+                let label = if paths.0.len() == 1 {
+                    paths.0[0]
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| t!("files.type.file").to_string())
+                } else {
+                    format!("{} {}", paths.0.len(), t!("files.status.items"))
+                };
+                cx.new(|_| DragPathPreview {
+                    label: label.into(),
+                })
+            })
+            .child(
+                div()
+                    .w(px(20.))
+                    .flex_none()
+                    .child(Icon::new(icon_for_item(&item)).small()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(name),
+            )
+            .into_any_element()
     }
 
     fn details_table(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
+            .id("files-details-table")
+            .size_full()
             .flex_1()
             .min_h_0()
             .rounded(cx.theme().radius)
@@ -753,7 +1040,16 @@ impl FileBrowser {
                                         let selected =
                                             this.selected_paths.contains(&item.path);
                                         let focused = focused_index == Some(index);
-                                        Some(Self::row(index, item, selected, focused, cx))
+                                        let drag_paths =
+                                            this.drag_paths_for_item(index, &item.path);
+                                        Some(Self::row(
+                                            index,
+                                            item,
+                                            selected,
+                                            focused,
+                                            drag_paths,
+                                            cx,
+                                        ))
                                     })
                                     .collect()
                             },
@@ -773,11 +1069,14 @@ impl FileBrowser {
                 let item = item.clone();
                 let selected = self.selected_paths.contains(&item.path);
                 let focused = self.focused_index == Some(index);
-                Self::grid_cell(index, item, selected, focused, cx)
+                let drag_paths = self.drag_paths_for_item(index, &item.path);
+                Self::grid_cell(index, item, selected, focused, drag_paths, cx)
             })
             .collect::<Vec<_>>();
 
         v_flex()
+            .id("files-grid-view")
+            .size_full()
             .flex_1()
             .min_h_0()
             .rounded(cx.theme().radius)
@@ -789,6 +1088,7 @@ impl FileBrowser {
                     .id("files-grid-wrap")
                     .flex_1()
                     .min_h_0()
+                    .size_full()
                     .overflow_y_scroll()
                     .p_2()
                     .flex()
@@ -803,6 +1103,7 @@ impl FileBrowser {
         item: FileItem,
         selected: bool,
         focused: bool,
+        drag_paths: Vec<PathBuf>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let open_path = item.path.clone();
@@ -832,6 +1133,11 @@ impl FileBrowser {
                 }
                 cx.notify();
             }))
+            .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
+                cx.new(|_| DragPathPreview {
+                    label: drag_preview_label(&paths.0).into(),
+                })
+            })
             .child(
                 div()
                     .w(px(28.))
@@ -893,6 +1199,7 @@ impl FileBrowser {
         item: FileItem,
         selected: bool,
         focused: bool,
+        drag_paths: Vec<PathBuf>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let open_path = item.path.clone();
@@ -923,6 +1230,11 @@ impl FileBrowser {
                 }
                 cx.notify();
             }))
+            .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
+                cx.new(|_| DragPathPreview {
+                    label: drag_preview_label(&paths.0).into(),
+                })
+            })
             .child(Icon::new(icon_for_item(&item)).small())
             .child(
                 div()
@@ -1110,6 +1422,7 @@ impl FileBrowser {
             SortDirection::Descending => SortDirection::Ascending,
         };
         self.refresh();
+        self.persist_prefs();
         cx.notify();
     }
 
@@ -1122,6 +1435,7 @@ impl FileBrowser {
         self.read_options.show_hidden_items = !self.read_options.show_hidden_items;
         self.read_options.show_dot_files = self.read_options.show_hidden_items;
         self.refresh();
+        self.persist_prefs();
         cx.notify();
     }
 
@@ -1136,6 +1450,14 @@ impl FileBrowser {
 
     fn on_view_grid(&mut self, _: &ViewGrid, _: &mut Window, cx: &mut Context<Self>) {
         self.set_view_mode(ViewMode::Grid, cx);
+    }
+
+    fn on_view_columns(&mut self, _: &ViewColumns, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_view_mode(ViewMode::Columns, cx);
+    }
+
+    fn on_focus_search_action(&mut self, _: &FocusSearch, window: &mut Window, cx: &mut Context<Self>) {
+        self.focus_search(window, cx);
     }
 
     fn on_shell_properties(&mut self, _: &ShellProperties, window: &mut Window, cx: &mut Context<Self>) {
@@ -1185,6 +1507,7 @@ impl Render for FileBrowser {
         ));
         let show_hidden = self.read_options.show_hidden_items;
         let sort_label = self.sort_label();
+        let in_recycle_bin = platform::is_recycle_bin_path(&self.current_dir);
 
         v_flex()
             .id("files-page")
@@ -1206,7 +1529,12 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_new_file))
             .on_action(cx.listener(Self::on_view_details))
             .on_action(cx.listener(Self::on_view_grid))
+            .on_action(cx.listener(Self::on_view_columns))
+            .on_action(cx.listener(Self::on_focus_search_action))
             .on_action(cx.listener(Self::on_shell_properties))
+            .on_drop(cx.listener(|this, paths: &DraggedFilePaths, window, cx| {
+                this.handle_drop(paths.0.clone(), window, cx);
+            }))
             .on_action(cx.listener(Self::on_shell_context_menu))
             .on_action(cx.listener(Self::on_copy_path))
             .on_action(cx.listener(Self::on_copy_items))
@@ -1310,6 +1638,15 @@ impl Render for FileBrowser {
                             })),
                     )
                     .child(
+                        Button::new("files-view-columns")
+                            .small()
+                            .ghost()
+                            .icon(IconName::PanelLeft)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_view_mode(ViewMode::Columns, cx);
+                            })),
+                    )
+                    .child(
                         Button::new("files-delete-btn")
                             .small()
                             .outline()
@@ -1372,22 +1709,46 @@ impl Render for FileBrowser {
                         .child(error.clone()),
                 )
             })
-            .child(self.file_list(cx))
+            .when(in_recycle_bin, |this| {
+                this.child(
+                    div()
+                        .px_3()
+                        .py_2()
+                        .rounded(cx.theme().radius)
+                        .bg(cx.theme().muted)
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("files.recycle.hint")),
+                )
+            })
             .child(
-                h_flex()
-                    .justify_between()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!(
-                        "{} {}, {} {}",
-                        self.display_items.len(),
-                        t!("files.status.items"),
-                        selected_count,
-                        t!("files.status.selected"),
-                    ))
-                    .child(t!("files.status.local")),
+                div()
+                    .id("files-list-host")
+                    .flex_1()
+                    .min_h_0()
+                    .size_full()
+                    .overflow_hidden()
+                    .child(self.file_list(cx)),
             )
+            .context_menu(file_context_menu)
     }
+}
+
+fn file_context_menu(
+    menu: gpui_component::menu::PopupMenu,
+    _: &mut Window,
+    _: &mut Context<gpui_component::menu::PopupMenu>,
+) -> gpui_component::menu::PopupMenu {
+    menu.menu(t!("files.menu.open"), Box::new(OpenItem))
+        .menu(t!("files.menu.rename"), Box::new(RenameItem))
+        .separator()
+        .menu(t!("files.menu.copy"), Box::new(CopyItems))
+        .menu(t!("files.menu.cut"), Box::new(CutItems))
+        .menu(t!("files.menu.paste"), Box::new(PasteItems))
+        .separator()
+        .menu(t!("files.menu.delete"), Box::new(DeleteItems))
+        .menu(t!("files.menu.properties"), Box::new(ShellProperties))
+        .menu(t!("files.menu.shell_menu"), Box::new(ShellContextMenu))
 }
 
 fn load_files_dir(
@@ -1405,8 +1766,71 @@ fn item_sizes_for(count: usize, mode: ViewMode) -> Rc<Vec<Size<Pixels>>> {
     let size = match mode {
         ViewMode::Details => FILE_ROW_SIZE,
         ViewMode::Grid => GRID_CELL_SIZE,
+        ViewMode::Columns => COLUMN_ROW_SIZE,
     };
-    Rc::new(vec![size; count])
+    Rc::new(vec![size; count.max(1)])
+}
+
+fn column_listings_for(
+    trail: &[PathBuf],
+    read_options: &DirectoryReadOptions,
+    sort: SortPreferences,
+    query: &str,
+) -> Vec<Vec<FileItem>> {
+    trail
+        .iter()
+        .map(|path| {
+            let (items, _) = load_files_dir(path, *read_options, sort);
+            filter_items_by_query(&items, query)
+        })
+        .collect()
+}
+
+fn drag_preview_label(paths: &[PathBuf]) -> String {
+    if paths.len() == 1 {
+        paths[0]
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| t!("files.type.file").to_string())
+    } else {
+        format!("{} {}", paths.len(), t!("files.status.items"))
+    }
+}
+
+fn sort_option_from_config(value: &str) -> SortOption {
+    match value {
+        "modified" => SortOption::DateModified,
+        "created" => SortOption::DateCreated,
+        "size" => SortOption::Size,
+        "type" => SortOption::FileType,
+        "path" => SortOption::Path,
+        _ => SortOption::Name,
+    }
+}
+
+fn sort_direction_from_config(value: &str) -> SortDirection {
+    match value {
+        "desc" => SortDirection::Descending,
+        _ => SortDirection::Ascending,
+    }
+}
+
+fn sort_option_config_value(option: SortOption) -> &'static str {
+    match option {
+        SortOption::Name => "name",
+        SortOption::DateModified => "modified",
+        SortOption::DateCreated => "created",
+        SortOption::Size => "size",
+        SortOption::FileType => "type",
+        SortOption::Path => "path",
+    }
+}
+
+fn sort_direction_config_value(direction: SortDirection) -> &'static str {
+    match direction {
+        SortDirection::Ascending => "asc",
+        SortDirection::Descending => "desc",
+    }
 }
 
 fn icon_for_item(item: &FileItem) -> IconName {

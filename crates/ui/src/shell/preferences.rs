@@ -116,6 +116,7 @@ pub fn apply_config(config: &AppConfig, cx: &mut App) {
 }
 
 pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppConfig {
+    let prior = cyberfiles_core::load_config().unwrap_or_default();
     AppConfig {
         locale: i18n::locale().to_string(),
         dark_mode: cx.theme().mode.is_dark(),
@@ -126,11 +127,11 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         list_active_highlight: cx.theme().list.active_highlight,
         window_width,
         window_height,
-        pinned_folders: cyberfiles_core::load_config()
-            .map(|c| c.pinned_folders)
-            .unwrap_or_default(),
-        show_info_pane: cyberfiles_core::load_config()
-            .map(|c| c.show_info_pane)
-            .unwrap_or(true),
+        pinned_folders: prior.pinned_folders,
+        show_info_pane: prior.show_info_pane,
+        file_view_mode: prior.file_view_mode,
+        file_sort_option: prior.file_sort_option,
+        file_sort_direction: prior.file_sort_direction,
+        file_show_hidden: prior.file_show_hidden,
     }
 }

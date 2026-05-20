@@ -14,7 +14,7 @@ pub use clipboard::read_clipboard_file_paths;
 #[cfg(windows)]
 pub use icons::{icon_hint_for_path, ShellIconHint};
 #[cfg(windows)]
-pub use paths::recycle_bin_folder;
+pub use paths::{is_recycle_bin_path, recycle_bin_folder};
 #[cfg(windows)]
 pub use shell::{open_item_properties, show_shell_context_menu};
 
@@ -41,6 +41,10 @@ mod stubs {
 
     pub fn recycle_bin_folder() -> Option<PathBuf> {
         None
+    }
+
+    pub fn is_recycle_bin_path(_path: &Path) -> bool {
+        false
     }
 
     pub fn read_clipboard_file_paths() -> Vec<PathBuf> {

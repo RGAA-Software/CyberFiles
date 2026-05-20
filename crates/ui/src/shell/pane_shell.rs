@@ -59,7 +59,12 @@ impl Render for PaneShell {
                 .overflow_hidden()
                 .child(build_settings(cx))
                 .into_any_element(),
-            NavigationTarget::Path(_) => self.file_browser.clone().into_any_element(),
+            NavigationTarget::Path(_) => div()
+                .id("pane-file-browser")
+                .size_full()
+                .min_h_0()
+                .child(self.file_browser.clone())
+                .into_any_element(),
             NavigationTarget::RecycleBin => div()
                 .id("recycle-bin-page")
                 .size_full()
