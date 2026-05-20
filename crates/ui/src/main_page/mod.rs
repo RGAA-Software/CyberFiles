@@ -1,9 +1,12 @@
+use std::path::PathBuf;
+
 use cyberfiles_core::{load_config, pinned_folder_paths, save_config};
 use cyberfiles_fs::{home_navigation_path, list_drives};
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex,
+    input::{Input, InputEvent, InputState},
     resizable::{h_resizable, resizable_panel},
     sidebar::{
         Sidebar, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu, SidebarMenuItem,
@@ -15,12 +18,12 @@ use rust_i18n::t;
 
 use crate::info_pane::InfoPane;
 use crate::shell::navigation::NavigationTarget;
-use crate::shell::PaneShell;
+use crate::shell::{PaneShell, ShellPanes};
 use cyberfiles_core::APP_NAME;
 
 struct TabEntry {
     id: u64,
-    pane: Entity<PaneShell>,
+    shell: Entity<ShellPanes>,
 }
 
 pub struct MainPage {
@@ -29,6 +32,9 @@ pub struct MainPage {
     active_tab: usize,
     next_tab_id: u64,
     show_info_pane: bool,
+    info_pane: Entity<InfoPane>,
+    path_input: Option<Entity<InputState>>,
+    _omnibar_subscription: Option<Subscription>,
 }
 
 impl MainPage {
@@ -36,13 +42,16 @@ impl MainPage {
         let show_info_pane = load_config()
             .map(|c| c.show_info_pane)
             .unwrap_or(true);
-        let pane = cx.new(|cx| PaneShell::new(cx, NavigationTarget::Home));
+        let shell = cx.new(|cx| ShellPanes::new(cx, NavigationTarget::Home));
         Self {
             focus_handle: cx.focus_handle(),
-            tabs: vec![TabEntry { id: 0, pane }],
+            tabs: vec![TabEntry { id: 0, shell }],
             active_tab: 0,
             next_tab_id: 1,
             show_info_pane,
+            info_pane: cx.new(|_| InfoPane::new()),
+            path_input: None,
+            _omnibar_subscription: None,
         }
     }
 
@@ -52,20 +61,112 @@ impl MainPage {
         page
     }
 
-    fn active_pane(&self) -> Entity<PaneShell> {
-        self.tabs[self.active_tab].pane.clone()
+    fn active_shell(&self) -> Entity<ShellPanes> {
+        self.tabs[self.active_tab].shell.clone()
+    }
+
+    fn active_pane(&self, cx: &App) -> Entity<PaneShell> {
+        self.active_shell().read(cx).active_pane()
     }
 
     pub fn navigate_to(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
-        let pane = self.active_pane();
-        pane.update(cx, |shell, cx| {
-            shell.navigate(target, cx);
+        let shell = self.active_shell();
+        shell.update(cx, |shell, cx| {
+            shell.navigate_active(target, cx);
         });
         cx.notify();
     }
 
+    fn toggle_dual_pane(&mut self, cx: &mut Context<Self>) {
+        let shell = self.active_shell();
+        shell.update(cx, |shell, cx| shell.toggle_dual_pane(cx));
+        cx.notify();
+    }
+
+    fn omnibar_text(&self, cx: &App) -> String {
+        let pane = self.active_pane(cx);
+        let target = pane.read(cx).target().clone();
+        if matches!(&target, NavigationTarget::Path(_)) {
+            pane.read(cx)
+                .file_browser()
+                .read(cx)
+                .current_directory()
+                .to_string_lossy()
+                .to_string()
+        } else {
+            target.toolbar_path_label()
+        }
+    }
+
+    fn ensure_path_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+        if let Some(input) = self.path_input.clone() {
+            return input;
+        }
+
+        let path = self.omnibar_text(cx);
+        let page = cx.entity();
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value(path)
+                .placeholder(t!("nav.path.placeholder"))
+        });
+        self._omnibar_subscription = Some(cx.subscribe(&input, move |_, _, event: &InputEvent, cx| {
+            if matches!(
+                event,
+                InputEvent::PressEnter {
+                    secondary: false,
+                    ..
+                }
+            ) {
+                page.update(cx, |page, cx| page.submit_omnibar(cx));
+            }
+        }));
+        self.path_input = Some(input.clone());
+        input
+    }
+
+    fn sync_omnibar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use gpui_component::WindowExt as _;
+
+        let input = self.ensure_path_input(window, cx);
+        let input_focused = window
+            .focused_input(cx)
+            .is_some_and(|focused| focused == input);
+        if !input_focused {
+            let text = self.omnibar_text(cx);
+            input.update(cx, |state, cx| {
+                state.set_value(text, window, cx);
+            });
+        }
+    }
+
+    fn submit_omnibar(&mut self, cx: &mut Context<Self>) {
+        let Some(input) = self.path_input.clone() else {
+            return;
+        };
+        let text = input.read(cx).value().to_string();
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+
+        let path = PathBuf::from(trimmed);
+        if path.is_dir() {
+            self.navigate_to(NavigationTarget::Path(path), cx);
+        } else if path.is_file() {
+            if let Some(parent) = path.parent() {
+                self.navigate_to(NavigationTarget::Path(parent.to_path_buf()), cx);
+            }
+        } else if trimmed.eq_ignore_ascii_case("home") {
+            self.navigate_to(NavigationTarget::Home, cx);
+        } else if trimmed.eq_ignore_ascii_case("settings") {
+            self.navigate_to(NavigationTarget::Settings, cx);
+        }
+        cx.notify();
+    }
+
     fn pin_current_folder(&mut self, cx: &mut Context<Self>) {
-        let pane = self.active_pane();
+        let pane = self.active_pane(cx);
         let path = pane.read(cx).file_browser().read(cx).current_directory().clone();
         let path_string = path.to_string_lossy().to_string();
         let mut config = load_config().unwrap_or_default();
@@ -85,7 +186,7 @@ impl MainPage {
     }
 
     fn info_selection(&self, cx: &App) -> Option<cyberfiles_fs::FileItem> {
-        let pane = self.active_pane();
+        let pane = self.active_pane(cx);
         if !matches!(pane.read(cx).target(), NavigationTarget::Path(_)) {
             return None;
         }
@@ -99,8 +200,8 @@ impl MainPage {
     fn add_tab(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
         let id = self.next_tab_id;
         self.next_tab_id += 1;
-        let pane = cx.new(|cx| PaneShell::new(cx, target));
-        self.tabs.push(TabEntry { id, pane });
+        let shell = cx.new(|cx| ShellPanes::new(cx, target));
+        self.tabs.push(TabEntry { id, shell });
         self.active_tab = self.tabs.len() - 1;
         cx.notify();
     }
@@ -119,7 +220,7 @@ impl MainPage {
     }
 
     fn tab_title(&self, index: usize, cx: &App) -> SharedString {
-        let pane = self.tabs[index].pane.read(cx);
+        let pane = self.tabs[index].shell.read(cx).active_pane().read(cx);
         match pane.target() {
             NavigationTarget::Path(_) => {
                 let path = pane.file_browser().read(cx).current_directory();
@@ -133,36 +234,39 @@ impl MainPage {
         }
     }
 
-    fn render_main_column(&self, active_pane: Entity<PaneShell>, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_main_column(
+        &mut self,
+        window: &mut Window,
+        active_shell: Entity<ShellPanes>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         v_flex()
             .size_full()
             .min_h_0()
-            .child(self.render_navigation_toolbar(cx))
+            .child(self.render_navigation_toolbar(window, cx))
             .child(
                 div()
                     .id("main-content")
                     .flex_1()
                     .min_h_0()
                     .overflow_hidden()
-                    .child(active_pane),
+                    .child(active_shell),
             )
             .child(self.render_status_bar(cx))
     }
 
-    fn render_navigation_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_navigation_toolbar(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        self.sync_omnibar(window, cx);
+        let path_input = self.ensure_path_input(window, cx);
         let show_info_pane = self.show_info_pane;
-        let pane = self.active_pane();
+        let dual_pane = self.active_shell().read(cx).dual_pane();
+        let pane = self.active_pane(cx);
         let target = pane.read(cx).target().clone();
         let browser = pane.read(cx).file_browser();
-        let path_label = if matches!(&target, NavigationTarget::Path(_)) {
-            browser
-                .read(cx)
-                .current_directory()
-                .to_string_lossy()
-                .to_string()
-        } else {
-            target.toolbar_path_label()
-        };
         let (can_back, can_forward, can_up) = if matches!(target, NavigationTarget::Path(_)) {
             let b = browser.read(cx);
             (b.can_go_back(), b.can_go_forward(), b.can_go_up())
@@ -186,7 +290,7 @@ impl MainPage {
                     .icon(IconName::ArrowLeft)
                     .disabled(!can_back)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        let pane = this.active_pane();
+                        let pane = this.active_pane(cx);
                         pane.update(cx, |shell, cx| {
                             if let NavigationTarget::Path(_) = shell.target() {
                                 shell.file_browser().update(cx, |b, cx| {
@@ -205,7 +309,7 @@ impl MainPage {
                     .icon(IconName::ArrowRight)
                     .disabled(!can_forward)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        let pane = this.active_pane();
+                        let pane = this.active_pane(cx);
                         pane.update(cx, |shell, cx| {
                             shell.file_browser().update(cx, |b, cx| {
                                 b.go_forward();
@@ -222,7 +326,7 @@ impl MainPage {
                     .icon(IconName::ArrowUp)
                     .disabled(!can_up)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        let pane = this.active_pane();
+                        let pane = this.active_pane(cx);
                         pane.update(cx, |shell, cx| {
                             shell.file_browser().update(cx, |b, cx| {
                                 b.go_up();
@@ -238,7 +342,7 @@ impl MainPage {
                     .ghost()
                     .icon(IconName::Redo2)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        let pane = this.active_pane();
+                        let pane = this.active_pane(cx);
                         pane.update(cx, |shell, cx| {
                             shell.file_browser().update(cx, |b, cx| {
                                 b.reload();
@@ -256,7 +360,7 @@ impl MainPage {
                         .icon(IconName::Folder)
                         .label(t!("files.new_folder"))
                         .on_click(cx.listener(|this, _, window, cx| {
-                            let pane = this.active_pane();
+                            let pane = this.active_pane(cx);
                             pane.update(cx, |shell, cx| {
                                 shell.file_browser().update(cx, |b, cx| {
                                     b.create_new_folder(window, cx);
@@ -276,6 +380,16 @@ impl MainPage {
                 )
             })
             .child(
+                Button::new("nav-split-pane")
+                    .small()
+                    .ghost()
+                    .icon(IconName::LayoutDashboard)
+                    .tooltip(t!("nav.split_pane"))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.toggle_dual_pane(cx);
+                    })),
+            )
+            .child(
                 Button::new("nav-toggle-info")
                     .small()
                     .ghost()
@@ -292,21 +406,12 @@ impl MainPage {
                 div()
                     .flex_1()
                     .min_w_0()
-                    .px_3()
-                    .py_1()
-                    .rounded(cx.theme().radius)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(path_label),
+                    .child(Input::new(&path_input).w_full().small()),
             )
     }
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let pane = self.active_pane();
+        let pane = self.active_pane(cx);
         let target = pane.read(cx).target().clone();
 
         let (items, selected, hint) = match target {
@@ -453,9 +558,10 @@ impl Focusable for MainPage {
 impl Render for MainPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let active = self.active_tab;
-        let active_pane = self.active_pane();
+        let active_shell = self.active_shell();
         let show_info_pane = self.show_info_pane;
         let info_item = self.info_selection(cx);
+        self.info_pane.update(cx, |pane, _| pane.set_item(info_item));
 
         v_flex()
             .id("main-page")
@@ -528,18 +634,22 @@ impl Render for MainPage {
                                             .child(
                                                 resizable_panel()
                                                     .flex_1()
-                                                    .child(self.render_main_column(active_pane.clone(), cx)),
+                                                    .child(self.render_main_column(
+                                                        window,
+                                                        active_shell.clone(),
+                                                        cx,
+                                                    )),
                                             )
                                             .child(
                                                 resizable_panel()
                                                     .size(px(300.))
                                                     .size_range(px(220.)..px(480.))
-                                                    .child(InfoPane::render(info_item.as_ref(), cx)),
+                                                    .child(self.info_pane.clone()),
                                             ),
                                     )
                                 })
                                 .when(!show_info_pane, |this| {
-                                    this.child(self.render_main_column(active_pane, cx))
+                                    this.child(self.render_main_column(window, active_shell, cx))
                                 }),
                         ),
                     ),

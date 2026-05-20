@@ -26,6 +26,7 @@ pub fn init(cx: &mut App) {
         init_locale();
     }
     gpui_component::init(cx);
+    cx.set_global(crate::app_state::AppFileClipboard::default());
     if let Some(ref cfg) = config {
         shell::preferences::apply_config(cfg, cx);
     }

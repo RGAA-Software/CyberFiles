@@ -23,6 +23,14 @@ nav.settings.description:
   en: Application preferences
   zh-CN: 应用偏好设置
   zh-HK: 應用程式偏好設定
+nav.path.placeholder:
+  en: Enter path…
+  zh-CN: 输入路径…
+  zh-HK: 輸入路徑…
+nav.split_pane:
+  en: Toggle dual pane
+  zh-CN: 切换双栏
+  zh-HK: 切換雙欄
 sidebar.workspace:
   en: Workspace
   zh-CN: 工作区
@@ -103,6 +111,22 @@ info_pane.modified:
   en: Modified
   zh-CN: 修改时间
   zh-HK: 修改時間
+info_pane.preview.empty:
+  en: Select a single file to preview.
+  zh-CN: 选择单个文件以预览。
+  zh-HK: 選取單一檔案以預覽。
+info_pane.preview.folder:
+  en: Folders cannot be previewed.
+  zh-CN: 无法预览文件夹。
+  zh-HK: 無法預覽資料夾。
+info_pane.preview.unsupported:
+  en: Preview is not available for this file type.
+  zh-CN: 此文件类型不支持预览。
+  zh-HK: 此檔案類型不支援預覽。
+info_pane.preview.error:
+  en: Preview failed
+  zh-CN: 预览失败
+  zh-HK: 預覽失敗
 home.widget.drives:
   en: Drives
   zh-CN: 驱动器
@@ -232,17 +256,37 @@ files.delete.title:
   zh-CN: 删除项目？
   zh-HK: 刪除項目？
 files.delete.description_many:
-  en: Delete %{count} items permanently?
-  zh-CN: 永久删除 %{count} 个项目？
-  zh-HK: 永久刪除 %{count} 個項目？
+  en: Move %{count} items to the Recycle Bin?
+  zh-CN: 将 %{count} 个项目移到回收站？
+  zh-HK: 將 %{count} 個項目移到資源回收筒？
 files.delete.confirm:
   en: Delete
   zh-CN: 删除
   zh-HK: 刪除
 files.delete.success:
-  en: Items deleted.
-  zh-CN: 已删除。
-  zh-HK: 已刪除。
+  en: Items moved to Recycle Bin.
+  zh-CN: 已移到回收站。
+  zh-HK: 已移到資源回收筒。
+files.delete_permanent.title:
+  en: Delete permanently?
+  zh-CN: 永久删除？
+  zh-HK: 永久刪除？
+files.delete_permanent.confirm:
+  en: Delete permanently
+  zh-CN: 永久删除
+  zh-HK: 永久刪除
+files.delete_permanent.success:
+  en: Items deleted permanently.
+  zh-CN: 已永久删除。
+  zh-HK: 已永久刪除。
+files.paste.success:
+  en: Items pasted.
+  zh-CN: 已粘贴。
+  zh-HK: 已貼上。
+files.paste.error:
+  en: Paste failed
+  zh-CN: 粘贴失败
+  zh-HK: 貼上失敗
 files.delete.error:
   en: Delete failed
   zh-CN: 删除失败

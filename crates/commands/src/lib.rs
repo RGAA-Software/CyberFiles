@@ -11,8 +11,12 @@ actions!(
         SelectAll,
         RenameItem,
         DeleteItems,
+        DeleteItemsPermanent,
         NewFolder,
         CopyPath,
+        CopyItems,
+        CutItems,
+        PasteItems,
         NavigatePrevious,
         NavigateNext,
     ]
@@ -35,10 +39,19 @@ pub fn file_browser_key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("down", NavigateNext, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-shift-n", NewFolder, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-shift-c", CopyPath, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-c", CopyItems, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-x", CutItems, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-v", PasteItems, Some(FILE_BROWSER)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-n", NewFolder, Some(FILE_BROWSER)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-c", CopyPath, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-c", CopyItems, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-x", CutItems, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-v", PasteItems, Some(FILE_BROWSER)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-backspace", DeleteItems, Some(FILE_BROWSER)),
         #[cfg(target_os = "macos")]
@@ -52,7 +65,7 @@ pub fn file_browser_key_bindings() -> Vec<KeyBinding> {
 
     bindings.extend([
         KeyBinding::new("secondary-backspace", DeleteItems, Some(FILE_BROWSER)),
-        KeyBinding::new("shift-delete", DeleteItems, Some(FILE_BROWSER)),
+        KeyBinding::new("shift-delete", DeleteItemsPermanent, Some(FILE_BROWSER)),
     ]);
 
     bindings

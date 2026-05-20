@@ -38,17 +38,28 @@ pub fn rename_path(path: &Path, new_name: &str) -> anyhow::Result<PathBuf> {
     Ok(target)
 }
 
+/// Permanently deletes paths (no recycle bin).
 pub fn delete_paths(paths: &[PathBuf]) -> anyhow::Result<()> {
     for path in paths {
-        if path.is_dir() {
-            std::fs::remove_dir_all(path)?;
-        } else if path.is_symlink() || path.is_file() {
-            std::fs::remove_file(path)?;
-        } else if path.exists() {
-            std::fs::remove_file(path)?;
-        }
+        crate::clipboard::remove_path_recursive(path)?;
     }
     Ok(())
+}
+
+/// Sends paths to the system recycle bin when supported.
+pub fn recycle_paths(paths: &[PathBuf]) -> anyhow::Result<()> {
+    #[cfg(windows)]
+    {
+        for path in paths {
+            trash::delete(path)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    {
+        delete_paths(paths)
+    }
 }
 
 pub fn unique_new_folder_name(parent: &Path) -> String {

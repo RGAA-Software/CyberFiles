@@ -1,5 +1,7 @@
-use cyberfiles_fs::FileItem;
-use gpui::{prelude::*, *};
+use cyberfiles_fs::{
+    is_image_path, is_text_preview_path, read_text_preview, FileItem, FileItemKind,
+};
+use gpui::{img, prelude::*, ObjectFit, *};
 use gpui_component::{
     h_flex,
     tab::{Tab, TabBar},
@@ -7,11 +9,28 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
-pub struct InfoPane;
+pub struct InfoPane {
+    selected_tab: usize,
+    item: Option<FileItem>,
+}
 
 impl InfoPane {
-    pub fn render(item: Option<&FileItem>, cx: &App) -> impl IntoElement {
-        let (name, detail_lines) = item_details(item);
+    pub fn new() -> Self {
+        Self {
+            selected_tab: 0,
+            item: None,
+        }
+    }
+
+    pub fn set_item(&mut self, item: Option<FileItem>) {
+        self.item = item;
+    }
+}
+
+impl Render for InfoPane {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let selected_tab = self.selected_tab;
+        let item = self.item.clone();
 
         v_flex()
             .id("info-pane")
@@ -23,7 +42,11 @@ impl InfoPane {
             .child(
                 TabBar::new("info-pane-tabs")
                     .small()
-                    .selected_index(0)
+                    .selected_index(selected_tab)
+                    .on_click(cx.listener(|this, ix: &usize, _, cx| {
+                        this.selected_tab = *ix;
+                        cx.notify();
+                    }))
                     .child(Tab::new().label(t!("info_pane.tab.details")))
                     .child(Tab::new().label(t!("info_pane.tab.preview"))),
             )
@@ -34,32 +57,113 @@ impl InfoPane {
                     .overflow_hidden()
                     .p_3()
                     .gap_3()
-                            .when_some(name.clone(), |panel, name| {
-                                panel
-                                    .child(
-                                        h_flex()
-                                            .gap_2()
-                                            .items_center()
-                                            .child(Icon::new(IconName::Info).small())
-                                            .child(div().text_sm().font_medium().child(name)),
-                                    )
-                                    .children(detail_lines.into_iter().map(|line| {
-                                        detail_row(cx, &line.0, &line.1)
-                                    }))
-                            })
-                            .when(name.is_none(), |panel| {
-                                panel.child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(t!("info_pane.empty")),
-                                )
-                            }),
+                    .child(tab_content(selected_tab, item.as_ref(), cx)),
             )
     }
 }
 
-fn detail_row(cx: &App, label: &str, value: &str) -> impl IntoElement {
+fn tab_content(
+    selected_tab: usize,
+    item: Option<&FileItem>,
+    cx: &mut Context<InfoPane>,
+) -> impl IntoElement {
+    if selected_tab == 0 {
+        details_panel(item, cx)
+    } else {
+        preview_panel(item, cx)
+    }
+}
+
+fn details_panel(item: Option<&FileItem>, cx: &mut Context<InfoPane>) -> Div {
+    let (name, detail_lines) = item_details(item);
+
+    v_flex()
+        .w_full()
+        .gap_3()
+        .when_some(name.clone(), |panel, name| {
+            panel
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(Icon::new(IconName::Info).small())
+                        .child(div().text_sm().font_medium().child(name)),
+                )
+                .children(
+                    detail_lines
+                        .into_iter()
+                        .map(|line| detail_row(cx, &line.0, &line.1)),
+                )
+        })
+        .when(name.is_none(), |panel| {
+            panel.child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(t!("info_pane.empty")),
+            )
+        })
+}
+
+fn preview_panel(item: Option<&FileItem>, cx: &mut Context<InfoPane>) -> Div {
+    v_flex()
+        .w_full()
+        .gap_2()
+        .when(item.is_none(), |panel| panel.child(empty_preview(cx)))
+        .when_some(item.as_ref(), |panel, item| {
+            if item.kind == FileItemKind::Folder {
+                panel.child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("info_pane.preview.folder")),
+                )
+            } else if is_image_path(&item.path) {
+                panel.child(
+                    img(item.path.clone())
+                        .w_full()
+                        .max_h(px(360.))
+                        .object_fit(ObjectFit::Contain),
+                )
+            } else if is_text_preview_path(&item.path) {
+                panel.child(preview_text_content(&item.path, cx))
+            } else {
+                panel.child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("info_pane.preview.unsupported")),
+                )
+            }
+        })
+}
+
+fn preview_text_content(path: &std::path::Path, cx: &mut Context<InfoPane>) -> Div {
+    match read_text_preview(path) {
+        Ok(text) => div()
+            .w_full()
+            .p_2()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().muted)
+            .text_xs()
+            .child(text),
+        Err(error) => div()
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .child(format!("{}: {error}", t!("info_pane.preview.error"))),
+    }
+}
+
+fn empty_preview(cx: &mut Context<InfoPane>) -> impl IntoElement {
+    div()
+        .text_sm()
+        .text_color(cx.theme().muted_foreground)
+        .child(t!("info_pane.preview.empty"))
+}
+
+fn detail_row(cx: &mut Context<InfoPane>, label: &str, value: &str) -> impl IntoElement {
     v_flex()
         .gap_0()
         .child(
@@ -84,8 +188,14 @@ fn item_details(item: Option<&FileItem>) -> (Option<String>, Vec<(String, String
 
     let name = item.display_name.clone();
     let mut lines = vec![
-        (t!("info_pane.path").to_string(), item.path.display().to_string()),
-        (t!("info_pane.type").to_string(), item_type_label(item)),
+        (
+            t!("info_pane.path").to_string(),
+            item.path.display().to_string(),
+        ),
+        (
+            t!("info_pane.type").to_string(),
+            item_type_label(item),
+        ),
     ];
 
     if let Some(size) = item.size {
@@ -102,7 +212,6 @@ fn item_details(item: Option<&FileItem>) -> (Option<String>, Vec<(String, String
 }
 
 fn item_type_label(item: &FileItem) -> String {
-    use cyberfiles_fs::FileItemKind;
     match item.kind {
         FileItemKind::Folder => t!("files.type.folder").to_string(),
         FileItemKind::Symlink => t!("files.type.symlink").to_string(),

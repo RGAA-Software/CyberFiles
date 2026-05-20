@@ -7,14 +7,16 @@ use std::{
 
 use chrono::{DateTime, Local};
 use cyberfiles_commands::{
-    CopyPath, DeleteItems, NavigateBack, NavigateForward, NavigateNext, NavigatePrevious,
-    NavigateUp, NewFolder, OpenItem, RefreshDirectory, RenameItem, SelectAll, FILE_BROWSER,
+    CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, NavigateBack,
+    NavigateForward, NavigateNext, NavigatePrevious, NavigateUp, NewFolder, OpenItem,
+    PasteItems, RefreshDirectory, RenameItem, SelectAll, FILE_BROWSER,
 };
 use cyberfiles_fs::{
-    create_directory, delete_paths, home_navigation_path, read_directory, rename_path,
-    unique_new_folder_name, DirectoryReadOptions, FileItem, FileItemKind, SortDirection,
-    SortOption, SortPreferences,
+    copy_items, create_directory, delete_paths, home_navigation_path, move_items, read_directory,
+    recycle_paths, rename_path, unique_new_folder_name, ClipboardOperation, DirectoryReadOptions,
+    FileItem, FileItemKind, SortDirection, SortOption, SortPreferences,
 };
+use crate::app_state::AppFileClipboard;
 use gpui::{
     actions, prelude::*, ClipboardItem, ClickEvent, Entity, FocusHandle,
     Focusable, ParentElement, ScrollStrategy, Subscription, Window, *,
@@ -426,7 +428,69 @@ impl FileBrowser {
         cx.write_to_clipboard(ClipboardItem::new_string(text));
     }
 
+    fn copy_items(&mut self, cx: &mut Context<Self>) {
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
+            return;
+        }
+        AppFileClipboard::store(ClipboardOperation::Copy, paths, cx);
+    }
+
+    fn cut_items(&mut self, cx: &mut Context<Self>) {
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
+            return;
+        }
+        AppFileClipboard::store(ClipboardOperation::Cut, paths, cx);
+    }
+
+    fn paste_items(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(clipboard) = AppFileClipboard::take(cx) else {
+            return;
+        };
+        if clipboard.paths.is_empty() {
+            return;
+        }
+
+        let destination = self.current_dir.clone();
+        let result = match clipboard.operation {
+            ClipboardOperation::Copy => copy_items(&clipboard.paths, &destination),
+            ClipboardOperation::Cut => move_items(&clipboard.paths, &destination),
+        };
+
+        match result {
+            Ok(()) => {
+                if clipboard.operation == ClipboardOperation::Copy {
+                    AppFileClipboard::store(clipboard.operation, clipboard.paths, cx);
+                }
+                self.refresh();
+                window.push_notification(SharedString::from(t!("files.paste.success")), cx);
+            }
+            Err(error) => {
+                AppFileClipboard::set(clipboard, cx);
+                window.push_notification(
+                    SharedString::from(format!("{}: {error}", t!("files.paste.error"))),
+                    cx,
+                );
+            }
+        }
+        cx.notify();
+    }
+
     fn confirm_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.confirm_delete_inner(window, cx, false);
+    }
+
+    fn confirm_delete_permanent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.confirm_delete_inner(window, cx, true);
+    }
+
+    fn confirm_delete_inner(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        permanent: bool,
+    ) {
         let paths = self.selected_paths_vec();
         if paths.is_empty() {
             return;
@@ -440,32 +504,53 @@ impl FileBrowser {
         });
         let paths = std::rc::Rc::new(paths);
         let browser = cx.entity();
+        let title = SharedString::from(if permanent {
+            t!("files.delete_permanent.title")
+        } else {
+            t!("files.delete.title")
+        });
+        let confirm = SharedString::from(if permanent {
+            t!("files.delete_permanent.confirm")
+        } else {
+            t!("files.delete.confirm")
+        });
+        let success = SharedString::from(if permanent {
+            t!("files.delete_permanent.success")
+        } else {
+            t!("files.delete.success")
+        });
 
         window.open_alert_dialog(cx, move |alert, _window, _cx| {
             let paths = paths.clone();
             let browser = browser.clone();
+            let title = title.clone();
+            let confirm = confirm.clone();
+            let success = success.clone();
             alert
-                .title(SharedString::from(t!("files.delete.title")))
+                .title(title)
                 .description(description.clone())
                 .button_props(
                     DialogButtonProps::default()
                         .ok_variant(gpui_component::button::ButtonVariant::Danger)
-                        .ok_text(SharedString::from(t!("files.delete.confirm")))
+                        .ok_text(confirm)
                         .cancel_text(SharedString::from(t!("files.cancel")))
                         .show_cancel(true),
                 )
                 .on_ok(move |_dialog, window, cx| {
-                    match delete_paths(paths.as_ref()) {
+                    let success = success.clone();
+                    let delete_result = if permanent {
+                        delete_paths(paths.as_ref())
+                    } else {
+                        recycle_paths(paths.as_ref())
+                    };
+                    match delete_result {
                         Ok(()) => {
                             browser.update(cx, |browser, cx| {
                                 browser.clear_selection();
                                 browser.refresh();
                                 cx.notify();
                             });
-                            window.push_notification(
-                                SharedString::from(t!("files.delete.success")),
-                                cx,
-                            );
+                            window.push_notification(success, cx);
                             true
                         }
                         Err(error) => {
@@ -485,6 +570,10 @@ impl FileBrowser {
 
     fn perform_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.confirm_delete(window, cx);
+    }
+
+    fn perform_delete_permanent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.confirm_delete_permanent(window, cx);
     }
 
     fn set_sort_option(&mut self, option: SortOption) {
@@ -740,6 +829,30 @@ impl FileBrowser {
         cx.notify();
     }
 
+    fn on_delete_permanent(
+        &mut self,
+        _: &DeleteItemsPermanent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.perform_delete_permanent(window, cx);
+        cx.notify();
+    }
+
+    fn on_copy_items(&mut self, _: &CopyItems, _: &mut Window, cx: &mut Context<Self>) {
+        self.copy_items(cx);
+        cx.notify();
+    }
+
+    fn on_cut_items(&mut self, _: &CutItems, _: &mut Window, cx: &mut Context<Self>) {
+        self.cut_items(cx);
+        cx.notify();
+    }
+
+    fn on_paste_items(&mut self, _: &PasteItems, window: &mut Window, cx: &mut Context<Self>) {
+        self.paste_items(window, cx);
+    }
+
     fn on_new_folder(&mut self, _: &NewFolder, window: &mut Window, cx: &mut Context<Self>) {
         self.create_new_folder(window, cx);
         cx.notify();
@@ -838,8 +951,12 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_select_all))
             .on_action(cx.listener(Self::on_rename))
             .on_action(cx.listener(Self::on_delete))
+            .on_action(cx.listener(Self::on_delete_permanent))
             .on_action(cx.listener(Self::on_new_folder))
             .on_action(cx.listener(Self::on_copy_path))
+            .on_action(cx.listener(Self::on_copy_items))
+            .on_action(cx.listener(Self::on_cut_items))
+            .on_action(cx.listener(Self::on_paste_items))
             .on_action(cx.listener(Self::on_navigate_previous))
             .on_action(cx.listener(Self::on_navigate_next))
             .on_action(cx.listener(Self::on_sort_name))
