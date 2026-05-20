@@ -1,0 +1,9 @@
+[package]
+name = "cyberfiles-fs"
+description = "Filesystem model and local enumeration for CyberFiles"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true

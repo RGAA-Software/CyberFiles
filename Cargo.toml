@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/app", "crates/core", "crates/ui"]
+members = ["crates/app", "crates/core", "crates/fs", "crates/ui"]
 default-members = ["crates/app"]
 resolver = "2"
 
@@ -10,6 +10,7 @@ publish = false
 
 [workspace.dependencies]
 cyberfiles-core = { path = "crates/core" }
+cyberfiles-fs = { path = "crates/fs" }
 cyberfiles-ui = { path = "crates/ui" }
 
 # zed-industries/zed
@@ -21,6 +22,7 @@ gpui-component = { path = "../gpui-component/crates/ui" }
 gpui-component-assets = { path = "../gpui-component/crates/assets" }
 
 anyhow = "1.0"
+chrono = "0.4"
 rust-i18n = "4"
 serde = { version = "1", features = ["derive"] }
 sys-locale = "0.3"

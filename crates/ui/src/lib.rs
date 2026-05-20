@@ -1,4 +1,5 @@
 mod app_view;
+mod file_browser;
 mod i18n;
 mod settings_view;
 mod shell;

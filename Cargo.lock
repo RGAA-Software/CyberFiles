@@ -1198,11 +1198,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyberfiles-fs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "cyberfiles-ui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "cyberfiles-core",
+ "cyberfiles-fs",
  "gpui",
  "gpui-component",
  "gpui-component-assets",

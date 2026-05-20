@@ -1,14 +1,14 @@
 use cyberfiles_core::APP_NAME;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Collapsible, Icon, IconName, StyledExt as _, h_flex, v_flex,
+    h_flex,
     input::{Input, InputEvent, InputState},
     resizable::{h_resizable, resizable_panel},
-    sidebar::{
-        Sidebar, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu, SidebarMenuItem,
-    },
+    sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu, SidebarMenuItem},
+    v_flex, ActiveTheme as _, Collapsible, Icon, IconName, StyledExt as _,
 };
 
+use crate::file_browser::FileBrowser;
 use crate::i18n::{nav_description, nav_name};
 use crate::settings_view::build_settings;
 use rust_i18n::t;
@@ -19,51 +19,6 @@ struct NavItem {
     icon: IconName,
 }
 
-fn page_content(id: &str, cx: &App) -> impl IntoElement {
-    match id {
-        "home" => div()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .v_flex()
-            .gap_2()
-            .child(div().text_xl().child(t!("page.home.welcome", app = APP_NAME)))
-            .child(
-                div()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(t!("page.home.overview")),
-            )
-            .into_any_element(),
-        "files" => div()
-            .size_full()
-            .v_flex()
-            .gap_3()
-            .child(div().text_lg().child(t!("page.files.title")))
-            .child(
-                div()
-                    .p_4()
-                    .rounded(cx.theme().radius)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .child(t!("page.files.placeholder")),
-            )
-            .into_any_element(),
-        "settings" => div()
-            .id("settings-page")
-            .size_full()
-            .min_h_0()
-            .overflow_hidden()
-            .child(build_settings(cx))
-            .into_any_element(),
-        _ => div()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .child(t!("page.unknown"))
-            .into_any_element(),
-    }
-}
-
 pub struct AppView {
     main_nav: Vec<NavItem>,
     settings: NavItem,
@@ -71,6 +26,7 @@ pub struct AppView {
     collapsed: bool,
     search_input: Entity<InputState>,
     search_placeholder_locale: String,
+    file_browser: Entity<FileBrowser>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -99,6 +55,8 @@ impl AppView {
             icon: IconName::Settings2,
         };
 
+        let file_browser = cx.new(|_| FileBrowser::new());
+
         Self {
             search_input,
             main_nav,
@@ -106,6 +64,7 @@ impl AppView {
             active_page: "home",
             collapsed: false,
             search_placeholder_locale: crate::i18n::locale().to_string(),
+            file_browser,
             _subscriptions,
         }
     }
@@ -114,7 +73,9 @@ impl AppView {
         if self.active_page == self.settings.id {
             Some(&self.settings)
         } else {
-            self.main_nav.iter().find(|item| item.id == self.active_page)
+            self.main_nav
+                .iter()
+                .find(|item| item.id == self.active_page)
         }
     }
 
@@ -136,6 +97,42 @@ impl AppView {
         self.search_input.update(cx, |state, cx| {
             state.set_placeholder(placeholder, window, cx);
         });
+    }
+
+    fn page_content(&self, id: &str, cx: &Context<Self>) -> AnyElement {
+        match id {
+            "home" => div()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .v_flex()
+                .gap_2()
+                .child(
+                    div()
+                        .text_xl()
+                        .child(t!("page.home.welcome", app = APP_NAME)),
+                )
+                .child(
+                    div()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("page.home.overview")),
+                )
+                .into_any_element(),
+            "files" => self.file_browser.clone().into_any_element(),
+            "settings" => div()
+                .id("settings-page")
+                .size_full()
+                .min_h_0()
+                .overflow_hidden()
+                .child(build_settings(cx))
+                .into_any_element(),
+            _ => div()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .child(t!("page.unknown"))
+                .into_any_element(),
+        }
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -263,27 +260,23 @@ impl Render for AppView {
                             )
                             // Sidebar footer is h_flex (row); without flex_1 the group shrinks to content width.
                             .footer(
-                                v_flex()
-                                    .flex_1()
-                                    .w_full()
-                                    .min_w_0()
-                                    .child(
-                                        SidebarMenu::new()
-                                            .w_full()
-                                            .collapsed(self.collapsed)
-                                            .child(
-                                                SidebarMenuItem::new(nav_name(settings.id))
-                                                    .icon(settings.icon)
-                                                    .active(settings_active)
-                                                    .on_click(cx.listener(
-                                                        move |this, _: &ClickEvent, _, cx| {
-                                                            this.active_page = "settings";
-                                                            cx.notify();
-                                                        },
-                                                    )),
-                                            )
-                                            .render("app-sidebar-settings", window, cx),
-                                    ),
+                                v_flex().flex_1().w_full().min_w_0().child(
+                                    SidebarMenu::new()
+                                        .w_full()
+                                        .collapsed(self.collapsed)
+                                        .child(
+                                            SidebarMenuItem::new(nav_name(settings.id))
+                                                .icon(settings.icon)
+                                                .active(settings_active)
+                                                .on_click(cx.listener(
+                                                    move |this, _: &ClickEvent, _, cx| {
+                                                        this.active_page = "settings";
+                                                        cx.notify();
+                                                    },
+                                                )),
+                                        )
+                                        .render("app-sidebar-settings", window, cx),
+                                ),
                             ),
                     ),
             )
@@ -323,7 +316,7 @@ impl Render for AppView {
                                 this.overflow_y_scroll().p_4()
                             })
                             .when_some(active_item, |this, item| {
-                                this.child(page_content(item.id, cx))
+                                this.child(self.page_content(item.id, cx))
                             }),
                     )
                     .into_any_element(),
