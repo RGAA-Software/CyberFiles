@@ -1,10 +1,16 @@
 # Files Rust Port Plan
 
-This document is the working plan for rebuilding the neighboring `../Files` project in Rust inside CyberFiles. The source project is a WinUI 3 file manager with deep Windows Shell integration, so the port is organized by capability layers instead of direct C# to Rust translation.
+This document is the working plan for **一比一复刻** the neighboring `../Files` project in Rust inside CyberFiles. The source project is a WinUI 3 file manager with deep Windows Shell integration; the port is organized by capability layers instead of direct C# to Rust translation.
+
+## Parity principle (Path B)
+
+- **Product reference is Files, not Explorer.** UI, commands, and workflows should match `../Files` behavior and settings semantics before matching generic Windows shell defaults.
+- **Stack:** Rust + **GPUI** + **gpui-component** for all in-app UI (tabs, toolbar, layouts, context flyouts, settings). Win32/COM lives only in `platform-windows` and is consumed as services (enumerate / invoke), not as replacement UI unless Files does so explicitly.
+- **Context menus:** Files uses in-app `CommandBarFlyout` plus parsed `IContextMenu` items — see [`files-context-menu-parity.md`](files-context-menu-parity.md). Do **not** use `TrackPopupMenu` as the default right-click experience.
 
 ## Goals
 
-- Recreate the user-facing Files experience in a Rust desktop app.
+- Recreate the user-facing **Files** experience in a Rust desktop app (feature parity tracked in `files-parity-roadmap.md`).
 - Keep the core file model and operations UI-toolkit independent.
 - Use GPUI and `gpui-component` for the application shell and controls.
 - Isolate Windows-specific Shell, COM, and Win32 behavior behind platform crates.
@@ -13,7 +19,7 @@ This document is the working plan for rebuilding the neighboring `../Files` proj
 ## Non-Goals For The First Milestones
 
 - Do not implement Windows Open/Save dialog replacement first.
-- Do not implement a full native Shell context menu first.
+- Do not default to Explorer-style native `TrackPopupMenu` context menus (Shell items are merged into GPUI menus per Files).
 - Do not implement every cloud provider, FTP, archive, Git, and tag feature before the local file browser is stable.
 - Do not copy the WinUI MVVM structure one-to-one. The Rust version should use explicit state, commands, and services that fit GPUI.
 
@@ -242,7 +248,7 @@ Deliverables:
 - Drive metadata.
 - Recycle bin integration.
 - Shortcut metadata.
-- Native Shell context menu bridge.
+- Files-style context flyout: GPUI menu + `query_shell_context_menu_items` merge (see `files-context-menu-parity.md`).
 
 Done when:
 
@@ -282,4 +288,4 @@ Each step should compile independently and preserve the existing settings/theme 
 - **MainPage**：TabBar、侧栏、Omnibar、双栏 `ShellPanes`、InfoPane（Details + Preview）、StatusBar。
 - **M3**：新建文件、应用内复制/剪切/粘贴、回收站删除（`trash`）、Pinned 写入 `settings.json`。
 - **M4（首轮）**：`notify` 目录监视、`filter_items_by_query` 搜索框、详情/网格视图切换。
-- **`platform-windows` crate**：图标类型提示、CF_HDROP 粘贴、回收站 Shell 枚举、`SHCreateDefaultContextMenu` 右键菜单、属性对话框。
+- **`platform-windows` crate**：图标类型提示、CF_HDROP 粘贴、回收站 Shell 枚举、Shell 菜单查询/invoke（供 GPUI 右键合并）、属性对话框。

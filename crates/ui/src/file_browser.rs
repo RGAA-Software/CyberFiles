@@ -35,6 +35,7 @@ use gpui_component::{
     dialog::DialogButtonProps,
     h_flex,
     input::{Input, InputState},
+    menu::{ContextMenuExt, PopupMenu},
     scroll::{ScrollableElement as _, ScrollbarAxis},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     VirtualListScrollHandle, WindowExt as _,
@@ -983,7 +984,6 @@ impl FileBrowser {
         let kind = item.kind;
         let name = item.display_name.clone();
         let item_click = item.clone();
-        let aux_path = item.path.clone();
         h_flex()
             .id(format!("file-column-row-{col_index}-{name}"))
             .w_full()
@@ -1004,12 +1004,6 @@ impl FileBrowser {
                 } else if event.click_count() == 2 {
                     this.open_item(item_click.path.clone(), kind);
                 }
-                cx.notify();
-            }))
-            .on_aux_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                this.selected_paths.clear();
-                this.selected_paths.insert(aux_path.clone());
-                this.show_native_shell_context_menu(window, cx);
                 cx.notify();
             }))
             .on_drag(DraggedFilePaths(drag_paths), |paths, _offset, _window, cx| {
@@ -1179,9 +1173,6 @@ impl FileBrowser {
                 }
                 cx.notify();
             }))
-            .on_aux_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                this.on_aux_click_item(index, event, window, cx);
-            }))
             .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
                 cx.new(|_| DragPathPreview {
                     label: drag_preview_label(&paths.0).into(),
@@ -1278,9 +1269,6 @@ impl FileBrowser {
                     this.handle_row_click(index, event);
                 }
                 cx.notify();
-            }))
-            .on_aux_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                this.on_aux_click_item(index, event, window, cx);
             }))
             .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
                 cx.new(|_| DragPathPreview {
@@ -1524,7 +1512,26 @@ impl FileBrowser {
         }
     }
 
-    fn show_native_shell_context_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Files-style item context flyout. Shell COM work must not run on the UI thread
+    /// (see `files-context-menu-parity.md`); extension merge is a follow-up.
+    fn item_context_menu(&self, menu: PopupMenu) -> PopupMenu {
+        menu.menu(t!("files.menu.open"), Box::new(OpenItem))
+            .menu(t!("files.menu.rename"), Box::new(RenameItem))
+            .separator()
+            .menu(t!("files.menu.copy"), Box::new(CopyItems))
+            .menu(t!("files.menu.cut"), Box::new(CutItems))
+            .menu(t!("files.menu.paste"), Box::new(PasteItems))
+            .separator()
+            .menu(t!("files.menu.delete"), Box::new(DeleteItems))
+            .menu(t!("files.menu.properties"), Box::new(ShellProperties))
+    }
+
+    fn on_shell_context_menu(
+        &mut self,
+        _: &ShellContextMenu,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let paths = self.selected_paths_vec();
         if paths.is_empty() {
             return;
@@ -1535,40 +1542,7 @@ impl FileBrowser {
                 cx,
             );
         }
-    }
-
-    fn on_aux_click_item(
-        &mut self,
-        index: usize,
-        event: &ClickEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(item) = self.display_items.get(index) else {
-            return;
-        };
-        let path = item.path.clone();
-        if !event.modifiers().shift && !event.modifiers().secondary() {
-            if !self.selected_paths.contains(&path) {
-                self.selected_paths.clear();
-                self.selected_paths.insert(path);
-                self.anchor_index = Some(index);
-                self.focused_index = Some(index);
-            }
-        } else {
-            self.handle_row_click(index, event);
-        }
-        self.show_native_shell_context_menu(window, cx);
-        cx.notify();
-    }
-
-    fn on_shell_context_menu(
-        &mut self,
-        _: &ShellContextMenu,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.show_native_shell_context_menu(window, cx);
+        let _ = cx;
     }
 }
 
@@ -1589,6 +1563,7 @@ impl Render for FileBrowser {
         let show_hidden = self.read_options.show_hidden_items;
         let sort_label = self.sort_label();
         let in_recycle_bin = self.browse_location == BrowseLocation::RecycleBin;
+        let browser = cx.entity();
 
         v_flex()
             .id("files-page")
@@ -1811,6 +1786,9 @@ impl Render for FileBrowser {
                     .overflow_hidden()
                     .child(self.file_list(cx)),
             )
+            .context_menu(move |menu, _window, menu_cx| {
+                browser.read(menu_cx).item_context_menu(menu)
+            })
     }
 }
 

@@ -6,17 +6,32 @@ use windows::core::{Interface, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{BOOL, HWND, POINT};
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Shell::{
-    CMINVOKECOMMANDINFO, CMF_NORMAL, IContextMenu, IContextMenu3, ILFree, IShellFolder,
-    SHBindToParent, SHCreateDefaultContextMenu, DEFCONTEXTMENU, SHParseDisplayName,
+    CMINVOKECOMMANDINFO, CMF_EXTENDEDVERBS, CMF_NORMAL, IContextMenu, IContextMenu3,
+    ILFree, IShellFolder, SHBindToParent, SHCreateDefaultContextMenu, DEFCONTEXTMENU,
+    SHParseDisplayName,
 };
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreatePopupMenu, DestroyMenu, GetCursorPos, GetForegroundWindow, SetForegroundWindow,
-    TrackPopupMenu, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    CreatePopupMenu, DestroyMenu, GetCursorPos, GetForegroundWindow, GetMenuItemCount,
+    GetMenuItemInfoW, SetForegroundWindow, TrackPopupMenu, HMENU, MENUITEMINFOW, MFT_SEPARATOR,
+    MFT_STRING, MF_POPUP, MIIM_FTYPE, MIIM_ID, MIIM_STRING, TPM_LEFTALIGN, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON,
 };
 
 const CMD_FIRST: u32 = 1;
 const CMD_LAST: u32 = 0x7fff;
+const MAX_SHELL_MENU_ITEMS: usize = 32;
+
+/// One row in a Files-style merged context flyout (not a native `TrackPopupMenu` surface).
+#[derive(Debug, Clone)]
+pub enum ShellContextMenuEntry {
+    Separator,
+    Item {
+        label: String,
+        command_offset: u32,
+        command_string: Option<String>,
+    },
+}
 
 fn path_to_wide(path: &Path) -> Vec<u16> {
     OsStr::new(path)
@@ -51,25 +66,54 @@ unsafe fn free_pidl(pidl: *mut ITEMIDLIST) {
     }
 }
 
-/// Shows the Explorer system context menu for local paths in the same folder.
-pub fn show_shell_context_menu(paths: &[PathBuf]) -> anyhow::Result<()> {
-    if paths.is_empty() {
-        return Ok(());
+fn should_skip_shell_verb(command_string: Option<&str>, label: &str) -> bool {
+    const KNOWN: &[&str] = &[
+        "open",
+        "opennew",
+        "opencontaining",
+        "opennewprocess",
+        "runas",
+        "runasuser",
+        "cut",
+        "copy",
+        "paste",
+        "delete",
+        "properties",
+        "link",
+        "rename",
+        "explore",
+        "openinfiles",
+        "extract",
+        "copyaspath",
+        "undelete",
+        "empty",
+        "format",
+    ];
+    if let Some(verb) = command_string {
+        if KNOWN.iter().any(|k| verb.eq_ignore_ascii_case(k)) {
+            return true;
+        }
     }
+    let lower = label.to_ascii_lowercase();
+    KNOWN.iter().any(|k| lower == *k)
+}
 
-    if !same_parent(paths) {
-        return show_shell_context_menu_fallback(paths);
-    }
+struct ContextMenuHandle {
+    menu: IContextMenu,
+    popup: HMENU,
+    child_pidls: Vec<*mut ITEMIDLIST>,
+}
 
-    unsafe {
-        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
-        let result = show_shell_context_menu_inner(paths);
-        CoUninitialize();
-        result
+impl ContextMenuHandle {
+    unsafe fn release(self) {
+        let _ = DestroyMenu(self.popup);
+        for pidl in self.child_pidls {
+            free_pidl(pidl);
+        }
     }
 }
 
-unsafe fn show_shell_context_menu_inner(paths: &[PathBuf]) -> anyhow::Result<()> {
+unsafe fn create_context_menu(paths: &[PathBuf], extended_verbs: bool) -> anyhow::Result<ContextMenuHandle> {
     let (parent_sf, first_child) = bind_parent_and_relative(&paths[0])?;
     let mut child_pidls = vec![first_child];
 
@@ -100,14 +144,152 @@ unsafe fn show_shell_context_menu_inner(paths: &[PathBuf]) -> anyhow::Result<()>
     let _menu3: IContextMenu3 = menu.cast()?;
 
     let popup = CreatePopupMenu()?;
-    menu.QueryContextMenu(popup, 0, CMD_FIRST, CMD_LAST, CMF_NORMAL)?;
+    let flags = if extended_verbs {
+        CMF_NORMAL | CMF_EXTENDEDVERBS
+    } else {
+        CMF_NORMAL
+    };
+    menu.QueryContextMenu(popup, 0, CMD_FIRST, CMD_LAST, flags)?;
+
+    Ok(ContextMenuHandle {
+        menu,
+        popup,
+        child_pidls,
+    })
+}
+
+unsafe fn enumerate_popup_menu(popup: HMENU) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    let count = GetMenuItemCount(popup);
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    let mut info = MENUITEMINFOW {
+        cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
+        fMask: MIIM_FTYPE | MIIM_ID | MIIM_STRING,
+        ..Default::default()
+    };
+
+    for index in 0..count as u32 {
+        if entries.len() >= MAX_SHELL_MENU_ITEMS {
+            break;
+        }
+
+        let mut label_buf = [0u16; 512];
+        info.dwTypeData = windows::core::PWSTR(label_buf.as_mut_ptr());
+        info.cch = label_buf.len() as u32;
+
+        if GetMenuItemInfoW(popup, index, true, &mut info).is_err() {
+            continue;
+        }
+
+        if info.fType.0 & MFT_SEPARATOR.0 != 0 {
+            entries.push(ShellContextMenuEntry::Separator);
+            continue;
+        }
+
+        if info.fType.0 & MF_POPUP.0 != 0 {
+            continue;
+        }
+
+        if info.fType.0 & MFT_STRING.0 == 0 {
+            continue;
+        }
+
+        let label_len = label_buf.iter().position(|&c| c == 0).unwrap_or(0);
+        let label = String::from_utf16_lossy(&label_buf[..label_len]);
+        let command_offset = info.wID.saturating_sub(CMD_FIRST);
+
+        if should_skip_shell_verb(None, &label) {
+            continue;
+        }
+
+        entries.push(ShellContextMenuEntry::Item {
+            label,
+            command_offset,
+            command_string: None,
+        });
+    }
+
+    Ok(entries)
+}
+
+/// Enumerates Shell context menu entries for merging into a GPUI flyout (Files-style).
+pub fn query_shell_context_menu_items(
+    paths: &[PathBuf],
+    extended_verbs: bool,
+) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    if paths.is_empty() || !same_parent(paths) {
+        return Ok(Vec::new());
+    }
+
+    unsafe {
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
+        let result = (|| {
+            let handle = create_context_menu(paths, extended_verbs)?;
+            let entries = enumerate_popup_menu(handle.popup)?;
+            handle.release();
+            Ok(entries)
+        })();
+        CoUninitialize();
+        result
+    }
+}
+
+/// Invokes one Shell menu command by offset (from [`query_shell_context_menu_items`]).
+pub fn invoke_shell_context_menu_item(paths: &[PathBuf], command_offset: u32) -> anyhow::Result<()> {
+    if paths.is_empty() || !same_parent(paths) {
+        anyhow::bail!("invalid paths for shell menu invoke");
+    }
+
+    unsafe {
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
+        let result = (|| {
+            let handle = create_context_menu(paths, false)?;
+            let hwnd = GetForegroundWindow();
+            let mut info = CMINVOKECOMMANDINFO::default();
+            info.cbSize = std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32;
+            info.hwnd = hwnd;
+            info.lpVerb = PCSTR::from_raw(command_offset as usize as *const u8);
+            info.nShow = 1;
+            handle.menu.InvokeCommand(&info)?;
+            handle.release();
+            Ok(())
+        })();
+        CoUninitialize();
+        result
+    }
+}
+
+/// Optional Explorer-style popup (not the default Files parity UX).
+pub fn show_shell_context_menu(paths: &[PathBuf]) -> anyhow::Result<()> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    if !same_parent(paths) {
+        return show_shell_context_menu_fallback(paths);
+    }
+
+    unsafe {
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
+        let result = show_shell_context_menu_inner(paths);
+        CoUninitialize();
+        result
+    }
+}
+
+unsafe fn show_shell_context_menu_inner(paths: &[PathBuf]) -> anyhow::Result<()> {
+    let handle = create_context_menu(paths, false)?;
+    let hwnd = GetForegroundWindow();
 
     let mut cursor = POINT::default();
     GetCursorPos(&mut cursor)?;
     let _ = SetForegroundWindow(hwnd);
 
     let cmd = TrackPopupMenu(
-        popup,
+        handle.popup,
         TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON,
         cursor.x,
         cursor.y,
@@ -117,10 +299,7 @@ unsafe fn show_shell_context_menu_inner(paths: &[PathBuf]) -> anyhow::Result<()>
     );
 
     if cmd == BOOL(0) {
-        DestroyMenu(popup)?;
-        for pidl in child_pidls {
-            free_pidl(pidl);
-        }
+        handle.release();
         return Ok(());
     }
 
@@ -130,14 +309,8 @@ unsafe fn show_shell_context_menu_inner(paths: &[PathBuf]) -> anyhow::Result<()>
     info.hwnd = hwnd;
     info.lpVerb = PCSTR::from_raw(offset as usize as *const u8);
     info.nShow = 1;
-    menu.InvokeCommand(&info)?;
-
-    DestroyMenu(popup)?;
-
-    for pidl in child_pidls {
-        free_pidl(pidl);
-    }
-
+    handle.menu.InvokeCommand(&info)?;
+    handle.release();
     Ok(())
 }
 

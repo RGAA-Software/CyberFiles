@@ -29,7 +29,11 @@ pub fn open_item_properties(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Invokes the system context menu at the cursor for the given paths.
+pub use crate::context_menu::{
+    invoke_shell_context_menu_item, query_shell_context_menu_items, ShellContextMenuEntry,
+};
+
+/// Optional Explorer-style popup at the cursor (not the default Files parity UX).
 pub fn show_shell_context_menu(paths: &[std::path::PathBuf]) -> anyhow::Result<()> {
     crate::context_menu::show_shell_context_menu(paths)
         .or_else(|_| crate::context_menu::show_shell_context_menu_fallback(paths))

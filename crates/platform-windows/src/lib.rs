@@ -22,7 +22,10 @@ pub use paths::{is_recycle_bin_path, recycle_bin_folder};
 #[cfg(windows)]
 pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 #[cfg(windows)]
-pub use shell::{open_item_properties, show_shell_context_menu};
+pub use shell::{
+    invoke_shell_context_menu_item, open_item_properties, query_shell_context_menu_items,
+    show_shell_context_menu, ShellContextMenuEntry,
+};
 
 #[cfg(not(windows))]
 pub use stubs::*;
@@ -58,6 +61,30 @@ mod stubs {
     }
 
     pub fn show_shell_context_menu(_paths: &[PathBuf]) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum ShellContextMenuEntry {
+        Separator,
+        Item {
+            label: String,
+            command_offset: u32,
+            command_string: Option<String>,
+        },
+    }
+
+    pub fn query_shell_context_menu_items(
+        _paths: &[PathBuf],
+        _extended_verbs: bool,
+    ) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+        Ok(Vec::new())
+    }
+
+    pub fn invoke_shell_context_menu_item(
+        _paths: &[PathBuf],
+        _command_offset: u32,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 
