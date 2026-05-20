@@ -1188,6 +1188,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyberfiles-commands"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+]
+
+[[package]]
 name = "cyberfiles-core"
 version = "0.1.0"
 dependencies = [
@@ -1210,6 +1217,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "cyberfiles-commands",
  "cyberfiles-core",
  "cyberfiles-fs",
  "gpui",

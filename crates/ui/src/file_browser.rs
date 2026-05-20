@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::time::SystemTime;
 use std::{
     path::{Path, PathBuf},
@@ -5,52 +6,99 @@ use std::{
 };
 
 use chrono::{DateTime, Local};
-use cyberfiles_fs::{read_directory, DirectoryReadOptions, FileItem, FileItemKind};
-use gpui::{prelude::*, *};
+use cyberfiles_commands::{
+    CopyPath, DeleteItems, NavigateBack, NavigateForward, NavigateNext, NavigatePrevious,
+    NavigateUp, NewFolder, OpenItem, RefreshDirectory, RenameItem, SelectAll, FILE_BROWSER,
+};
+use cyberfiles_fs::{
+    create_directory, delete_paths, read_directory, rename_path, unique_new_folder_name,
+    DirectoryReadOptions, FileItem, FileItemKind, SortDirection, SortOption, SortPreferences,
+};
+use gpui::{
+    actions, prelude::*, ClipboardItem, ClickEvent, Entity, FocusHandle,
+    Focusable, ParentElement, ScrollStrategy, Subscription, Window, *,
+};
 use gpui_component::{
-    button::{Button, ButtonVariants as _},
+    button::{Button, ButtonVariants as _, DropdownButton},
+    dialog::DialogButtonProps,
     h_flex,
+    input::{Input, InputState},
     scroll::{ScrollableElement as _, ScrollbarAxis},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
-    VirtualListScrollHandle,
+    VirtualListScrollHandle, WindowExt as _,
 };
+use rust_i18n::t;
+
+actions!(
+    file_browser_prefs,
+    [
+        SortByName,
+        SortByModified,
+        SortBySize,
+        SortByType,
+        ToggleSortDirection,
+        ToggleShowHidden,
+    ]
+);
 
 const FILE_ROW_SIZE: Size<Pixels> = size(px(1.), px(36.));
 
+struct RenameState {
+    path: PathBuf,
+    input: Entity<InputState>,
+}
+
 pub struct FileBrowser {
+    focus_handle: FocusHandle,
     current_dir: PathBuf,
     back_stack: Vec<PathBuf>,
     forward_stack: Vec<PathBuf>,
     items: Vec<FileItem>,
+    read_options: DirectoryReadOptions,
+    sort_preferences: SortPreferences,
     item_sizes: Rc<Vec<Size<Pixels>>>,
     scroll_handle: VirtualListScrollHandle,
     error: Option<String>,
-    selected_path: Option<PathBuf>,
+    selected_paths: BTreeSet<PathBuf>,
+    anchor_index: Option<usize>,
+    focused_index: Option<usize>,
+    renaming: Option<RenameState>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl FileBrowser {
-    pub fn new() -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         let current_dir = default_files_dir();
-        let (items, error) = load_files_dir(&current_dir);
+        let (items, error) = load_files_dir(&current_dir, DirectoryReadOptions::default(), SortPreferences::default());
+        let focused_index = items.first().map(|_| 0);
 
         Self {
+            focus_handle: cx.focus_handle(),
             current_dir,
             back_stack: Vec::new(),
             forward_stack: Vec::new(),
             item_sizes: item_sizes_for(items.len()),
             scroll_handle: VirtualListScrollHandle::new(),
             items,
+            read_options: DirectoryReadOptions::default(),
+            sort_preferences: SortPreferences::default(),
             error,
-            selected_path: None,
+            selected_paths: BTreeSet::new(),
+            anchor_index: focused_index,
+            focused_index,
+            renaming: None,
+            _subscriptions: Vec::new(),
         }
     }
 
     fn refresh(&mut self) {
-        let (items, error) = load_files_dir(&self.current_dir);
+        let (items, error) =
+            load_files_dir(&self.current_dir, self.read_options, self.sort_preferences);
         self.item_sizes = item_sizes_for(items.len());
         self.items = items;
         self.error = error;
         self.reconcile_selection();
+        self.clamp_focused_index();
     }
 
     fn navigate_to(&mut self, path: PathBuf) {
@@ -61,7 +109,7 @@ impl FileBrowser {
         self.back_stack.push(self.current_dir.clone());
         self.forward_stack.clear();
         self.current_dir = path;
-        self.selected_path = None;
+        self.clear_selection();
         self.refresh();
     }
 
@@ -72,7 +120,7 @@ impl FileBrowser {
 
         self.forward_stack.push(self.current_dir.clone());
         self.current_dir = path;
-        self.selected_path = None;
+        self.clear_selection();
         self.refresh();
     }
 
@@ -83,7 +131,7 @@ impl FileBrowser {
 
         self.back_stack.push(self.current_dir.clone());
         self.current_dir = path;
-        self.selected_path = None;
+        self.clear_selection();
         self.refresh();
     }
 
@@ -93,8 +141,46 @@ impl FileBrowser {
         }
     }
 
-    fn select_path(&mut self, path: PathBuf) {
-        self.selected_path = Some(path);
+    fn clear_selection(&mut self) {
+        self.selected_paths.clear();
+        self.anchor_index = None;
+        self.focused_index = self.items.first().map(|_| 0);
+    }
+
+    fn handle_row_click(&mut self, index: usize, event: &ClickEvent) {
+        let Some(item) = self.items.get(index) else {
+            return;
+        };
+        let path = item.path.clone();
+        let modifiers = event.modifiers();
+
+        if modifiers.shift {
+            let anchor = self.anchor_index.unwrap_or(index);
+            let (start, end) = if anchor <= index {
+                (anchor, index)
+            } else {
+                (index, anchor)
+            };
+            self.selected_paths.clear();
+            for i in start..=end {
+                if let Some(item) = self.items.get(i) {
+                    self.selected_paths.insert(item.path.clone());
+                }
+            }
+        } else if modifiers.secondary() {
+            if self.selected_paths.contains(&path) {
+                self.selected_paths.remove(&path);
+            } else {
+                self.selected_paths.insert(path.clone());
+            }
+            self.anchor_index = Some(index);
+        } else {
+            self.selected_paths.clear();
+            self.selected_paths.insert(path);
+            self.anchor_index = Some(index);
+        }
+
+        self.focused_index = Some(index);
     }
 
     fn open_item(&mut self, path: PathBuf, kind: FileItemKind) {
@@ -108,15 +194,236 @@ impl FileBrowser {
         }
     }
 
+    fn open_focused(&mut self) {
+        let Some(index) = self.focused_index else {
+            return;
+        };
+        let Some(item) = self.items.get(index) else {
+            return;
+        };
+        self.open_item(item.path.clone(), item.kind);
+    }
+
     fn reconcile_selection(&mut self) {
-        if let Some(selected_path) = &self.selected_path {
-            if !self.items.iter().any(|item| &item.path == selected_path) {
-                self.selected_path = None;
+        self.selected_paths
+            .retain(|path| self.items.iter().any(|item| &item.path == path));
+        if self.selected_paths.is_empty() {
+            if let Some(index) = self.focused_index {
+                if index >= self.items.len() {
+                    self.focused_index = self.items.first().map(|_| 0);
+                }
             }
         }
     }
 
-    fn table(&self, cx: &Context<Self>) -> impl IntoElement {
+    fn clamp_focused_index(&mut self) {
+        if self.items.is_empty() {
+            self.focused_index = None;
+            return;
+        }
+        if self.focused_index.is_none() {
+            self.focused_index = Some(0);
+        }
+        if let Some(index) = self.focused_index {
+            if index >= self.items.len() {
+                self.focused_index = Some(self.items.len() - 1);
+            }
+        }
+    }
+
+    fn move_focus(&mut self, delta: isize) {
+        if self.items.is_empty() {
+            return;
+        }
+        let index = self.focused_index.unwrap_or(0);
+        let next = (index as isize + delta).clamp(0, self.items.len() as isize - 1) as usize;
+        self.focused_index = Some(next);
+        self.scroll_handle
+            .scroll_to_item(next, ScrollStrategy::Center);
+    }
+
+    fn select_all(&mut self) {
+        self.selected_paths = self.items.iter().map(|item| item.path.clone()).collect();
+        if let Some(index) = self.focused_index {
+            self.anchor_index = Some(index);
+        } else if !self.items.is_empty() {
+            self.anchor_index = Some(0);
+            self.focused_index = Some(0);
+        }
+    }
+
+    fn primary_path(&self) -> Option<PathBuf> {
+        if let Some(index) = self.focused_index {
+            return self.items.get(index).map(|item| item.path.clone());
+        }
+        self.selected_paths.iter().next().cloned()
+    }
+
+    fn selected_paths_vec(&self) -> Vec<PathBuf> {
+        if !self.selected_paths.is_empty() {
+            return self.selected_paths.iter().cloned().collect();
+        }
+        self.primary_path().into_iter().collect()
+    }
+
+    fn begin_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = self.primary_path() else {
+            return;
+        };
+        let default_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let input = cx.new(|cx| {
+            InputState::new(window, cx).default_value(default_name)
+        });
+        self.renaming = Some(RenameState { path, input });
+    }
+
+    fn commit_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(renaming) = self.renaming.take() else {
+            return;
+        };
+        let new_name = renaming.input.read(cx).value();
+        match rename_path(&renaming.path, &new_name) {
+            Ok(target) => {
+                self.error = None;
+                if self.selected_paths.remove(&renaming.path) {
+                    self.selected_paths.insert(target);
+                }
+                self.refresh();
+                window.push_notification(SharedString::from(t!("files.rename.success")), cx);
+            }
+            Err(error) => {
+                self.error = Some(error.to_string());
+                self.renaming = Some(renaming);
+            }
+        }
+    }
+
+    fn cancel_rename(&mut self) {
+        self.renaming = None;
+    }
+
+    fn create_new_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let name = unique_new_folder_name(&self.current_dir);
+        match create_directory(&self.current_dir, &name) {
+            Ok(path) => {
+                self.error = None;
+                self.refresh();
+                if let Some(index) = self.items.iter().position(|item| item.path == path) {
+                    self.focused_index = Some(index);
+                    self.selected_paths.clear();
+                    self.selected_paths.insert(path);
+                    self.anchor_index = self.focused_index;
+                    self.begin_rename(window, cx);
+                } else {
+                    window.push_notification(
+                        SharedString::from(t!("files.new_folder.success")),
+                        cx,
+                    );
+                }
+            }
+            Err(error) => self.error = Some(error.to_string()),
+        }
+    }
+
+    fn copy_paths(&mut self, cx: &mut Context<Self>) {
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
+            return;
+        }
+        let text = paths
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+    }
+
+    fn confirm_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
+            return;
+        }
+
+        let count = paths.len();
+        let description = SharedString::from(if count == 1 {
+            paths[0].display().to_string()
+        } else {
+            t!("files.delete.description_many", count = count).to_string()
+        });
+        let paths = std::rc::Rc::new(paths);
+        let browser = cx.entity();
+
+        window.open_alert_dialog(cx, move |alert, _window, _cx| {
+            let paths = paths.clone();
+            let browser = browser.clone();
+            alert
+                .title(SharedString::from(t!("files.delete.title")))
+                .description(description.clone())
+                .button_props(
+                    DialogButtonProps::default()
+                        .ok_variant(gpui_component::button::ButtonVariant::Danger)
+                        .ok_text(SharedString::from(t!("files.delete.confirm")))
+                        .cancel_text(SharedString::from(t!("files.cancel")))
+                        .show_cancel(true),
+                )
+                .on_ok(move |_dialog, window, cx| {
+                    match delete_paths(paths.as_ref()) {
+                        Ok(()) => {
+                            browser.update(cx, |browser, cx| {
+                                browser.clear_selection();
+                                browser.refresh();
+                                cx.notify();
+                            });
+                            window.push_notification(
+                                SharedString::from(t!("files.delete.success")),
+                                cx,
+                            );
+                            true
+                        }
+                        Err(error) => {
+                            window.push_notification(
+                                SharedString::from(format!(
+                                    "{}: {error}",
+                                    t!("files.delete.error")
+                                )),
+                                cx,
+                            );
+                            false
+                        }
+                    }
+                })
+        });
+    }
+
+    fn perform_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.confirm_delete(window, cx);
+    }
+
+    fn set_sort_option(&mut self, option: SortOption) {
+        self.sort_preferences.option = option;
+        self.refresh();
+    }
+
+    fn sort_label(&self) -> String {
+        let field = match self.sort_preferences.option {
+            SortOption::Name => t!("files.sort.name"),
+            SortOption::DateModified => t!("files.sort.modified"),
+            SortOption::DateCreated => t!("files.sort.created"),
+            SortOption::Size => t!("files.sort.size"),
+            SortOption::FileType => t!("files.sort.type"),
+            SortOption::Path => t!("files.sort.path"),
+        };
+        let arrow = match self.sort_preferences.direction {
+            SortDirection::Ascending => "↑",
+            SortDirection::Descending => "↓",
+        };
+        format!("{field} {arrow}")
+    }
+
+    fn table(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .flex_1()
             .min_h_0()
@@ -134,10 +441,10 @@ impl FileBrowser {
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .child(div().w(px(28.)).flex_none())
-                    .child(div().flex_1().min_w_0().child("Name"))
-                    .child(div().w(px(110.)).child("Type"))
-                    .child(div().w(px(100.)).child("Size"))
-                    .child(div().w(px(150.)).child("Modified"))
+                    .child(div().flex_1().min_w_0().child(t!("files.column.name")))
+                    .child(div().w(px(110.)).child(t!("files.column.type")))
+                    .child(div().w(px(100.)).child(t!("files.column.size")))
+                    .child(div().w(px(150.)).child(t!("files.column.modified")))
                     .child(div().w(px(40.)).flex_none()),
             )
             .child(
@@ -151,12 +458,14 @@ impl FileBrowser {
                             "files-virtual-list",
                             self.item_sizes.clone(),
                             |this, visible_range, _, cx| {
+                                let focused_index = this.focused_index;
                                 visible_range
                                     .filter_map(|index| {
                                         let item = this.items.get(index)?.clone();
                                         let selected =
-                                            this.selected_path.as_ref() == Some(&item.path);
-                                        Some(Self::row(index, item, selected, cx))
+                                            this.selected_paths.contains(&item.path);
+                                        let focused = focused_index == Some(index);
+                                        Some(Self::row(index, item, selected, focused, cx))
                                     })
                                     .collect()
                             },
@@ -167,8 +476,13 @@ impl FileBrowser {
             )
     }
 
-    fn row(index: usize, item: FileItem, selected: bool, cx: &mut Context<Self>) -> AnyElement {
-        let selected_path = item.path.clone();
+    fn row(
+        index: usize,
+        item: FileItem,
+        selected: bool,
+        focused: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let open_path = item.path.clone();
         let double_click_path = item.path.clone();
         let kind = item.kind;
@@ -177,7 +491,6 @@ impl FileBrowser {
             FileItemKind::Symlink => IconName::ExternalLink,
             FileItemKind::File | FileItemKind::Other => IconName::File,
         };
-
         h_flex()
             .id(("file-row", index))
             .w_full()
@@ -189,7 +502,7 @@ impl FileBrowser {
             .border_b_1()
             .border_color(cx.theme().border)
             .hover(|this| this.bg(cx.theme().accent))
-            .when(selected, |this| {
+            .when(selected || focused, |this| {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
@@ -197,7 +510,7 @@ impl FileBrowser {
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind);
                 } else {
-                    this.select_path(selected_path.clone());
+                    this.handle_row_click(index, event);
                 }
                 cx.notify();
             }))
@@ -256,25 +569,205 @@ impl FileBrowser {
             )
             .into_any_element()
     }
+
+    fn rename_bar(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let renaming = self.renaming.as_ref()?;
+        Some(
+            h_flex()
+                .gap_2()
+                .items_center()
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("files.rename.prompt")),
+                )
+                .child(div().flex_1().child(Input::new(&renaming.input)))
+                .child(
+                    Button::new("rename-confirm")
+                        .small()
+                        .primary()
+                        .label(t!("files.rename.confirm"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.commit_rename(window, cx);
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("rename-cancel")
+                        .small()
+                        .ghost()
+                        .label(t!("files.cancel"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cancel_rename();
+                            cx.notify();
+                        })),
+                )
+                .into_any_element(),
+        )
+    }
+}
+
+impl Focusable for FileBrowser {
+    fn focus_handle(&self, _: &gpui::App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl FileBrowser {
+    fn on_navigate_back(&mut self, _: &NavigateBack, _: &mut Window, cx: &mut Context<Self>) {
+        self.navigate_back();
+        cx.notify();
+    }
+
+    fn on_navigate_forward(&mut self, _: &NavigateForward, _: &mut Window, cx: &mut Context<Self>) {
+        self.navigate_forward();
+        cx.notify();
+    }
+
+    fn on_navigate_up(&mut self, _: &NavigateUp, _: &mut Window, cx: &mut Context<Self>) {
+        self.navigate_parent();
+        cx.notify();
+    }
+
+    fn on_refresh(&mut self, _: &RefreshDirectory, _: &mut Window, cx: &mut Context<Self>) {
+        self.refresh();
+        cx.notify();
+    }
+
+    fn on_open_item(&mut self, _: &OpenItem, _: &mut Window, cx: &mut Context<Self>) {
+        self.open_focused();
+        cx.notify();
+    }
+
+    fn on_select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
+        self.select_all();
+        cx.notify();
+    }
+
+    fn on_rename(&mut self, _: &RenameItem, window: &mut Window, cx: &mut Context<Self>) {
+        self.begin_rename(window, cx);
+        cx.notify();
+    }
+
+    fn on_delete(&mut self, _: &DeleteItems, window: &mut Window, cx: &mut Context<Self>) {
+        self.perform_delete(window, cx);
+        cx.notify();
+    }
+
+    fn on_new_folder(&mut self, _: &NewFolder, window: &mut Window, cx: &mut Context<Self>) {
+        self.create_new_folder(window, cx);
+        cx.notify();
+    }
+
+    fn on_copy_path(&mut self, _: &CopyPath, _: &mut Window, cx: &mut Context<Self>) {
+        self.copy_paths(cx);
+    }
+
+    fn on_navigate_previous(
+        &mut self,
+        _: &NavigatePrevious,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.move_focus(-1);
+        cx.notify();
+    }
+
+    fn on_navigate_next(&mut self, _: &NavigateNext, _: &mut Window, cx: &mut Context<Self>) {
+        self.move_focus(1);
+        cx.notify();
+    }
+
+    fn on_sort_name(&mut self, _: &SortByName, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_sort_option(SortOption::Name);
+        cx.notify();
+    }
+
+    fn on_sort_modified(&mut self, _: &SortByModified, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_sort_option(SortOption::DateModified);
+        cx.notify();
+    }
+
+    fn on_sort_size(&mut self, _: &SortBySize, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_sort_option(SortOption::Size);
+        cx.notify();
+    }
+
+    fn on_sort_type(&mut self, _: &SortByType, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_sort_option(SortOption::FileType);
+        cx.notify();
+    }
+
+    fn on_toggle_sort_direction(
+        &mut self,
+        _: &ToggleSortDirection,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.sort_preferences.direction = match self.sort_preferences.direction {
+            SortDirection::Ascending => SortDirection::Descending,
+            SortDirection::Descending => SortDirection::Ascending,
+        };
+        self.refresh();
+        cx.notify();
+    }
+
+    fn on_toggle_show_hidden(
+        &mut self,
+        _: &ToggleShowHidden,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.read_options.show_hidden_items = !self.read_options.show_hidden_items;
+        self.read_options.show_dot_files = self.read_options.show_hidden_items;
+        self.refresh();
+        cx.notify();
+    }
 }
 
 impl Render for FileBrowser {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let current_dir = self.current_dir.to_string_lossy().to_string();
         let can_go_back = !self.back_stack.is_empty();
         let can_go_forward = !self.forward_stack.is_empty();
         let can_go_up = self.current_dir.parent().is_some();
-        let selected_count = usize::from(self.selected_path.is_some());
+        let selected_count = self.selected_paths.len().max(usize::from(
+            self.selected_paths.is_empty() && self.focused_index.is_some(),
+        ));
+        let show_hidden = self.read_options.show_hidden_items;
+        let sort_label = self.sort_label();
 
         v_flex()
             .id("files-page")
             .size_full()
             .min_h_0()
             .gap_3()
+            .track_focus(&self.focus_handle)
+            .key_context(FILE_BROWSER)
+            .on_action(cx.listener(Self::on_navigate_back))
+            .on_action(cx.listener(Self::on_navigate_forward))
+            .on_action(cx.listener(Self::on_navigate_up))
+            .on_action(cx.listener(Self::on_refresh))
+            .on_action(cx.listener(Self::on_open_item))
+            .on_action(cx.listener(Self::on_select_all))
+            .on_action(cx.listener(Self::on_rename))
+            .on_action(cx.listener(Self::on_delete))
+            .on_action(cx.listener(Self::on_new_folder))
+            .on_action(cx.listener(Self::on_copy_path))
+            .on_action(cx.listener(Self::on_navigate_previous))
+            .on_action(cx.listener(Self::on_navigate_next))
+            .on_action(cx.listener(Self::on_sort_name))
+            .on_action(cx.listener(Self::on_sort_modified))
+            .on_action(cx.listener(Self::on_sort_size))
+            .on_action(cx.listener(Self::on_sort_type))
+            .on_action(cx.listener(Self::on_toggle_sort_direction))
+            .on_action(cx.listener(Self::on_toggle_show_hidden))
             .child(
                 h_flex()
                     .gap_2()
                     .items_center()
+                    .flex_wrap()
                     .child(
                         Button::new("files-back")
                             .small()
@@ -319,9 +812,54 @@ impl Render for FileBrowser {
                             })),
                     )
                     .child(
+                        Button::new("files-new-folder-btn")
+                            .small()
+                            .outline()
+                            .icon(IconName::Folder)
+                            .label(t!("files.new_folder"))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.create_new_folder(window, cx);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("files-delete-btn")
+                            .small()
+                            .outline()
+                            .icon(IconName::Delete)
+                            .disabled(selected_count == 0)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.perform_delete(window, cx);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        DropdownButton::new("files-sort")
+                            .small()
+                            .outline()
+                            .button(Button::new("files-sort-btn").label(sort_label))
+                            .dropdown_menu(move |menu, _, _| {
+                                let hidden_label = if show_hidden {
+                                    t!("files.show_hidden.off")
+                                } else {
+                                    t!("files.show_hidden.on")
+                                };
+                                menu.menu(t!("files.sort.name"), Box::new(SortByName))
+                                    .menu(t!("files.sort.modified"), Box::new(SortByModified))
+                                    .menu(t!("files.sort.size"), Box::new(SortBySize))
+                                    .menu(t!("files.sort.type"), Box::new(SortByType))
+                                    .separator()
+                                    .menu(
+                                        t!("files.sort.toggle_direction"),
+                                        Box::new(ToggleSortDirection),
+                                    )
+                                    .menu(hidden_label, Box::new(ToggleShowHidden))
+                            }),
+                    )
+                    .child(
                         div()
                             .flex_1()
-                            .min_w_0()
+                            .min_w(px(120.))
                             .px_3()
                             .py_1()
                             .rounded(cx.theme().radius)
@@ -333,6 +871,7 @@ impl Render for FileBrowser {
                             .child(current_dir),
                     ),
             )
+            .when_some(self.rename_bar(window, cx), |this, bar| this.child(bar))
             .when_some(self.error.as_ref(), |this, error| {
                 this.child(
                     div()
@@ -352,11 +891,13 @@ impl Render for FileBrowser {
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .child(format!(
-                        "{} items, {} selected",
+                        "{} {}, {} {}",
                         self.items.len(),
-                        selected_count
+                        t!("files.status.items"),
+                        selected_count,
+                        t!("files.status.selected"),
                     ))
-                    .child("Local filesystem"),
+                    .child(t!("files.status.local")),
             )
     }
 }
@@ -369,8 +910,12 @@ fn default_files_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-fn load_files_dir(path: &Path) -> (Vec<FileItem>, Option<String>) {
-    match read_directory(path, DirectoryReadOptions::default()) {
+fn load_files_dir(
+    path: &Path,
+    options: DirectoryReadOptions,
+    sort: SortPreferences,
+) -> (Vec<FileItem>, Option<String>) {
+    match read_directory(path, options, sort) {
         Ok(items) => (items, None),
         Err(error) => (Vec::new(), Some(error.to_string())),
     }
@@ -382,14 +927,14 @@ fn item_sizes_for(count: usize) -> Rc<Vec<Size<Pixels>>> {
 
 fn item_type_label(item: &FileItem) -> String {
     match item.kind {
-        FileItemKind::Folder => "Folder".to_string(),
-        FileItemKind::Symlink => "Symlink".to_string(),
-        FileItemKind::Other => "Item".to_string(),
+        FileItemKind::Folder => t!("files.type.folder").to_string(),
+        FileItemKind::Symlink => t!("files.type.symlink").to_string(),
+        FileItemKind::Other => t!("files.type.other").to_string(),
         FileItemKind::File => item
             .extension
             .as_ref()
             .map(|extension| format!("{} file", extension.to_uppercase()))
-            .unwrap_or_else(|| "File".to_string()),
+            .unwrap_or_else(|| t!("files.type.file").to_string()),
     }
 }
 

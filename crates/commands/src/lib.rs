@@ -1,0 +1,59 @@
+use gpui::{actions, App, KeyBinding};
+
+actions!(
+    cyberfiles_commands,
+    [
+        NavigateBack,
+        NavigateForward,
+        NavigateUp,
+        RefreshDirectory,
+        OpenItem,
+        SelectAll,
+        RenameItem,
+        DeleteItems,
+        NewFolder,
+        CopyPath,
+        NavigatePrevious,
+        NavigateNext,
+    ]
+);
+
+/// GPUI key context for the file browser surface.
+pub const FILE_BROWSER: &str = "FileBrowser";
+
+pub fn init(cx: &mut App) {
+    cx.bind_keys(file_browser_key_bindings());
+}
+
+pub fn file_browser_key_bindings() -> Vec<KeyBinding> {
+    let mut bindings = vec![
+        KeyBinding::new("backspace", NavigateUp, Some(FILE_BROWSER)),
+        KeyBinding::new("enter", OpenItem, Some(FILE_BROWSER)),
+        KeyBinding::new("f2", RenameItem, Some(FILE_BROWSER)),
+        KeyBinding::new("delete", DeleteItems, Some(FILE_BROWSER)),
+        KeyBinding::new("up", NavigatePrevious, Some(FILE_BROWSER)),
+        KeyBinding::new("down", NavigateNext, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-shift-n", NewFolder, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-shift-c", CopyPath, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-n", NewFolder, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-c", CopyPath, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-backspace", DeleteItems, Some(FILE_BROWSER)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-a", SelectAll, Some(FILE_BROWSER)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-a", SelectAll, Some(FILE_BROWSER)),
+        KeyBinding::new("alt-left", NavigateBack, Some(FILE_BROWSER)),
+        KeyBinding::new("alt-right", NavigateForward, Some(FILE_BROWSER)),
+        KeyBinding::new("f5", RefreshDirectory, Some(FILE_BROWSER)),
+    ];
+
+    bindings.extend([
+        KeyBinding::new("secondary-backspace", DeleteItems, Some(FILE_BROWSER)),
+        KeyBinding::new("shift-delete", DeleteItems, Some(FILE_BROWSER)),
+    ]);
+
+    bindings
+}

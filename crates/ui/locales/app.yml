@@ -51,6 +51,130 @@ page.files.placeholder:
   en: File browser placeholder — list drives and folders here.
   zh-CN: 文件浏览器占位 — 在此列出驱动器与文件夹。
   zh-HK: 檔案瀏覽器占位 — 在此列出磁碟與資料夾。
+files.column.name:
+  en: Name
+  zh-CN: 名称
+  zh-HK: 名稱
+files.column.type:
+  en: Type
+  zh-CN: 类型
+  zh-HK: 類型
+files.column.size:
+  en: Size
+  zh-CN: 大小
+  zh-HK: 大小
+files.column.modified:
+  en: Modified
+  zh-CN: 修改时间
+  zh-HK: 修改時間
+files.sort.name:
+  en: Name
+  zh-CN: 名称
+  zh-HK: 名稱
+files.sort.modified:
+  en: Modified
+  zh-CN: 修改时间
+  zh-HK: 修改時間
+files.sort.created:
+  en: Created
+  zh-CN: 创建时间
+  zh-HK: 建立時間
+files.sort.size:
+  en: Size
+  zh-CN: 大小
+  zh-HK: 大小
+files.sort.type:
+  en: Type
+  zh-CN: 类型
+  zh-HK: 類型
+files.sort.path:
+  en: Path
+  zh-CN: 路径
+  zh-HK: 路徑
+files.sort.toggle_direction:
+  en: Toggle sort direction
+  zh-CN: 切换排序方向
+  zh-HK: 切換排序方向
+files.show_hidden.on:
+  en: Show hidden items
+  zh-CN: 显示隐藏项
+  zh-HK: 顯示隱藏項目
+files.show_hidden.off:
+  en: Hide hidden items
+  zh-CN: 隐藏隐藏项
+  zh-HK: 隱藏隱藏項目
+files.new_folder:
+  en: New folder
+  zh-CN: 新建文件夹
+  zh-HK: 新增資料夾
+files.new_folder.success:
+  en: Folder created.
+  zh-CN: 文件夹已创建。
+  zh-HK: 資料夾已建立。
+files.rename.prompt:
+  en: Rename
+  zh-CN: 重命名
+  zh-HK: 重新命名
+files.rename.confirm:
+  en: Save
+  zh-CN: 保存
+  zh-HK: 儲存
+files.rename.success:
+  en: Item renamed.
+  zh-CN: 已重命名。
+  zh-HK: 已重新命名。
+files.delete.title:
+  en: Delete items?
+  zh-CN: 删除项目？
+  zh-HK: 刪除項目？
+files.delete.description_many:
+  en: Delete %{count} items permanently?
+  zh-CN: 永久删除 %{count} 个项目？
+  zh-HK: 永久刪除 %{count} 個項目？
+files.delete.confirm:
+  en: Delete
+  zh-CN: 删除
+  zh-HK: 刪除
+files.delete.success:
+  en: Items deleted.
+  zh-CN: 已删除。
+  zh-HK: 已刪除。
+files.delete.error:
+  en: Delete failed
+  zh-CN: 删除失败
+  zh-HK: 刪除失敗
+files.cancel:
+  en: Cancel
+  zh-CN: 取消
+  zh-HK: 取消
+files.status.items:
+  en: items
+  zh-CN: 项
+  zh-HK: 項
+files.status.selected:
+  en: selected
+  zh-CN: 已选
+  zh-HK: 已選
+files.status.local:
+  en: Local filesystem
+  zh-CN: 本地文件系统
+  zh-HK: 本機檔案系統
+files.type.folder:
+  en: Folder
+  zh-CN: 文件夹
+  zh-HK: 資料夾
+files.type.file:
+  en: File
+  zh-CN: 文件
+  zh-HK: 檔案
+files.type.symlink:
+  en: Symlink
+  zh-CN: 符号链接
+  zh-HK: 符號連結
+files.type.other:
+  en: Item
+  zh-CN: 项目
+  zh-HK: 項目
 page.settings.title:
   en: Settings
   zh-CN: 设置

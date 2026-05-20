@@ -8,7 +8,7 @@ use gpui_component::{
     v_flex, ActiveTheme as _, Collapsible, Icon, IconName, StyledExt as _,
 };
 
-use crate::file_browser::FileBrowser;
+use crate::files_shell::FilesShell;
 use crate::i18n::{nav_description, nav_name};
 use crate::settings_view::build_settings;
 use rust_i18n::t;
@@ -26,7 +26,7 @@ pub struct AppView {
     collapsed: bool,
     search_input: Entity<InputState>,
     search_placeholder_locale: String,
-    file_browser: Entity<FileBrowser>,
+    files_shell: Entity<FilesShell>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -55,16 +55,16 @@ impl AppView {
             icon: IconName::Settings2,
         };
 
-        let file_browser = cx.new(|_| FileBrowser::new());
+        let files_shell = cx.new(FilesShell::new);
 
         Self {
             search_input,
             main_nav,
             settings,
-            active_page: "home",
+            active_page: "files",
             collapsed: false,
             search_placeholder_locale: crate::i18n::locale().to_string(),
-            file_browser,
+            files_shell,
             _subscriptions,
         }
     }
@@ -118,7 +118,7 @@ impl AppView {
                         .child(t!("page.home.overview")),
                 )
                 .into_any_element(),
-            "files" => self.file_browser.clone().into_any_element(),
+            "files" => self.files_shell.clone().into_any_element(),
             "settings" => div()
                 .id("settings-page")
                 .size_full()
@@ -313,8 +313,16 @@ impl Render for AppView {
                                 this.overflow_hidden()
                             })
                             .when(active_item.map(|i| i.id) != Some("settings"), |this| {
-                                this.overflow_y_scroll().p_4()
+                                this.overflow_y_scroll()
                             })
+                            .when(active_item.map(|i| i.id) == Some("files"), |this| {
+                                this.p_0()
+                            })
+                            .when(
+                                active_item.map(|i| i.id) != Some("settings")
+                                    && active_item.map(|i| i.id) != Some("files"),
+                                |this| this.p_4(),
+                            )
                             .when_some(active_item, |this, item| {
                                 this.child(self.page_content(item.id, cx))
                             }),

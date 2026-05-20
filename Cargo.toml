@@ -1,5 +1,11 @@
 [workspace]
-members = ["crates/app", "crates/core", "crates/fs", "crates/ui"]
+members = [
+    "crates/app",
+    "crates/commands",
+    "crates/core",
+    "crates/fs",
+    "crates/ui",
+]
 default-members = ["crates/app"]
 resolver = "2"
 
@@ -9,6 +15,7 @@ edition = "2021"
 publish = false
 
 [workspace.dependencies]
+cyberfiles-commands = { path = "crates/commands" }
 cyberfiles-core = { path = "crates/core" }
 cyberfiles-fs = { path = "crates/fs" }
 cyberfiles-ui = { path = "crates/ui" }

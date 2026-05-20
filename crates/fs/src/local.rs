@@ -6,6 +6,7 @@ use crate::sort::{sort_items, SortPreferences};
 pub fn read_directory(
     path: impl AsRef<Path>,
     options: DirectoryReadOptions,
+    sort: SortPreferences,
 ) -> anyhow::Result<Vec<FileItem>> {
     let mut items = Vec::new();
 
@@ -17,6 +18,6 @@ pub fn read_directory(
         }
     }
 
-    sort_items(&mut items, SortPreferences::default());
+    sort_items(&mut items, sort);
     Ok(items)
 }
