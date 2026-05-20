@@ -7,3 +7,6 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+lnk = "0.6"

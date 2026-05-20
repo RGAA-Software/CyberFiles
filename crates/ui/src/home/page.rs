@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use cyberfiles_core::pinned_folder_paths;
-use cyberfiles_fs::{list_drives, DriveInfo};
+use cyberfiles_fs::{list_drives, list_recent_files, DriveInfo, RecentItem};
 use gpui::{prelude::*, *};
 use gpui_component::{button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
 use rust_i18n::t;
@@ -20,6 +20,7 @@ impl Render for HomePage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let drives = list_drives();
         let pinned = pinned_folder_paths();
+        let recent = list_recent_files();
 
         v_flex()
             .id("home-page")
@@ -42,12 +43,7 @@ impl Render for HomePage {
                 t!("home.widget.tags.placeholder"),
                 IconName::Inbox,
             ))
-            .child(widget_section(
-                cx,
-                t!("home.widget.recent"),
-                t!("home.widget.recent.placeholder"),
-                IconName::Calendar,
-            ))
+            .child(widget_recent(cx, &recent))
     }
 }
 
@@ -135,6 +131,57 @@ fn widget_section(
                 .text_color(cx.theme().muted_foreground)
                 .child(description),
         )
+}
+
+fn widget_recent(cx: &mut Context<HomePage>, recent: &[RecentItem]) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap_2()
+        .child(
+            h_flex()
+                .gap_2()
+                .items_center()
+                .child(Icon::new(IconName::Calendar).small())
+                .child(div().text_sm().child(t!("home.widget.recent"))),
+        )
+        .when(recent.is_empty(), |section| {
+            section.child(
+                div()
+                    .w_full()
+                    .p_4()
+                    .rounded(cx.theme().radius)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().muted)
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(t!("home.widget.recent.empty")),
+            )
+        })
+        .when(!recent.is_empty(), |section| {
+            section.child(
+                v_flex()
+                    .w_full()
+                    .gap_1()
+                    .children(recent.iter().enumerate().map(|(index, item)| {
+                        let path = item.path.clone();
+                        let label = item.label.clone();
+                        h_flex()
+                            .id(("home-recent", index))
+                            .w_full()
+                            .child(
+                                Button::new(("home-recent-btn", index))
+                                    .ghost()
+                                    .small()
+                                    .icon(IconName::File)
+                                    .label(label)
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        AppNavigation::navigate_to_path(path.clone(), cx);
+                                    })),
+                            )
+                    })),
+            )
+        })
 }
 
 fn widget_section_drives(cx: &mut Context<HomePage>, drives: &[DriveInfo]) -> impl IntoElement {

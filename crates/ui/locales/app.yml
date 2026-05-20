@@ -131,6 +131,10 @@ home.widget.recent.placeholder:
   en: Recently opened files (coming soon).
   zh-CN: 最近打开的文件（即将推出）。
   zh-HK: 最近開啟的檔案（即將推出）。
+home.widget.recent.empty:
+  en: No recent files found.
+  zh-CN: 暂无最近文件。
+  zh-HK: 暫無最近檔案。
 search.placeholder:
   en: Search...
   zh-CN: 搜索...

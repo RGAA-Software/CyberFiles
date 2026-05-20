@@ -153,9 +153,16 @@ impl MainPage {
         let show_info_pane = self.show_info_pane;
         let pane = self.active_pane();
         let target = pane.read(cx).target().clone();
-        let path_label = target.toolbar_path_label();
-
         let browser = pane.read(cx).file_browser();
+        let path_label = if matches!(&target, NavigationTarget::Path(_)) {
+            browser
+                .read(cx)
+                .current_directory()
+                .to_string_lossy()
+                .to_string()
+        } else {
+            target.toolbar_path_label()
+        };
         let (can_back, can_forward, can_up) = if matches!(target, NavigationTarget::Path(_)) {
             let b = browser.read(cx);
             (b.can_go_back(), b.can_go_forward(), b.can_go_up())
