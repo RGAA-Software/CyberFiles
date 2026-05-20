@@ -1,21 +1,15 @@
-use cyberfiles_core::window_options;
-use cyberfiles_ui::AppView;
-use gpui::AppContext;
-use gpui_component::Root;
+use cyberfiles_ui::{AppView, Assets, init, open_main_window};
 
 fn main() {
-    gpui_platform::application().run(move |cx| {
-        gpui_component::init(cx);
+    let app = gpui_platform::application().with_assets(Assets);
 
-        let window_options = window_options(cx);
+    app.run(move |cx| {
+        init(cx);
+        cx.activate(true);
 
-        cx.spawn(async move |cx| {
-            cx.open_window(window_options, |window, cx| {
-                let view = cx.new(|_| AppView);
-                cx.new(|cx| Root::new(view, window, cx))
-            })
-            .expect("failed to open window");
-        })
-        .detach();
+        open_main_window(
+            move |window, cx| AppView::view(window, cx),
+            cx,
+        );
     });
 }

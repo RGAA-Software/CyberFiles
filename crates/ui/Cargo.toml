@@ -1,11 +1,14 @@
 [package]
 name = "cyberfiles-ui"
-description = "GPUI views and UI components for CyberFiles"
+description = "GPUI shell and views for CyberFiles"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 cyberfiles-core.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
+gpui-component-assets.workspace = true
+serde.workspace = true

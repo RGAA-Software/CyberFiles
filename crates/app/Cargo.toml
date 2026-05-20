@@ -10,9 +10,5 @@ name = "cyberfiles"
 path = "src/main.rs"
 
 [dependencies]
-anyhow.workspace = true
-cyberfiles-core.workspace = true
 cyberfiles-ui.workspace = true
-gpui.workspace = true
 gpui_platform.workspace = true
-gpui-component.workspace = true
