@@ -1,6 +1,7 @@
 mod actions;
 mod app_menus;
 mod app_shell;
+pub mod preferences;
 mod title_bar;
 mod window;
 

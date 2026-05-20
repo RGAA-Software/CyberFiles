@@ -10,6 +10,7 @@ use gpui_component::{
 };
 
 use crate::i18n::{nav_description, nav_name};
+use crate::settings_view::build_settings;
 use rust_i18n::t;
 
 #[derive(Clone)]
@@ -48,18 +49,11 @@ fn page_content(id: &str, cx: &App) -> impl IntoElement {
             )
             .into_any_element(),
         "settings" => div()
+            .id("settings-page")
             .size_full()
-            .v_flex()
-            .gap_3()
-            .child(div().text_lg().child(t!("page.settings.title")))
-            .child(
-                div()
-                    .p_4()
-                    .rounded(cx.theme().radius)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .child(t!("page.settings.placeholder")),
-            )
+            .min_h_0()
+            .overflow_hidden()
+            .child(build_settings(cx))
             .into_any_element(),
         _ => div()
             .size_full()
@@ -321,8 +315,13 @@ impl Render for AppView {
                         div()
                             .id("content")
                             .flex_1()
-                            .overflow_y_scroll()
-                            .p_4()
+                            .min_h_0()
+                            .when(active_item.map(|i| i.id) == Some("settings"), |this| {
+                                this.overflow_hidden()
+                            })
+                            .when(active_item.map(|i| i.id) != Some("settings"), |this| {
+                                this.overflow_y_scroll().p_4()
+                            })
                             .when_some(active_item, |this, item| {
                                 this.child(page_content(item.id, cx))
                             }),

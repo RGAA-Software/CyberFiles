@@ -41,9 +41,6 @@ page.files.placeholder:
 page.settings.title:
   en: Settings
   zh-CN: 设置
-page.settings.placeholder:
-  en: Settings placeholder — theme, paths, and preferences.
-  zh-CN: 设置占位 — 主题、路径与偏好。
 page.unknown:
   en: Unknown page
   zh-CN: 未知页面
@@ -89,3 +86,81 @@ menu.theme:
 menu.language:
   en: Language
   zh-CN: 语言
+settings.page.general:
+  en: General
+  zh-CN: 常规
+settings.page.about:
+  en: About
+  zh-CN: 关于
+settings.group.appearance:
+  en: Appearance
+  zh-CN: 外观
+settings.group.interface:
+  en: Interface
+  zh-CN: 界面
+settings.dark_mode:
+  en: Dark Mode
+  zh-CN: 深色模式
+settings.dark_mode.description:
+  en: Switch between light and dark themes.
+  zh-CN: 在浅色与深色主题之间切换。
+settings.language:
+  en: Language
+  zh-CN: 语言
+settings.language.description:
+  en: Display language for CyberFiles and built-in components.
+  zh-CN: CyberFiles 与内置组件的显示语言。
+settings.color_theme:
+  en: Color Theme
+  zh-CN: 配色主题
+settings.color_theme.description:
+  en: Choose a color theme from the theme registry.
+  zh-CN: 从主题库中选择配色方案。
+settings.font_size:
+  en: Font Size
+  zh-CN: 字号
+settings.font_size.description:
+  en: Base font size for the application UI.
+  zh-CN: 应用界面基础字号。
+settings.font_size.small:
+  en: Small
+  zh-CN: 小
+settings.font_size.medium:
+  en: Medium
+  zh-CN: 中
+settings.font_size.large:
+  en: Large
+  zh-CN: 大
+settings.radius.default:
+  en: 6px (default)
+  zh-CN: 6px（默认）
+settings.border_radius:
+  en: Border Radius
+  zh-CN: 圆角
+settings.border_radius.description:
+  en: Corner radius for cards, inputs, and panels.
+  zh-CN: 卡片、输入框与面板的圆角大小。
+settings.scrollbar:
+  en: Scrollbar
+  zh-CN: 滚动条
+settings.scrollbar.description:
+  en: When scrollbars are shown in scrollable areas.
+  zh-CN: 可滚动区域中滚动条的显示方式。
+settings.scrollbar.scrolling:
+  en: Show while scrolling
+  zh-CN: 滚动时显示
+settings.scrollbar.hover:
+  en: Show on hover
+  zh-CN: 悬停时显示
+settings.scrollbar.always:
+  en: Always show
+  zh-CN: 始终显示
+settings.list_highlight:
+  en: List Active Highlight
+  zh-CN: 列表选中高亮
+settings.list_highlight.description:
+  en: Highlight the active row in lists and tables.
+  zh-CN: 在列表与表格中高亮当前行。
+settings.about.description:
+  en: A cross-platform file workspace built with GPUI and gpui-component.
+  zh-CN: 基于 GPUI 与 gpui-component 的跨平台文件工作区。
