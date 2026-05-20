@@ -21,4 +21,6 @@ gpui-component = { git = "https://github.com/longbridge/gpui-component" }
 gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", package = "gpui-component-assets" }
 
 anyhow = "1.0"
+rust-i18n = "4"
 serde = { version = "1", features = ["derive"] }
+sys-locale = "0.3"

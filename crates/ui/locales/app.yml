@@ -1,0 +1,91 @@
+_version: 2
+nav.home:
+  en: Home
+  zh-CN: 首页
+nav.files:
+  en: Files
+  zh-CN: 文件
+nav.settings:
+  en: Settings
+  zh-CN: 设置
+nav.home.description:
+  en: CyberFiles workspace
+  zh-CN: CyberFiles 工作区
+nav.files.description:
+  en: Browse and manage files
+  zh-CN: 浏览与管理文件
+nav.settings.description:
+  en: Application preferences
+  zh-CN: 应用偏好设置
+sidebar.workspace:
+  en: Workspace
+  zh-CN: 工作区
+sidebar.main:
+  en: Main
+  zh-CN: 主菜单
+search.placeholder:
+  en: Search...
+  zh-CN: 搜索...
+page.home.welcome:
+  en: Welcome to %{app}
+  zh-CN: 欢迎使用 %{app}
+page.home.overview:
+  en: Main workspace overview.
+  zh-CN: 主工作区概览。
+page.files.title:
+  en: Files
+  zh-CN: 文件
+page.files.placeholder:
+  en: File browser placeholder — list drives and folders here.
+  zh-CN: 文件浏览器占位 — 在此列出驱动器与文件夹。
+page.settings.title:
+  en: Settings
+  zh-CN: 设置
+page.settings.placeholder:
+  en: Settings placeholder — theme, paths, and preferences.
+  zh-CN: 设置占位 — 主题、路径与偏好。
+page.unknown:
+  en: Unknown page
+  zh-CN: 未知页面
+menu.about:
+  en: About
+  zh-CN: 关于
+menu.appearance:
+  en: Appearance
+  zh-CN: 外观
+menu.light:
+  en: Light
+  zh-CN: 浅色
+menu.dark:
+  en: Dark
+  zh-CN: 深色
+menu.quit:
+  en: Quit
+  zh-CN: 退出
+menu.edit:
+  en: Edit
+  zh-CN: 编辑
+menu.undo:
+  en: Undo
+  zh-CN: 撤销
+menu.redo:
+  en: Redo
+  zh-CN: 重做
+menu.cut:
+  en: Cut
+  zh-CN: 剪切
+menu.copy:
+  en: Copy
+  zh-CN: 复制
+menu.paste:
+  en: Paste
+  zh-CN: 粘贴
+menu.select_all:
+  en: Select All
+  zh-CN: 全选
+menu.theme:
+  en: Theme
+  zh-CN: 主题
+menu.language:
+  en: Language
+  zh-CN: 语言

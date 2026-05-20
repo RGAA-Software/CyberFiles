@@ -1200,7 +1200,9 @@ dependencies = [
  "gpui",
  "gpui-component",
  "gpui-component-assets",
+ "rust-i18n",
  "serde",
+ "sys-locale",
 ]
 
 [[package]]

@@ -9,11 +9,12 @@ use gpui_component::{
     },
 };
 
+use crate::i18n::{nav_description, nav_name};
+use rust_i18n::t;
+
 #[derive(Clone)]
 struct NavItem {
     id: &'static str,
-    name: SharedString,
-    description: SharedString,
     icon: IconName,
 }
 
@@ -25,46 +26,46 @@ fn page_content(id: &str, cx: &App) -> impl IntoElement {
             .justify_center()
             .v_flex()
             .gap_2()
-            .child(div().text_xl().child(format!("Welcome to {APP_NAME}")))
+            .child(div().text_xl().child(t!("page.home.welcome", app = APP_NAME)))
             .child(
                 div()
                     .text_color(cx.theme().muted_foreground)
-                    .child("Main workspace overview."),
+                    .child(t!("page.home.overview")),
             )
             .into_any_element(),
         "files" => div()
             .size_full()
             .v_flex()
             .gap_3()
-            .child(div().text_lg().child("Files"))
+            .child(div().text_lg().child(t!("page.files.title")))
             .child(
                 div()
                     .p_4()
                     .rounded(cx.theme().radius)
                     .border_1()
                     .border_color(cx.theme().border)
-                    .child("File browser placeholder — list drives and folders here."),
+                    .child(t!("page.files.placeholder")),
             )
             .into_any_element(),
         "settings" => div()
             .size_full()
             .v_flex()
             .gap_3()
-            .child(div().text_lg().child("Settings"))
+            .child(div().text_lg().child(t!("page.settings.title")))
             .child(
                 div()
                     .p_4()
                     .rounded(cx.theme().radius)
                     .border_1()
                     .border_color(cx.theme().border)
-                    .child("Settings placeholder — theme, paths, and preferences."),
+                    .child(t!("page.settings.placeholder")),
             )
             .into_any_element(),
         _ => div()
             .size_full()
             .items_center()
             .justify_center()
-            .child("Unknown page")
+            .child(t!("page.unknown"))
             .into_any_element(),
     }
 }
@@ -75,12 +76,14 @@ pub struct AppView {
     active_page: &'static str,
     collapsed: bool,
     search_input: Entity<InputState>,
+    search_placeholder_locale: String,
     _subscriptions: Vec<Subscription>,
 }
 
 impl AppView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search..."));
+        let search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(t!("search.placeholder")));
         let _subscriptions = vec![cx.subscribe(&search_input, |_, _, e, cx| match e {
             InputEvent::Change => cx.notify(),
             _ => {}
@@ -89,22 +92,16 @@ impl AppView {
         let main_nav = vec![
             NavItem {
                 id: "home",
-                name: "Home".into(),
-                description: "CyberFiles workspace".into(),
                 icon: IconName::LayoutDashboard,
             },
             NavItem {
                 id: "files",
-                name: "Files".into(),
-                description: "Browse and manage files".into(),
                 icon: IconName::Folder,
             },
         ];
 
         let settings = NavItem {
             id: "settings",
-            name: "Settings".into(),
-            description: "Application preferences".into(),
             icon: IconName::Settings2,
         };
 
@@ -114,6 +111,7 @@ impl AppView {
             settings,
             active_page: "home",
             collapsed: false,
+            search_placeholder_locale: crate::i18n::locale().to_string(),
             _subscriptions,
         }
     }
@@ -126,13 +124,24 @@ impl AppView {
         }
     }
 
-    fn filtered_main_nav(&self, cx: &Context<Self>) -> Vec<NavItem> {
+    fn filtered_main_nav(&self, cx: &Context<Self>) -> Vec<&NavItem> {
         let query = self.search_input.read(cx).value().trim().to_lowercase();
         self.main_nav
             .iter()
-            .filter(|item| item.name.to_lowercase().contains(&query))
-            .cloned()
+            .filter(|item| nav_name(item.id).to_lowercase().contains(&query))
             .collect()
+    }
+
+    fn sync_search_placeholder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let locale = crate::i18n::locale().to_string();
+        if self.search_placeholder_locale == locale {
+            return;
+        }
+        self.search_placeholder_locale = locale;
+        let placeholder = t!("search.placeholder");
+        self.search_input.update(cx, |state, cx| {
+            state.set_placeholder(placeholder, window, cx);
+        });
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -142,10 +151,17 @@ impl AppView {
 
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_search_placeholder(window, cx);
+
         let active_item = self.active_item();
         let (page_name, description) = active_item
-            .map(|item| (item.name.clone(), item.description.clone()))
-            .unwrap_or_else(|| ("".into(), "".into()));
+            .map(|item| {
+                (
+                    SharedString::from(nav_name(item.id)),
+                    SharedString::from(nav_description(item.id)),
+                )
+            })
+            .unwrap_or_else(|| (SharedString::default(), SharedString::default()));
 
         let filtered_main = self.filtered_main_nav(cx);
         let settings = self.settings.clone();
@@ -207,7 +223,7 @@ impl Render for AppView {
                                                                 .text_color(
                                                                     cx.theme().muted_foreground,
                                                                 )
-                                                                .child("Workspace")
+                                                                .child(t!("sidebar.workspace"))
                                                                 .text_xs(),
                                                         ),
                                                 )
@@ -231,26 +247,24 @@ impl Render for AppView {
                                     ),
                             )
                             .child(
-                                SidebarGroup::new("Main")
+                                SidebarGroup::new(t!("sidebar.main"))
                                     .collapsed(self.collapsed)
                                     .child(
                                         SidebarMenu::new()
                                             .w_full()
                                             .collapsed(self.collapsed)
-                                            .children(filtered_main.into_iter().map(
-                                                |item| {
-                                                    let page_id = item.id;
-                                                    SidebarMenuItem::new(item.name.clone())
-                                                        .icon(item.icon)
-                                                        .active(self.active_page == page_id)
-                                                        .on_click(cx.listener(
-                                                            move |this, _: &ClickEvent, _, cx| {
-                                                                this.active_page = page_id;
-                                                                cx.notify();
-                                                            },
-                                                        ))
-                                                },
-                                            )),
+                                            .children(filtered_main.into_iter().map(|item| {
+                                                let page_id = item.id;
+                                                SidebarMenuItem::new(nav_name(page_id))
+                                                    .icon(item.icon.clone())
+                                                    .active(self.active_page == page_id)
+                                                    .on_click(cx.listener(
+                                                        move |this, _: &ClickEvent, _, cx| {
+                                                            this.active_page = page_id;
+                                                            cx.notify();
+                                                        },
+                                                    ))
+                                            })),
                                     ),
                             )
                             // Sidebar footer is h_flex (row); without flex_1 the group shrinks to content width.
@@ -264,7 +278,7 @@ impl Render for AppView {
                                             .w_full()
                                             .collapsed(self.collapsed)
                                             .child(
-                                                SidebarMenuItem::new(settings.name.clone())
+                                                SidebarMenuItem::new(nav_name(settings.id))
                                                     .icon(settings.icon)
                                                     .active(settings_active)
                                                     .on_click(cx.listener(
