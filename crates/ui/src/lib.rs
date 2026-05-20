@@ -13,8 +13,16 @@ pub use i18n::{init_locale, locale, set_locale};
 pub use shell::open_main_window;
 
 pub fn init(cx: &mut App) {
-    init_locale();
+    let config = cyberfiles_core::load_config();
+    if let Some(ref cfg) = config {
+        set_locale(&cfg.locale);
+    } else {
+        init_locale();
+    }
     gpui_component::init(cx);
+    if let Some(ref cfg) = config {
+        shell::preferences::apply_config(cfg, cx);
+    }
 
     cx.on_action(|_: &shell::Quit, cx| {
         cx.quit();

@@ -1,17 +1,29 @@
+use cyberfiles_core::{self, AppConfig, WINDOW_HEIGHT, WINDOW_WIDTH, save_config};
 use gpui::{App, SharedString, px};
-use gpui_component::{Theme, ThemeMode, ThemeRegistry, scroll::ScrollbarShow};
+use gpui_component::{
+    ActiveTheme as _, Theme, ThemeMode, ThemeRegistry, scroll::ScrollbarShow,
+};
 
 use crate::i18n;
+
+fn persist_preferences(cx: &App) {
+    let (window_width, window_height) = cyberfiles_core::load_config()
+        .map(|c| (c.window_width, c.window_height))
+        .unwrap_or((WINDOW_WIDTH, WINDOW_HEIGHT));
+    let _ = save_config(&capture_config(cx, window_width, window_height));
+}
 
 pub fn apply_locale(locale: &str, cx: &mut App) {
     i18n::set_locale(locale);
     super::app_menus::reload(cx);
     cx.refresh_windows();
+    persist_preferences(cx);
 }
 
 pub fn apply_theme_mode(mode: ThemeMode, cx: &mut App) {
     Theme::change(mode, None, cx);
     cx.refresh_windows();
+    persist_preferences(cx);
 }
 
 pub fn apply_theme_name(name: SharedString, cx: &mut App) {
@@ -19,11 +31,13 @@ pub fn apply_theme_name(name: SharedString, cx: &mut App) {
         Theme::global_mut(cx).apply_config(&theme_config);
     }
     cx.refresh_windows();
+    persist_preferences(cx);
 }
 
 pub fn apply_font_size(size: f32, cx: &mut App) {
     Theme::global_mut(cx).font_size = px(size);
     cx.refresh_windows();
+    persist_preferences(cx);
 }
 
 pub fn apply_border_radius(radius: f32, cx: &mut App) {
@@ -35,16 +49,19 @@ pub fn apply_border_radius(radius: f32, cx: &mut App) {
         px(0.)
     };
     cx.refresh_windows();
+    persist_preferences(cx);
 }
 
 pub fn apply_scrollbar_show(show: ScrollbarShow, cx: &mut App) {
     Theme::global_mut(cx).scrollbar_show = show;
     cx.refresh_windows();
+    persist_preferences(cx);
 }
 
 pub fn set_list_active_highlight(enabled: bool, cx: &mut App) {
     Theme::global_mut(cx).list.active_highlight = enabled;
     cx.refresh_windows();
+    persist_preferences(cx);
 }
 
 pub fn current_locale(_cx: &App) -> SharedString {
@@ -64,5 +81,50 @@ pub fn scrollbar_show_from_key(key: &str) -> ScrollbarShow {
         "hover" => ScrollbarShow::Hover,
         "always" => ScrollbarShow::Always,
         _ => ScrollbarShow::Scrolling,
+    }
+}
+
+/// Apply saved settings at startup (before the window and app menus exist).
+pub fn apply_config(config: &AppConfig, cx: &mut App) {
+    i18n::set_locale(&config.locale);
+    Theme::change(
+        if config.dark_mode {
+            ThemeMode::Dark
+        } else {
+            ThemeMode::Light
+        },
+        None,
+        cx,
+    );
+    if let Some(theme_config) = ThemeRegistry::global(cx)
+        .themes()
+        .get(config.theme_name.as_str())
+        .cloned()
+    {
+        Theme::global_mut(cx).apply_config(&theme_config);
+    }
+    Theme::global_mut(cx).font_size = px(config.font_size);
+    let theme = Theme::global_mut(cx);
+    theme.radius = px(config.border_radius);
+    theme.radius_lg = if theme.radius > px(0.) {
+        theme.radius + px(2.)
+    } else {
+        px(0.)
+    };
+    theme.scrollbar_show = scrollbar_show_from_key(&config.scrollbar_show);
+    theme.list.active_highlight = config.list_active_highlight;
+}
+
+pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppConfig {
+    AppConfig {
+        locale: i18n::locale().to_string(),
+        dark_mode: cx.theme().mode.is_dark(),
+        theme_name: cx.theme().theme_name().to_string(),
+        font_size: cx.theme().font_size.as_f32(),
+        border_radius: cx.theme().radius.as_f32(),
+        scrollbar_show: scrollbar_show_key(cx.theme().scrollbar_show).to_string(),
+        list_active_highlight: cx.theme().list.active_highlight,
+        window_width,
+        window_height,
     }
 }

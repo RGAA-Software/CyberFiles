@@ -26,6 +26,9 @@ pub fn init(title: impl Into<SharedString>, cx: &mut App) -> Entity<AppMenuBar> 
 
 /// Reload native and in-window menus (e.g. after locale change).
 pub fn reload(cx: &mut App) {
+    if !cx.has_global::<AppMenuState>() {
+        return;
+    }
     update_app_menu(cx);
 }
 

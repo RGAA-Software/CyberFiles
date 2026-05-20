@@ -1,4 +1,4 @@
-use cyberfiles_core::{APP_NAME, WINDOW_HEIGHT, WINDOW_WIDTH};
+use cyberfiles_core::{APP_NAME, window_size};
 use gpui::{
     App, AppContext, Bounds, Focusable, SharedString, Size, Window, WindowBounds, WindowKind,
     WindowOptions, px, size,
@@ -12,7 +12,8 @@ where
     E: Into<gpui::AnyView>,
     F: FnOnce(&mut Window, &mut App) -> E + Send + 'static,
 {
-    let mut window_size = size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT));
+    let (width, height) = window_size();
+    let mut window_size = size(px(width), px(height));
     if let Some(display) = cx.primary_display() {
         let display_size = display.bounds().size;
         window_size.width = window_size.width.min(display_size.width * 0.85);

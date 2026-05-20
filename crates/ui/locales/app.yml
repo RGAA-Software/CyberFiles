@@ -215,6 +215,26 @@ settings.list_highlight.description:
   en: Highlight the active row in lists and tables.
   zh-CN: 在列表与表格中高亮当前行。
   zh-HK: 在列表與表格中高亮目前列。
+settings.group.persistence:
+  en: Persistence
+  zh-CN: 持久化
+  zh-HK: 持久化
+settings.save:
+  en: Save Settings
+  zh-CN: 保存设置
+  zh-HK: 儲存設定
+settings.save.description:
+  en: Save current preferences and window size. They are applied automatically on the next launch.
+  zh-CN: 保存当前偏好与窗口大小，下次启动时自动应用。
+  zh-HK: 儲存目前偏好與視窗大小，下次啟動時自動套用。
+settings.save.success:
+  en: Settings saved.
+  zh-CN: 设置已保存。
+  zh-HK: 設定已儲存。
+settings.save.error:
+  en: Failed to save settings.
+  zh-CN: 保存设置失败。
+  zh-HK: 儲存設定失敗。
 settings.about.description:
   en: A cross-platform file workspace built with GPUI and gpui-component.
   zh-CN: 基于 GPUI 与 gpui-component 的跨平台文件工作区。
