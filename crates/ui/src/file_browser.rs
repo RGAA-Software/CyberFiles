@@ -1,5 +1,8 @@
-use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use chrono::{DateTime, Local};
 use cyberfiles_fs::{read_directory, DirectoryReadOptions, FileItem, FileItemKind};
@@ -7,15 +10,20 @@ use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex,
-    scroll::ScrollableElement as _,
-    v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
+    scroll::{ScrollableElement as _, ScrollbarAxis},
+    v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
+    VirtualListScrollHandle,
 };
+
+const FILE_ROW_SIZE: Size<Pixels> = size(px(1.), px(36.));
 
 pub struct FileBrowser {
     current_dir: PathBuf,
     back_stack: Vec<PathBuf>,
     forward_stack: Vec<PathBuf>,
     items: Vec<FileItem>,
+    item_sizes: Rc<Vec<Size<Pixels>>>,
+    scroll_handle: VirtualListScrollHandle,
     error: Option<String>,
     selected_path: Option<PathBuf>,
 }
@@ -29,6 +37,8 @@ impl FileBrowser {
             current_dir,
             back_stack: Vec::new(),
             forward_stack: Vec::new(),
+            item_sizes: item_sizes_for(items.len()),
+            scroll_handle: VirtualListScrollHandle::new(),
             items,
             error,
             selected_path: None,
@@ -37,6 +47,7 @@ impl FileBrowser {
 
     fn refresh(&mut self) {
         let (items, error) = load_files_dir(&self.current_dir);
+        self.item_sizes = item_sizes_for(items.len());
         self.items = items;
         self.error = error;
         self.reconcile_selection();
@@ -130,19 +141,36 @@ impl FileBrowser {
                     .child(div().w(px(40.)).flex_none()),
             )
             .child(
-                v_flex().flex_1().min_h_0().overflow_y_scrollbar().children(
-                    self.items
-                        .iter()
-                        .enumerate()
-                        .map(|(index, item)| self.row(index, item, cx)),
-                ),
+                v_flex()
+                    .id("files-virtual-list-wrap")
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        v_virtual_list(
+                            cx.entity().clone(),
+                            "files-virtual-list",
+                            self.item_sizes.clone(),
+                            |this, visible_range, _, cx| {
+                                visible_range
+                                    .filter_map(|index| {
+                                        let item = this.items.get(index)?.clone();
+                                        let selected =
+                                            this.selected_path.as_ref() == Some(&item.path);
+                                        Some(Self::row(index, item, selected, cx))
+                                    })
+                                    .collect()
+                            },
+                        )
+                        .track_scroll(&self.scroll_handle),
+                    )
+                    .scrollbar(&self.scroll_handle, ScrollbarAxis::Vertical),
             )
     }
 
-    fn row(&self, index: usize, item: &FileItem, cx: &Context<Self>) -> AnyElement {
-        let selected = self.selected_path.as_ref() == Some(&item.path);
+    fn row(index: usize, item: FileItem, selected: bool, cx: &mut Context<Self>) -> AnyElement {
         let selected_path = item.path.clone();
         let open_path = item.path.clone();
+        let double_click_path = item.path.clone();
         let kind = item.kind;
         let icon = match item.kind {
             FileItemKind::Folder => IconName::Folder,
@@ -152,7 +180,9 @@ impl FileBrowser {
 
         h_flex()
             .id(("file-row", index))
+            .w_full()
             .h_9()
+            .flex_none()
             .px_3()
             .gap_3()
             .items_center()
@@ -163,8 +193,12 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.select_path(selected_path.clone());
+            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                if event.click_count() == 2 {
+                    this.open_item(double_click_path.clone(), kind);
+                } else {
+                    this.select_path(selected_path.clone());
+                }
                 cx.notify();
             }))
             .child(
@@ -187,7 +221,7 @@ impl FileBrowser {
                     .w(px(110.))
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child(item_type_label(item)),
+                    .child(item_type_label(&item)),
             )
             .child(
                 div()
@@ -340,6 +374,10 @@ fn load_files_dir(path: &Path) -> (Vec<FileItem>, Option<String>) {
         Ok(items) => (items, None),
         Err(error) => (Vec::new(), Some(error.to_string())),
     }
+}
+
+fn item_sizes_for(count: usize) -> Rc<Vec<Size<Pixels>>> {
+    Rc::new(vec![FILE_ROW_SIZE; count])
 }
 
 fn item_type_label(item: &FileItem) -> String {
