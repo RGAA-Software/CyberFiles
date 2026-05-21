@@ -12,6 +12,10 @@ struct AppMenuState {
 
 impl Global for AppMenuState {}
 
+pub fn menu_bar(cx: &App) -> Entity<AppMenuBar> {
+    cx.global::<AppMenuState>().menu_bar.clone()
+}
+
 pub fn init(title: impl Into<SharedString>, cx: &mut App) -> Entity<AppMenuBar> {
     let app_menu_bar = AppMenuBar::new(cx);
     let title: SharedString = title.into();

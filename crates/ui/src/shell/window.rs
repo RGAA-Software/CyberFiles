@@ -42,7 +42,7 @@ where
         let window = cx
             .open_window(options, |window, cx| {
                 let view = crate_view_fn(window, cx);
-                let shell = cx.new(|cx| AppShell::new(title.clone(), view, window, cx));
+                let shell = cx.new(|cx| AppShell::new(view, window, cx));
 
                 window.defer(cx, move |window, cx| {
                     if window.focused(cx).is_none() {

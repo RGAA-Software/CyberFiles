@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use cyberfiles_core::{load_config, record_path_history, save_config};
+use cyberfiles_core::{load_config, record_path_history, save_config, APP_NAME};
 use cyberfiles_fs::{
     breadcrumb_root_menu_sections, copy_items, home_navigation_path, list_drives, move_items,
     path_breadcrumbs, DirectoryReadOptions, PathBreadcrumb,
@@ -12,6 +12,7 @@ use cyberfiles_commands::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
+    badge::Badge,
     button::{Button, ButtonVariants as _},
     h_flex,
     label::Label,
@@ -19,7 +20,8 @@ use gpui_component::{
     notification::Notification,
     resizable::{h_resizable, resizable_panel},
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Sizable as _, WindowExt as _,
+    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, Icon, IconName, ThemeMode,
+    Sizable as _, TitleBar, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -27,7 +29,9 @@ use crate::info_pane::InfoPane;
 use crate::app_state::breadcrumb_navigation_target;
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
 use crate::omnibar::{OmnibarBreadcrumbCallbacks, BREADCRUMB_DRAG_HOVER_OPEN_MS};
+use crate::shell::app_menus;
 use crate::shell::navigation::NavigationTarget;
+use crate::shell::preferences::apply_theme_mode;
 use crate::shell::{PaneShell, ShellPanes};
 
 /// Matches Files `NavigationToolbar` height.
@@ -349,6 +353,7 @@ impl MainPage {
     }
 
     pub fn view(_window: &mut Window, cx: &mut App) -> Entity<Self> {
+        app_menus::init(APP_NAME, cx);
         let page = cx.new(|cx| Self::new(cx));
         crate::app_state::AppNavigation::set(page.clone(), cx);
         page
@@ -820,6 +825,127 @@ impl MainPage {
             )
     }
 
+    fn render_tab_bar(&self, cx: &mut Context<Self>) -> TabBar {
+        let active = self.active_tab;
+        TabBar::new("main-tab-bar")
+            .selected_index(active)
+            .last_empty_space(
+                h_flex()
+                    .gap_1()
+                    .pr_1()
+                    .child(
+                        Button::new("main-new-tab")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Plus)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.add_tab(
+                                    NavigationTarget::Path(home_navigation_path()),
+                                    cx,
+                                );
+                            })),
+                    ),
+            )
+            .children(self.tabs.iter().enumerate().map(|(index, tab)| {
+                let title = self.tab_title(index, cx);
+                let closable = self.tabs.len() > 1;
+                let mut tab_el = Tab::new().label(title);
+                if closable {
+                    tab_el = tab_el.suffix(
+                        Button::new(format!("main-tab-close-{}", tab.id))
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.close_tab(index, cx);
+                            })),
+                    );
+                }
+                tab_el
+            }))
+            .on_click(cx.listener(|this, ix: &usize, _, cx| {
+                this.active_tab = *ix;
+                cx.notify();
+            }))
+    }
+
+    /// Menu + tabs + window actions in one row (browser-style title bar).
+    fn render_title_bar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let notifications_count = window.notifications(cx).len();
+        let is_dark = cx.theme().mode.is_dark();
+        let theme_icon = if is_dark {
+            IconName::Moon
+        } else {
+            IconName::Sun
+        };
+        let app_menu_bar = app_menus::menu_bar(cx);
+        let tab_bar = self.render_tab_bar(cx);
+
+        TitleBar::new()
+            .child(
+                h_flex()
+                    .id("title-bar-inner")
+                    .h_full()
+                    .w_full()
+                    .min_w_0()
+                    .items_center()
+                    .gap_1()
+                    .child(div().flex_none().child(app_menu_bar))
+                    .child(
+                        div()
+                            .id("title-bar-tabs")
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .overflow_hidden()
+                            .child(tab_bar),
+                    )
+                    .child(
+                        h_flex()
+                            .id("title-bar-actions")
+                            .flex_none()
+                            .items_center()
+                            .gap_2()
+                            .px_2()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .child(
+                                Button::new("theme-toggle")
+                                    .small()
+                                    .ghost()
+                                    .icon(Icon::new(theme_icon))
+                                    .on_click(move |_, _, cx| {
+                                        let mode = if cx.theme().mode.is_dark() {
+                                            ThemeMode::Light
+                                        } else {
+                                            ThemeMode::Dark
+                                        };
+                                        apply_theme_mode(mode, cx);
+                                    }),
+                            )
+                            .child(
+                                Button::new("github")
+                                    .icon(IconName::Github)
+                                    .small()
+                                    .ghost()
+                                    .on_click(|_, _, cx| {
+                                        cx.open_url("https://github.com/RGAA-Software/CyberFiles")
+                                    }),
+                            )
+                            .child(
+                                div().relative().child(
+                                    Badge::new().count(notifications_count).max(99).child(
+                                        Button::new("bell")
+                                            .small()
+                                            .ghost()
+                                            .compact()
+                                            .icon(IconName::Bell),
+                                    ),
+                                ),
+                            ),
+                    ),
+            )
+    }
+
     fn render_navigation_toolbar(
         &mut self,
         window: &mut Window,
@@ -1070,7 +1196,6 @@ impl Focusable for MainPage {
 impl Render for MainPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.ensure_sidebar_cache(cx);
-        let active = self.active_tab;
         let active_shell = self.active_shell();
         let show_info_pane = self.show_info_pane;
         let file_navigation_active = self.file_navigation_active(cx);
@@ -1113,49 +1238,7 @@ impl Render for MainPage {
                     this.dismiss_omnibar_path_edit(cx);
                 }
             }))
-            .child(
-                TabBar::new("main-tab-bar")
-                    .small()
-                    .selected_index(active)
-                    .last_empty_space(
-                        h_flex()
-                            .gap_1()
-                            .pr_2()
-                            .child(
-                                Button::new("main-new-tab")
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::Plus)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.add_tab(
-                                            NavigationTarget::Path(home_navigation_path()),
-                                            cx,
-                                        );
-                                    })),
-                            ),
-                    )
-                    .children(self.tabs.iter().enumerate().map(|(index, tab)| {
-                        let title = self.tab_title(index, cx);
-                        let closable = self.tabs.len() > 1;
-                        let mut tab_el = Tab::new().label(title);
-                        if closable {
-                            tab_el = tab_el.suffix(
-                                Button::new(format!("main-tab-close-{}", tab.id))
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::Close)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.close_tab(index, cx);
-                                    })),
-                            );
-                        }
-                        tab_el
-                    }))
-                    .on_click(cx.listener(|this, ix: &usize, _, cx| {
-                        this.active_tab = *ix;
-                        cx.notify();
-                    })),
-            )
+            .child(self.render_title_bar(window, cx))
             .child(self.render_navigation_toolbar(window, cx))
             .child(
                 div()

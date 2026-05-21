@@ -1,38 +1,28 @@
 use std::time::Duration;
 
 use gpui::{
-    prelude::FluentBuilder, AnyView, App, AppContext, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled,
-    Window, div,
+    prelude::FluentBuilder, AnyView, App, AppContext, Context, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Render, Styled, Window, div,
 };
 use gpui_component::{Root, v_flex};
 
 use crate::app_state::AppNavigation;
 use super::preferences::{persist_window_bounds, window_size_from_active};
-use super::title_bar::AppTitleBar;
 
 const WINDOW_BOUNDS_DEBOUNCE_MS: u64 = 400;
 
-/// Window chrome: custom title bar + main content + overlay layers.
+/// Window chrome: main content (integrated title bar + tabs) + overlay layers.
 pub struct AppShell {
     focus_handle: FocusHandle,
-    title_bar: Entity<AppTitleBar>,
     view: AnyView,
     last_seen_window_size: Option<(f32, f32)>,
     bounds_persist_generation: u64,
 }
 
 impl AppShell {
-    pub fn new(
-        title: impl Into<SharedString>,
-        view: impl Into<AnyView>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
+    pub fn new(view: impl Into<AnyView>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
-            title_bar,
             view: view.into(),
             last_seen_window_size: None,
             bounds_persist_generation: 0,
@@ -96,7 +86,6 @@ impl Render for AppShell {
             .child(
                 v_flex()
                     .size_full()
-                    .child(self.title_bar.clone())
                     .child(
                         div()
                             .id("app-shell-main")
