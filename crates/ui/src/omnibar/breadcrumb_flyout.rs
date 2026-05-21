@@ -14,6 +14,7 @@ use gpui::{
     MouseDownEvent, ParentElement, Pixels, Point, RenderOnce, SharedString, StyleRefinement,
     Styled, Subscription, Window,
 };
+use cyberfiles_fs::BreadcrumbDropdownResult;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     menu::PopupMenu,
@@ -48,9 +49,16 @@ pub(crate) struct BreadcrumbFlyout {
     id: ElementId,
     button_id: ElementId,
     tooltip: SharedString,
-    menu: Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>,
+    menu: Rc<
+        dyn Fn(
+            Option<&BreadcrumbDropdownResult>,
+            PopupMenu,
+            &mut Window,
+            &mut Context<PopupMenu>,
+        ) -> PopupMenu,
+    >,
     /// When set, menu opens with a placeholder, then refills after `read_dir` on a worker thread.
-    async_fill: Option<Arc<dyn Fn() -> cyberfiles_fs::BreadcrumbDropdownResult + Send + Sync>>,
+    async_fill: Option<Arc<dyn Fn() -> BreadcrumbDropdownResult + Send + Sync>>,
     _ignore_style: StyleRefinement,
     anchor: Anchor,
 }
@@ -60,13 +68,19 @@ impl BreadcrumbFlyout {
         id: impl Into<ElementId>,
         button_id: impl Into<ElementId>,
         tooltip: impl Into<SharedString>,
-        menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+        build: impl Fn(
+            Option<&BreadcrumbDropdownResult>,
+            PopupMenu,
+            &mut Window,
+            &mut Context<PopupMenu>,
+        ) -> PopupMenu
+        + 'static,
     ) -> Self {
         Self {
             id: id.into(),
             button_id: button_id.into(),
             tooltip: tooltip.into(),
-            menu: Rc::new(menu),
+            menu: Rc::new(move |result, menu, window, cx| build(result, menu, window, cx)),
             async_fill: None,
             _ignore_style: StyleRefinement::default(),
             anchor: Anchor::TopLeft,
@@ -77,14 +91,20 @@ impl BreadcrumbFlyout {
         id: impl Into<ElementId>,
         button_id: impl Into<ElementId>,
         tooltip: impl Into<SharedString>,
-        initial_menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
-        async_fill: impl Fn() -> cyberfiles_fs::BreadcrumbDropdownResult + Send + Sync + 'static,
+        f: impl Fn(
+            Option<&BreadcrumbDropdownResult>,
+            PopupMenu,
+            &mut Window,
+            &mut Context<PopupMenu>,
+        ) -> PopupMenu
+        + 'static,
+        async_fill: impl Fn() -> BreadcrumbDropdownResult + Send + Sync + 'static,
     ) -> Self {
         Self {
             id: id.into(),
             button_id: button_id.into(),
             tooltip: tooltip.into(),
-            menu: Rc::new(initial_menu),
+            menu: Rc::new(move |result, menu, window, cx| f(result, menu, window, cx)),
             async_fill: Some(Arc::new(async_fill)),
             _ignore_style: StyleRefinement::default(),
             anchor: Anchor::TopLeft,
@@ -126,6 +146,7 @@ impl IntoElement for BreadcrumbFlyout {
 
 struct FlyoutSharedState {
     menu_view: Option<Entity<PopupMenu>>,
+    dropdown_result: RefCell<Option<BreadcrumbDropdownResult>>,
     open: bool,
     position: Point<Pixels>,
     trigger_size: gpui::Size<Pixels>,
@@ -143,6 +164,7 @@ impl Default for FlyoutState {
             element: None,
             shared_state: Rc::new(RefCell::new(FlyoutSharedState {
                 menu_view: None,
+                dropdown_result: RefCell::new(None),
                 open: false,
                 position: Point::default(),
                 trigger_size: gpui::Size::default(),
@@ -299,6 +321,7 @@ impl Element for BreadcrumbFlyout {
                         let mut shared = shared_state.borrow_mut();
                         shared.menu_view = None;
                         shared._subscription = None;
+                        shared.dropdown_result.borrow_mut().take();
                         shared.position = position;
                         shared.open = true;
                     }
@@ -308,8 +331,9 @@ impl Element for BreadcrumbFlyout {
                         let builder = builder.clone();
                         let async_fill = async_fill.clone();
                         move |window, cx| {
+                            let builder_open = builder.clone();
                             let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-                                builder(menu, window, cx)
+                                builder_open(None, menu, window, cx)
                             });
 
                             let subscription = window.subscribe(&menu, cx, {
@@ -331,13 +355,47 @@ impl Element for BreadcrumbFlyout {
                             }
 
                             if let Some(fill) = async_fill {
+                                let builder_fill = builder.clone();
                                 cx.spawn(async move |cx| {
                                     let result = cx.background_spawn(async move { fill() }).await;
-                                    let _ = menu.update(cx, |menu, cx| {
-                                        super::breadcrumb_bar::refill_segment_dropdown_menu(
-                                            menu, result, cx,
-                                        );
-                                        cx.notify();
+                                    let _ = cx.update(|cx| {
+                                        let Some(window) = cx.active_window() else {
+                                            return;
+                                        };
+                                        let _ = window.update(cx, |_, window, cx| {
+                                            let mut shared = shared_state.borrow_mut();
+                                            *shared.dropdown_result.borrow_mut() = Some(result);
+                                            let result_for_menu = shared.dropdown_result.borrow().clone();
+                                            let new_menu = PopupMenu::build(window, cx, {
+                                                let builder = builder_fill.clone();
+                                                move |menu, window, cx| {
+                                                    builder(
+                                                        result_for_menu.as_ref(),
+                                                        menu,
+                                                        window,
+                                                        cx,
+                                                    )
+                                                }
+                                            });
+                                            if let Some(old) = shared.menu_view.take() {
+                                                let _ = old.update(cx, |_, cx| {
+                                                    cx.emit(DismissEvent);
+                                                });
+                                            }
+                                            let subscription = window.subscribe(&new_menu, cx, {
+                                                let shared_state = shared_state.clone();
+                                                move |_, _: &DismissEvent, window, _cx| {
+                                                    let mut shared = shared_state.borrow_mut();
+                                                    shared.open = false;
+                                                    shared.menu_view = None;
+                                                    shared._subscription = None;
+                                                    window.refresh();
+                                                }
+                                            });
+                                            shared.menu_view = Some(new_menu);
+                                            shared._subscription = Some(subscription);
+                                            window.refresh();
+                                        });
                                     });
                                 })
                                 .detach();

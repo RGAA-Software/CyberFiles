@@ -2,6 +2,8 @@
 
 本文档为开发/ Agent 执行时的硬性约定。与 [`files-rust-port-plan.md`](files-rust-port-plan.md) 中的技术栈一致。
 
+**依赖：** 禁止 `path` 指向仓库外目录；`gpui-component` 仅用 Git 依赖，缺的能力在本仓库 `crates/ui` 实现，详见 [`dependency-policy.md`](dependency-policy.md)。
+
 ---
 
 ## UI 组件原则（必须遵守）
@@ -20,7 +22,7 @@
 
 ### 无对应组件时的流程
 
-1. 查阅 [`gpui-component-analysis.md`](gpui-component-analysis.md) 与 `../gpui-component/crates/story` 画廊。
+1. 查阅 [`gpui-component-analysis.md`](gpui-component-analysis.md) 与上游 [gpui-component](https://github.com/longbridge/gpui-component) 的 `cargo run -p story` 画廊。
 2. 确认库中确实无合适模块后，在 PR/任务说明中 **明确列出** 缺失的组件名与用途，并 @ 维护者。
 3. 临时方案仅允许：GPUI 原语（`div`、`img`）、或与官方示例一致的 `VirtualList` 行模板组合；须在排查表中登记为「已报备」。
 

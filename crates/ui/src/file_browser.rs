@@ -85,8 +85,7 @@ impl ViewMode {
     }
 }
 
-/// Drag payload for in-app, breadcrumb, and sidebar drop targets.
-pub use gpui_component::sidebar::FilePathDrag as DraggedFilePaths;
+pub use crate::drag::DraggedFilePaths;
 
 struct DragPathPreview {
     label: SharedString,

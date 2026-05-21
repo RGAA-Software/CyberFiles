@@ -33,7 +33,7 @@ Header（应用名）
 └─ Footer（左下）→ Settings（独立一行）+ 折叠钮（compact/minimal）
 ```
 
-**近期已做：** 异步侧栏缓存、拖放到目录项、盘符仅根目录高亮、布局不溢出、`FilePathDrag`（gpui-component）。
+**近期已做：** 异步侧栏缓存、拖放到目录项、盘符仅根目录高亮、布局不溢出、`DraggedFilePaths`（本仓库 `crates/ui/src/drag.rs`）。
 
 ---
 
@@ -96,4 +96,4 @@ Header（应用名）
 
 ## 依赖说明
 
-拖放 / 整行点击依赖本地 [`../gpui-component`](../gpui-component) 的 `sidebar/menu.rs`（`FilePathDrag`、`on_file_drop`）。部署前需保证该 fork 已提交或与 CyberFiles 同机 path 一致。
+侧栏文件夹拖放由本仓库 [`crates/ui/src/sidebar/menu_with_drop.rs`](../crates/ui/src/sidebar/menu_with_drop.rs) 包装 `SidebarMenuItem` 实现（非 gpui-component 上游 API）。策略见 [`dependency-policy.md`](dependency-policy.md)。

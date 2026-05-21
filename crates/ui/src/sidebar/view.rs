@@ -13,11 +13,11 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
+use crate::drag::DraggedFilePaths;
 use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;
 
-use gpui_component::sidebar::FilePathDrag;
-
+use super::menu_with_drop::SidebarMenuWithDrop;
 use super::model::{SidebarEntry, SidebarSection};
 
 pub fn render_sidebar(
@@ -55,12 +55,7 @@ pub fn render_sidebar(
                 .child(
                     SidebarMenu::new()
                         .w_full()
-                        .child(menu_item_for_entry(
-                            &page,
-                            &settings_entry,
-                            &active,
-                            collapsed,
-                        ))
+                        .child(menu_item_for_entry(&page, &settings_entry, &active, collapsed).0)
                         .render("sidebar-settings", window, cx),
                 ),
         );
@@ -84,9 +79,10 @@ pub fn render_sidebar(
         .footer(footer);
 
     for section in sections {
-        let menu = SidebarMenu::new().children(section.entries.iter().map(|entry| {
-            menu_item_for_entry(&page, entry, &active, collapsed)
-        }));
+        let mut menu = SidebarMenuWithDrop::new();
+        for entry in &section.entries {
+            append_sidebar_entry(&mut menu, &page, entry, &active, collapsed);
+        }
         sidebar = sidebar.child(SidebarGroup::new(section.title.clone()).child(menu));
     }
 
@@ -122,12 +118,46 @@ fn render_sidebar_header(cx: &App) -> SidebarHeader {
     )
 }
 
+fn append_sidebar_entry(
+    menu: &mut SidebarMenuWithDrop,
+    page: &Entity<MainPage>,
+    entry: &SidebarEntry,
+    active: &NavigationTarget,
+    collapsed: bool,
+) {
+    let (item, middle_click) = menu_item_for_entry(page, entry, active, collapsed);
+    if let Some(dest) = drop_destination(&entry.target) {
+        let page_drop = page.clone();
+        let page_hover = page.clone();
+        let dest_hover = dest.clone();
+        let dest_drop = dest.clone();
+        menu.push_child_with_folder_drop(
+            item,
+            middle_click,
+            move |_, cx| {
+                let path = dest_hover.clone();
+                let _ = page_hover.update(cx, |page, cx| {
+                    page.schedule_breadcrumb_drag_preview(path, cx);
+                });
+            },
+            move |paths: &DraggedFilePaths, window, cx| {
+                let path = dest_drop.clone();
+                let _ = page_drop.update(cx, |page, cx| {
+                    page.drop_paths_on_directory(path, paths.0.clone(), window, cx);
+                });
+            },
+        );
+    } else {
+        menu.push_child(item, middle_click);
+    }
+}
+
 fn menu_item_for_entry(
     page: &Entity<MainPage>,
     entry: &SidebarEntry,
     active: &NavigationTarget,
     collapsed: bool,
-) -> SidebarMenuItem {
+) -> (SidebarMenuItem, Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>>) {
     let target = entry.target.clone();
     let is_active = navigation_matches(active, &target);
     let icon = icon_for_target(&target);
@@ -148,41 +178,25 @@ fn menu_item_for_entry(
                 });
             }
         })
-        .on_middle_click({
+        .context_menu(move |menu, window, cx| {
+            build_entry_context_menu(menu, &page_menu, &entry, window, cx)
+        });
+
+    let middle_click: Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>> =
+        if matches!(&target, NavigationTarget::Path(_)) {
             let target = target.clone();
-            move |_, cx| {
+            Some(std::rc::Rc::new(move |_: &mut Window, cx: &mut App| {
                 if let NavigationTarget::Path(path) = &target {
                     let _ = page_middle.update(cx, |page, cx| {
                         page.open_path_in_new_tab(path.clone(), cx);
                     });
                 }
-            }
-        })
-        .context_menu(move |menu, window, cx| {
-            build_entry_context_menu(menu, &page_menu, &entry, window, cx)
-        });
+            }))
+        } else {
+            None
+        };
 
-    if let Some(dest) = drop_destination(&target) {
-        let page_drop = page.clone();
-        let page_hover = page.clone();
-        let dest_hover = dest.clone();
-        let dest_drop = dest.clone();
-        item = item
-            .on_file_drag_move(move |_, cx| {
-                let path = dest_hover.clone();
-                let _ = page_hover.update(cx, |page, cx| {
-                    page.schedule_breadcrumb_drag_preview(path, cx);
-                });
-            })
-            .on_file_drop(move |paths: &FilePathDrag, window, cx| {
-                let path = dest_drop.clone();
-                let _ = page_drop.update(cx, |page, cx| {
-                    page.drop_paths_on_directory(path, paths.0.clone(), window, cx);
-                });
-            });
-    }
-
-    item
+    (item, middle_click)
 }
 
 fn drop_destination(target: &NavigationTarget) -> Option<std::path::PathBuf> {

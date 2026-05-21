@@ -150,7 +150,13 @@ impl RenderOnce for PathBreadcrumbBar {
 fn render_chevron_menu(
     button_id: impl Into<ElementId>,
     tooltip: String,
-    menu_builder: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+    menu_builder: impl Fn(
+        Option<&BreadcrumbDropdownResult>,
+        PopupMenu,
+        &mut Window,
+        &mut Context<PopupMenu>,
+    ) -> PopupMenu
+    + 'static,
 ) -> BreadcrumbFlyout {
     let button_id = button_id.into();
     BreadcrumbFlyout::new(
@@ -204,7 +210,6 @@ fn render_ellipsis_item(
     on_navigate: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
     cx: &App,
 ) -> impl IntoElement {
-    let menu_builder = ellipsis_dropdown_menu_builder(collapsed, on_navigate);
     let tip = t!("omnibar.breadcrumb.ellipsis_tooltip").to_string();
     h_flex()
         .id("breadcrumb-ellipsis")
@@ -219,7 +224,10 @@ fn render_ellipsis_item(
                 .ghost()
                 .label("…")
                 .tooltip(tip)
-                .dropdown_menu_with_anchor(Anchor::BottomLeft, menu_builder),
+                .dropdown_menu_with_anchor(Anchor::BottomLeft, {
+                    let build = ellipsis_dropdown_menu_builder(collapsed, on_navigate);
+                    move |menu, window, cx| build(None, menu, window, cx)
+                }),
         )
 }
 
@@ -428,39 +436,30 @@ fn popup_menu_text_item(
         .on_click(on_click)
 }
 
-fn segment_dropdown_loading_menu(menu: PopupMenu) -> PopupMenu {
-    apply_breadcrumb_menu_style(
-        menu.scrollable(true).item(
+/// Builds segment chevron menu from optional async `read_dir` result (CyberFiles; not upstream API).
+fn segment_dropdown_menu(
+    menu: PopupMenu,
+    result: Option<&BreadcrumbDropdownResult>,
+) -> PopupMenu {
+    let mut menu = apply_breadcrumb_menu_style(menu.scrollable(true));
+    match result {
+        None => menu.item(
             PopupMenuItem::new(t!("omnibar.breadcrumb.loading").to_string()).disabled(true),
         ),
-    )
-}
-
-/// Replaces flyout items after async `read_dir` (UI thread).
-pub(crate) fn refill_segment_dropdown_menu(
-    menu: &mut PopupMenu,
-    result: BreadcrumbDropdownResult,
-    _: &mut Context<PopupMenu>,
-) {
-    menu.clear_items();
-    match result {
-        BreadcrumbDropdownResult::AccessDenied => {
-            menu.push_item(
-                PopupMenuItem::new(t!("omnibar.breadcrumb.access_denied").to_string()).disabled(true),
-            );
-        }
-        BreadcrumbDropdownResult::Empty => {
-            menu.push_item(
-                PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
-            );
-        }
-        BreadcrumbDropdownResult::Entries(entries) => {
+        Some(BreadcrumbDropdownResult::AccessDenied) => menu.item(
+            PopupMenuItem::new(t!("omnibar.breadcrumb.access_denied").to_string()).disabled(true),
+        ),
+        Some(BreadcrumbDropdownResult::Empty) => menu.item(
+            PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
+        ),
+        Some(BreadcrumbDropdownResult::Entries(entries)) => {
             for entry in entries {
                 let target = entry.path.clone();
-                menu.push_item(popup_menu_path_item(entry, move |_, _, cx| {
+                menu = menu.item(popup_menu_path_item(entry.clone(), move |_, _, cx| {
                     AppNavigation::navigate_to_path(target.clone(), cx);
                 }));
             }
+            menu
         }
     }
 }
@@ -478,7 +477,7 @@ fn segment_dropdown_menu_builder(
         SharedString::from(format!("breadcrumb-flyout-{button_id:?}")),
         button_id,
         t!("omnibar.breadcrumb.chevron_tooltip").to_string(),
-        |menu, _, _| segment_dropdown_loading_menu(menu),
+        |result, menu, _, _| segment_dropdown_menu(menu, result),
         move || {
             breadcrumb_dropdown_entries(&fill_path, fill_options, fill_working.as_deref())
         },
@@ -487,8 +486,14 @@ fn segment_dropdown_menu_builder(
 
 fn root_dropdown_menu_builder(
     root_menu: Rc<dyn Fn() -> Vec<BreadcrumbMenuSection>>,
-) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static {
-    move |menu, _, _| {
+) -> impl Fn(
+    Option<&BreadcrumbDropdownResult>,
+    PopupMenu,
+    &mut Window,
+    &mut Context<PopupMenu>,
+) -> PopupMenu
++ 'static {
+    move |_, menu, _, _| {
         let sections = root_menu();
         let mut menu = menu.scrollable(true);
         if sections.is_empty() {
@@ -517,8 +522,14 @@ fn root_dropdown_menu_builder(
 fn ellipsis_dropdown_menu_builder(
     collapsed: Vec<PathBreadcrumb>,
     on_navigate: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
-) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static {
-    move |menu, _, _| {
+) -> impl Fn(
+    Option<&BreadcrumbDropdownResult>,
+    PopupMenu,
+    &mut Window,
+    &mut Context<PopupMenu>,
+) -> PopupMenu
++ 'static {
+    move |_, menu, _, _| {
         let mut menu = menu.scrollable(true);
         for crumb in &collapsed {
             let path = crumb.path.clone();

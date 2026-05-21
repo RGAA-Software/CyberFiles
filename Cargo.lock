@@ -2285,6 +2285,7 @@ dependencies = [
 [[package]]
 name = "gpui-component"
 version = "0.5.2"
+source = "git+https://github.com/longbridge/gpui-component#196b9259b562c26be97c92f88c798bbeefa9cb3d"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -2327,6 +2328,7 @@ dependencies = [
 [[package]]
 name = "gpui-component-assets"
 version = "0.5.1"
+source = "git+https://github.com/longbridge/gpui-component#196b9259b562c26be97c92f88c798bbeefa9cb3d"
 dependencies = [
  "anyhow",
  "gpui",
@@ -2340,6 +2342,7 @@ dependencies = [
 [[package]]
 name = "gpui-component-macros"
 version = "0.5.1"
+source = "git+https://github.com/longbridge/gpui-component#196b9259b562c26be97c92f88c798bbeefa9cb3d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4648,7 +4651,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

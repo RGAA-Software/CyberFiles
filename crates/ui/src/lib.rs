@@ -1,4 +1,5 @@
 mod app_state;
+mod drag;
 mod file_browser;
 mod home;
 mod i18n;
