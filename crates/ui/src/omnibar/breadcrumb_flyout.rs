@@ -33,6 +33,7 @@ impl RenderOnce for BreadcrumbChevronTrigger {
     fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
         Button::new(self.id)
             .xsmall()
+            .compact()
             .ghost()
             .tooltip(self.tooltip)
             .selected(self.open)

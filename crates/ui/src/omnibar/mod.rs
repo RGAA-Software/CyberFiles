@@ -3,7 +3,7 @@ mod breadcrumb_flyout;
 mod breadcrumb_host;
 
 pub use breadcrumb_bar::PathBreadcrumbBar;
-pub use breadcrumb_host::OmnibarBreadcrumbHost;
+pub use breadcrumb_host::OmnibarBreadcrumbCallbacks;
 
 /// Drag-hover delay before navigating into a breadcrumb folder (ms). Files uses 1300ms.
 /// Files `HoverToOpenTimespan` for drag-hover navigation into breadcrumb folders.

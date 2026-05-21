@@ -17,16 +17,21 @@ use gpui_component::{
     notification::Notification,
     resizable::{h_resizable, resizable_panel},
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
+    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Sizable as _, WindowExt as _,
 };
 use rust_i18n::t;
 
 use crate::info_pane::InfoPane;
 use crate::app_state::breadcrumb_navigation_target;
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
-use crate::omnibar::{OmnibarBreadcrumbHost, BREADCRUMB_DRAG_HOVER_OPEN_MS};
+use crate::omnibar::{OmnibarBreadcrumbCallbacks, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::{PaneShell, ShellPanes};
+
+/// Matches Files `NavigationToolbar` height.
+const NAV_TOOLBAR_HEIGHT: Pixels = px(48.);
+/// Omnibar height (Files `AddressToolbarButtonStyle` uses 32px).
+const OMNIBAR_BAR_HEIGHT: Pixels = px(32.);
 
 struct TabEntry {
     id: u64,
@@ -44,7 +49,8 @@ pub struct MainPage {
     omnibar_show_full_path: bool,
     omnibar_path_input: Option<Entity<InputState>>,
     _omnibar_path_subscription: Option<Subscription>,
-    omnibar_breadcrumb_host: Option<Entity<OmnibarBreadcrumbHost>>,
+    omnibar_breadcrumb_callbacks: Option<OmnibarBreadcrumbCallbacks>,
+    omnibar_breadcrumb_width: f32,
     breadcrumb_drag_generation: u64,
     search_input: Option<Entity<InputState>>,
     _search_subscription: Option<Subscription>,
@@ -70,7 +76,8 @@ impl MainPage {
             omnibar_show_full_path: false,
             omnibar_path_input: None,
             _omnibar_path_subscription: None,
-            omnibar_breadcrumb_host: None,
+            omnibar_breadcrumb_callbacks: None,
+            omnibar_breadcrumb_width: 10_000.,
             breadcrumb_drag_generation: 0,
             search_input: None,
             _search_subscription: None,
@@ -127,8 +134,8 @@ impl MainPage {
         .detach();
     }
 
-    fn ensure_omnibar_breadcrumb_host(&mut self, cx: &mut Context<Self>) {
-        if self.omnibar_breadcrumb_host.is_some() {
+    fn ensure_omnibar_breadcrumb_callbacks(&mut self, cx: &mut Context<Self>) {
+        if self.omnibar_breadcrumb_callbacks.is_some() {
             return;
         }
         let page = cx.entity();
@@ -203,21 +210,16 @@ impl MainPage {
                 Some(t!("omnibar.breadcrumb.drives").to_string()),
             )
         });
-        self.omnibar_breadcrumb_host = Some(cx.new(|_| {
-            OmnibarBreadcrumbHost::new(
-                true,
-                Vec::new(),
-                DirectoryReadOptions::default(),
-                None,
-                root_menu,
-                on_navigate,
-                on_navigate_new_tab,
-                on_home,
-                on_drop_paths,
-                on_drag_hover,
-                on_show_full_path,
-            )
-        }));
+        self.omnibar_breadcrumb_callbacks = Some(OmnibarBreadcrumbCallbacks::new(
+            true,
+            root_menu,
+            on_navigate,
+            on_navigate_new_tab,
+            on_home,
+            on_drop_paths,
+            on_drag_hover,
+            on_show_full_path,
+        ));
     }
 
     fn omnibar_working_directory(&self, cx: &App) -> Option<PathBuf> {
@@ -505,8 +507,8 @@ impl MainPage {
         } else {
             None
         };
+        self.ensure_omnibar_breadcrumb_callbacks(cx);
         let breadcrumbs = self.omnibar_breadcrumbs(cx);
-        self.ensure_omnibar_breadcrumb_host(cx);
         let working_directory = self.omnibar_working_directory(cx);
         let read_options = *self
             .active_pane(cx)
@@ -514,53 +516,59 @@ impl MainPage {
             .file_browser()
             .read(cx)
             .read_options();
-        if let Some(host) = self.omnibar_breadcrumb_host.clone() {
-            host.update(cx, |host, _| {
-                host.set_path_context(breadcrumbs, working_directory, read_options);
-            });
-        }
-        let breadcrumb_host = self.omnibar_breadcrumb_host.clone().expect("breadcrumb host");
+        // Inner `px_2` on omnibar-bar; keep collapse math in sync with layout padding.
+        const OMNIBAR_HORIZONTAL_PADDING: f32 = 16.;
+        let breadcrumb_width =
+            (self.omnibar_breadcrumb_width - OMNIBAR_HORIZONTAL_PADDING).max(1.);
+        let breadcrumb_callbacks = self
+            .omnibar_breadcrumb_callbacks
+            .as_ref()
+            .expect("breadcrumb callbacks");
+        let breadcrumb_bar = breadcrumb_callbacks.breadcrumb_bar(
+            breadcrumbs,
+            breadcrumb_width,
+            read_options,
+            working_directory,
+        );
 
-        div()
-            .id("omnibar-host")
-            .flex_1()
+        h_flex()
+            .id("omnibar-bar")
+            .w_full()
+            .h(OMNIBAR_BAR_HEIGHT)
+            .min_h(OMNIBAR_BAR_HEIGHT)
+            .max_h(OMNIBAR_BAR_HEIGHT)
             .min_w_0()
+            .items_center()
+            .px_2()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background)
             .relative()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(
-                h_flex()
-                    .id("omnibar-bar")
-                    .w_full()
-                    .min_h(px(32.))
-                    .items_center()
-                    .gap_1()
-                    .px_2()
-                    .rounded(cx.theme().radius)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().background)
-                    .when(show_breadcrumbs, |bar| {
-                        bar.child(
-                            div()
-                                .id("omnibar-breadcrumb-host")
-                                .flex_1()
-                                .min_w_0()
-                                .h_full()
-                                .child(breadcrumb_host.clone()),
-                        )
-                    })
-                    .when(!show_breadcrumbs, |bar| {
-                        bar.child(
-                            div()
-                                .id("omnibar-path-input")
-                                .flex_1()
-                                .min_w_0()
-                                .when_some(path_input.as_ref(), |row, input| {
-                                    row.child(Input::new(input).w_full().small())
-                                }),
-                        )
-                    }),
-            )
+            .when(show_breadcrumbs, |bar| {
+                bar.child(
+                    h_flex()
+                        .id("omnibar-breadcrumb-host")
+                        .w_full()
+                        .min_w_0()
+                        .flex_1()
+                        .items_center()
+                        .child(breadcrumb_bar),
+                )
+            })
+            .when(!show_breadcrumbs, |bar| {
+                bar.child(
+                    div()
+                        .id("omnibar-path-input")
+                        .w_full()
+                        .min_w_0()
+                        .flex_1()
+                        .when_some(path_input.as_ref(), |row, input| {
+                            row.child(Input::new(input).w_full().small())
+                        }),
+                )
+            })
     }
 
     pub fn active_navigation_target(&self, cx: &App) -> NavigationTarget {
@@ -698,25 +706,92 @@ impl MainPage {
         }
     }
 
-    fn render_main_column(
+    fn render_content_column(
         &mut self,
         window: &mut Window,
         active_shell: Entity<ShellPanes>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let _ = window;
         v_flex()
+            .id("content-column")
             .size_full()
             .min_h_0()
-            .child(self.render_navigation_toolbar(window, cx))
+            .min_w_0()
             .child(
                 div()
                     .id("main-content")
                     .flex_1()
                     .min_h_0()
+                    .min_w_0()
                     .overflow_hidden()
                     .child(active_shell),
             )
             .child(self.render_status_bar(cx))
+    }
+
+    fn render_shell_layout_row(
+        &mut self,
+        window: &mut Window,
+        active_shell: Entity<ShellPanes>,
+        show_info_pane: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let sidebar_sections = self.sidebar_sections.clone();
+        h_resizable("main-layout")
+            .child(
+                resizable_panel()
+                    .size(px(240.))
+                    .size_range(px(200.)..px(360.))
+                    .flex_none()
+                    .child(
+                        div()
+                            .id("sidebar-panel")
+                            .size_full()
+                            .min_h_0()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .child(render_sidebar(
+                                cx.entity(),
+                                self.active_navigation_target(cx),
+                                &sidebar_sections,
+                                window,
+                                cx,
+                            )),
+                    ),
+            )
+            .child(
+                resizable_panel().flex_1().min_w_0().child(
+                    div()
+                        .id("content-region")
+                        .size_full()
+                        .min_h_0()
+                        .min_w_0()
+                        .when(show_info_pane, |this| {
+                            this.child(
+                                h_resizable("main-with-info-pane")
+                                    .child(
+                                        resizable_panel().flex_1().min_w_0().child(
+                                            self.render_content_column(
+                                                window,
+                                                active_shell.clone(),
+                                                cx,
+                                            ),
+                                        ),
+                                    )
+                                    .child(
+                                        resizable_panel()
+                                            .size(px(300.))
+                                            .size_range(px(220.)..px(480.))
+                                            .child(self.info_pane.clone()),
+                                    ),
+                            )
+                        })
+                        .when(!show_info_pane, |this| {
+                            this.child(self.render_content_column(window, active_shell, cx))
+                        }),
+                ),
+            )
     }
 
     fn render_navigation_toolbar(
@@ -725,7 +800,9 @@ impl MainPage {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let show_info_pane = self.show_info_pane;
-        let dual_pane = self.active_shell().read(cx).dual_pane();
+        let sidebar_collapsed = load_config()
+            .map(|c| c.sidebar_collapsed)
+            .unwrap_or(false);
         let pane = self.active_pane(cx);
         let target = pane.read(cx).target().clone();
         let browser = pane.read(cx).file_browser();
@@ -738,143 +815,173 @@ impl MainPage {
         } else {
             (false, false, false)
         };
-        let show_file_ops = matches!(
+        let show_file_search = matches!(
             target,
             NavigationTarget::Path(_) | NavigationTarget::RecycleBin
         );
 
+        let page = cx.entity();
+
         h_flex()
             .id("navigation-toolbar")
-            .gap_2()
-            .px_3()
-            .py_2()
+            .w_full()
+            .flex_none()
+            .min_w_0()
+            .h(NAV_TOOLBAR_HEIGHT)
+            .min_h(NAV_TOOLBAR_HEIGHT)
+            .gap_1()
+            .px_1()
             .items_center()
             .border_b_1()
             .border_color(cx.theme().border)
+            .bg(cx.theme().background)
+            // Files NavigationToolbar col 0: sidebar + back/forward/up/refresh
             .child(
-                Button::new("nav-back")
-                    .small()
-                    .ghost()
-                    .icon(IconName::ArrowLeft)
-                    .disabled(!can_back)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let browser = this.active_pane(cx).read(cx).file_browser().clone();
-                        browser.update(cx, |b, cx| b.go_back(cx));
-                    })),
-            )
-            .child(
-                Button::new("nav-forward")
-                    .small()
-                    .ghost()
-                    .icon(IconName::ArrowRight)
-                    .disabled(!can_forward)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let browser = this.active_pane(cx).read(cx).file_browser().clone();
-                        browser.update(cx, |b, cx| b.go_forward(cx));
-                    })),
-            )
-            .child(
-                Button::new("nav-up")
-                    .small()
-                    .ghost()
-                    .icon(IconName::ArrowUp)
-                    .disabled(!can_up)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let browser = this.active_pane(cx).read(cx).file_browser().clone();
-                        browser.update(cx, |b, cx| b.go_up(cx));
-                    })),
-            )
-            .child(
-                Button::new("nav-refresh")
-                    .small()
-                    .ghost()
-                    .icon(IconName::Redo2)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let pane = this.active_pane(cx);
-                        pane.update(cx, |shell, cx| {
-                            shell.file_browser().update(cx, |b, cx| {
-                                b.reload();
+                h_flex()
+                    .id("nav-leading")
+                    .flex_none()
+                    .gap_1()
+                    .items_center()
+                    .child(
+                        Button::new("nav-sidebar-toggle")
+                            .small()
+                            .ghost()
+                            .icon(if sidebar_collapsed {
+                                IconName::PanelLeftOpen
+                            } else {
+                                IconName::PanelLeftClose
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_sidebar_collapsed(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("nav-back")
+                            .small()
+                            .ghost()
+                            .icon(IconName::ArrowLeft)
+                            .disabled(!can_back)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let browser =
+                                    this.active_pane(cx).read(cx).file_browser().clone();
+                                browser.update(cx, |b, cx| b.go_back(cx));
+                            })),
+                    )
+                    .child(
+                        Button::new("nav-forward")
+                            .small()
+                            .ghost()
+                            .icon(IconName::ArrowRight)
+                            .disabled(!can_forward)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let browser =
+                                    this.active_pane(cx).read(cx).file_browser().clone();
+                                browser.update(cx, |b, cx| b.go_forward(cx));
+                            })),
+                    )
+                    .child(
+                        Button::new("nav-up")
+                            .small()
+                            .ghost()
+                            .icon(IconName::ArrowUp)
+                            .disabled(!can_up)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let browser =
+                                    this.active_pane(cx).read(cx).file_browser().clone();
+                                browser.update(cx, |b, cx| b.go_up(cx));
+                            })),
+                    )
+                    .child(
+                        Button::new("nav-refresh")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Redo2)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let pane = this.active_pane(cx);
+                                pane.update(cx, |shell, cx| {
+                                    shell.file_browser().update(cx, |b, cx| {
+                                        b.reload();
+                                        cx.notify();
+                                    });
+                                });
                                 cx.notify();
-                            });
-                        });
-                        cx.notify();
-                    })),
+                            })),
+                    ),
             )
-            .when(show_file_ops, |bar| {
-                bar.child(
-                    Button::new("nav-new-folder")
-                        .small()
-                        .outline()
-                        .icon(IconName::Folder)
-                        .tooltip(t!("files.new_folder"))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            let pane = this.active_pane(cx);
-                            pane.update(cx, |shell, cx| {
-                                shell.file_browser().update(cx, |b, cx| {
-                                    b.create_new_folder(window, cx);
-                                });
-                            });
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("nav-pin-folder")
-                        .small()
-                        .outline()
-                        .icon(IconName::Star)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.pin_current_folder(cx);
-                        })),
-                )
-                .child(
-                    Button::new("nav-new-file")
-                        .small()
-                        .outline()
-                        .icon(IconName::File)
-                        .tooltip(t!("files.new_file"))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            let pane = this.active_pane(cx);
-                            pane.update(cx, |shell, cx| {
-                                shell.file_browser().update(cx, |b, cx| {
-                                    b.create_new_file(window, cx);
-                                });
-                            });
-                            cx.notify();
-                        })),
-                )
-            })
+            // Files col 1: address bar / breadcrumbs (*)
             .child(
-                Button::new("nav-split-pane")
-                    .small()
-                    .ghost()
-                    .icon(IconName::LayoutDashboard)
-                    .tooltip(t!("nav.split_pane"))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.toggle_dual_pane(cx);
-                    })),
-            )
-            .child(
-                Button::new("nav-toggle-info")
-                    .small()
-                    .ghost()
-                    .icon(if show_info_pane {
-                        IconName::PanelRightClose
-                    } else {
-                        IconName::PanelRightOpen
+                div()
+                    .id("nav-omnibar-region")
+                    .flex_1()
+                    .min_w_0()
+                    .h(OMNIBAR_BAR_HEIGHT)
+                    .on_prepaint({
+                        move |bounds, window, cx| {
+                            let mut w = f32::from(bounds.size.width);
+                            if w < 1.0 {
+                                w = f32::from(window.viewport_size().width) * 0.45;
+                            }
+                            let _ = page.update(cx, |page, cx| {
+                                if (page.omnibar_breadcrumb_width - w).abs() > 1.5 {
+                                    page.omnibar_breadcrumb_width = w;
+                                    cx.notify();
+                                }
+                            });
+                        }
                     })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.toggle_info_pane(cx);
-                    })),
+                    .child(self.render_omnibar(window, cx)),
             )
-            .child(self.render_omnibar(window, cx))
-            .when(show_file_ops, |bar| {
-                let search_input = self.ensure_search_input(window, cx);
-                bar.child(
-                    div()
-                        .w(px(200.))
-                        .min_w(px(140.))
-                        .child(Input::new(&search_input).w_full().small()),
-                )
+            // Files col 2: split, info pane, pin, search
+            .child({
+                let mut trailing = h_flex()
+                    .id("nav-trailing")
+                    .flex_none()
+                    .gap_1()
+                    .items_center()
+                    .child(
+                        Button::new("nav-split-pane")
+                            .small()
+                            .ghost()
+                            .icon(IconName::LayoutDashboard)
+                            .tooltip(t!("nav.split_pane"))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_dual_pane(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("nav-toggle-info")
+                            .small()
+                            .ghost()
+                            .icon(if show_info_pane {
+                                IconName::PanelRightClose
+                            } else {
+                                IconName::PanelRightOpen
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_info_pane(cx);
+                            })),
+                    );
+                if show_file_search {
+                    let search_input = self.ensure_search_input(window, cx);
+                    trailing = trailing
+                        .child(
+                            Button::new("nav-pin-folder")
+                                .small()
+                                .outline()
+                                .icon(IconName::Star)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.pin_current_folder(cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .w(px(200.))
+                                .min_w(px(140.))
+                                .flex_none()
+                                .child(Input::new(&search_input).w_full().small()),
+                        );
+                }
+                trailing
             })
     }
 
@@ -935,7 +1042,6 @@ impl Focusable for MainPage {
 impl Render for MainPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.ensure_sidebar_cache(cx);
-        let sidebar_sections = self.sidebar_sections.clone();
         let active = self.active_tab;
         let active_shell = self.active_shell();
         let show_info_pane = self.show_info_pane;
@@ -946,6 +1052,7 @@ impl Render for MainPage {
             .id("main-page")
             .size_full()
             .min_h_0()
+            .min_w_0()
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(|this, _: &FocusOmnibar, window, cx| {
                 this.focus_search_input(window, cx);
@@ -998,63 +1105,20 @@ impl Render for MainPage {
                         cx.notify();
                     })),
             )
+            .child(self.render_navigation_toolbar(window, cx))
             .child(
                 div()
+                    .id("main-body")
                     .flex_1()
                     .min_h_0()
-                    .child(
-                h_resizable("main-layout")
-                    .child(
-                        resizable_panel()
-                            .size(px(240.))
-                            .size_range(px(200.)..px(360.))
-                            .flex_none()
-                            .child(
-                                div()
-                                    .id("sidebar-panel")
-                                    .size_full()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .child(render_sidebar(
-                                        cx.entity(),
-                                        self.active_navigation_target(cx),
-                                        &sidebar_sections,
-                                        window,
-                                        cx,
-                                    )),
-                            ),
-                    )
-                    .child(
-                        resizable_panel().flex_1().min_w_0().child(
-                            div()
-                                .size_full()
-                                .min_h_0()
-                                .when(show_info_pane, |this| {
-                                    this.child(
-                                        h_resizable("main-with-info-pane")
-                                            .child(
-                                                resizable_panel()
-                                                    .flex_1()
-                                                    .child(self.render_main_column(
-                                                        window,
-                                                        active_shell.clone(),
-                                                        cx,
-                                                    )),
-                                            )
-                                            .child(
-                                                resizable_panel()
-                                                    .size(px(300.))
-                                                    .size_range(px(220.)..px(480.))
-                                                    .child(self.info_pane.clone()),
-                                            ),
-                                    )
-                                })
-                                .when(!show_info_pane, |this| {
-                                    this.child(self.render_main_column(window, active_shell, cx))
-                                }),
-                        ),
-                    ),
-                    ),
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(self.render_shell_layout_row(
+                        window,
+                        active_shell,
+                        show_info_pane,
+                        cx,
+                    )),
             )
     }
 }

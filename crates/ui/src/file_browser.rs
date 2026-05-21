@@ -139,6 +139,8 @@ pub struct FileBrowser {
     focused_index: Option<usize>,
     renaming: Option<RenameState>,
     show_toolbar: bool,
+    /// View/sort/actions row (Files `InnerNavigationToolbar`), below window nav + omnibar.
+    show_content_toolbar: bool,
     view_mode: ViewMode,
     search_query: String,
     display_items: Vec<FileItem>,
@@ -154,15 +156,20 @@ pub struct FileBrowser {
 
 impl FileBrowser {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        Self::with_options(cx, home_navigation_path(), true)
+        Self::with_options(cx, home_navigation_path(), true, false)
     }
 
-    /// File list for embedding in MainPage (navigation chrome lives on the shell).
+    /// File list for embedding in MainPage (window nav + omnibar live on `MainPage`).
     pub fn for_shell(cx: &mut Context<Self>, initial_dir: PathBuf) -> Self {
-        Self::with_options(cx, initial_dir, false)
+        Self::with_options(cx, initial_dir, false, true)
     }
 
-    fn with_options(cx: &mut Context<Self>, current_dir: PathBuf, show_toolbar: bool) -> Self {
+    fn with_options(
+        cx: &mut Context<Self>,
+        current_dir: PathBuf,
+        show_toolbar: bool,
+        show_content_toolbar: bool,
+    ) -> Self {
         let mut read_options = DirectoryReadOptions::default();
         let mut sort_preferences = SortPreferences::default();
         let (sort_option, sort_direction, show_hidden) = file_sort_prefs_from_config();
@@ -203,6 +210,7 @@ impl FileBrowser {
             focused_index: None,
             renaming: None,
             show_toolbar,
+            show_content_toolbar,
             view_mode,
             search_query: String::new(),
             display_items,
@@ -1658,6 +1666,110 @@ impl FileBrowser {
     }
 }
 
+impl FileBrowser {
+    /// Files-style toolbar above the file list (view, sort, new, delete).
+    fn render_content_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let selected_count = self.selected_paths.len();
+        let show_hidden = self.read_options.show_hidden_items;
+        let sort_label = self.sort_label();
+
+        h_flex()
+            .id("content-toolbar")
+            .w_full()
+            .flex_none()
+            .gap_2()
+            .px_3()
+            .py_1()
+            .mb_1()
+            .items_center()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                Button::new("content-new-folder")
+                    .small()
+                    .outline()
+                    .icon(IconName::Folder)
+                    .tooltip(t!("files.new_folder"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.create_new_folder(window, cx);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("content-new-file")
+                    .small()
+                    .outline()
+                    .icon(IconName::File)
+                    .tooltip(t!("files.new_file"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.create_new_file(window, cx);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("content-view-details")
+                    .small()
+                    .ghost()
+                    .icon(IconName::GalleryVerticalEnd)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.set_view_mode(ViewMode::Details, cx);
+                    })),
+            )
+            .child(
+                Button::new("content-view-grid")
+                    .small()
+                    .ghost()
+                    .icon(IconName::LayoutDashboard)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.set_view_mode(ViewMode::Grid, cx);
+                    })),
+            )
+            .child(
+                Button::new("content-view-columns")
+                    .small()
+                    .ghost()
+                    .icon(IconName::PanelLeft)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.set_view_mode(ViewMode::Columns, cx);
+                    })),
+            )
+            .child(
+                Button::new("content-delete")
+                    .small()
+                    .outline()
+                    .icon(IconName::Delete)
+                    .disabled(selected_count == 0)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.perform_delete(window, cx);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                DropdownButton::new("content-sort")
+                    .small()
+                    .outline()
+                    .button(Button::new("content-sort-btn").label(sort_label))
+                    .dropdown_menu(move |menu, _, _| {
+                        let hidden_label = if show_hidden {
+                            t!("files.show_hidden.off")
+                        } else {
+                            t!("files.show_hidden.on")
+                        };
+                        menu.menu(t!("files.sort.name"), Box::new(SortByName))
+                            .menu(t!("files.sort.modified"), Box::new(SortByModified))
+                            .menu(t!("files.sort.size"), Box::new(SortBySize))
+                            .menu(t!("files.sort.type"), Box::new(SortByType))
+                            .separator()
+                            .menu(
+                                t!("files.sort.toggle_direction"),
+                                Box::new(ToggleSortDirection),
+                            )
+                            .menu(hidden_label, Box::new(ToggleShowHidden))
+                    }),
+            )
+    }
+}
+
 impl Render for FileBrowser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.watched_dir.as_ref() != Some(&self.current_dir) {
@@ -1675,11 +1787,17 @@ impl Render for FileBrowser {
         let in_recycle_bin = self.browse_location == BrowseLocation::RecycleBin;
         let browser = cx.entity();
 
+        let page_gap = if self.show_content_toolbar && !self.show_toolbar {
+            px(0.)
+        } else {
+            px(12.)
+        };
+
         v_flex()
             .id("files-page")
             .size_full()
             .min_h_0()
-            .gap_3()
+            .gap(page_gap)
             .track_focus(&self.focus_handle)
             .key_context(FILE_BROWSER)
             .on_action(cx.listener(Self::on_navigate_back))
@@ -1713,6 +1831,9 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_sort_type))
             .on_action(cx.listener(Self::on_toggle_sort_direction))
             .on_action(cx.listener(Self::on_toggle_show_hidden))
+            .when(self.show_content_toolbar, |this| {
+                this.child(self.render_content_toolbar(cx))
+            })
             .when(self.show_toolbar, |this| {
                 this.child(
                 h_flex()

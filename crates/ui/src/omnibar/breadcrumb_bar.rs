@@ -103,6 +103,7 @@ impl RenderOnce for PathBreadcrumbBar {
         let mut bar = h_flex()
             .id("path-breadcrumb-bar")
             .flex_1()
+            .w_full()
             .min_w_0()
             .gap(px(2.))
             .items_center()
@@ -143,7 +144,8 @@ impl RenderOnce for PathBreadcrumbBar {
             ));
         }
 
-        bar
+        // Fill remaining bar width so click-to-edit and layout use the full omnibar region.
+        bar.child(div().flex_1().min_w_0())
     }
 }
 
@@ -193,6 +195,7 @@ fn render_root_item(
         .child(
             Button::new("breadcrumb-root-home")
                 .xsmall()
+                .compact()
                 .ghost()
                 .icon(IconName::LayoutDashboard)
                 .tooltip(home_tip)
@@ -221,6 +224,7 @@ fn render_ellipsis_item(
         .child(
             Button::new("breadcrumb-ellipsis-button")
                 .xsmall()
+                .compact()
                 .ghost()
                 .label("…")
                 .tooltip(tip)
@@ -277,6 +281,7 @@ fn render_path_segment(
             let navigate = navigate.clone();
             Button::new(("breadcrumb-segment-label", index))
                 .xsmall()
+                .compact()
                 .ghost()
                 .label(label)
                 .tooltip(tooltip)

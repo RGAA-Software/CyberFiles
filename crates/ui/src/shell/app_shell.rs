@@ -99,8 +99,12 @@ impl Render for AppShell {
                     .child(self.title_bar.clone())
                     .child(
                         div()
+                            .id("app-shell-main")
                             .track_focus(&self.focus_handle)
                             .flex_1()
+                            .min_h_0()
+                            .min_w_0()
+                            .w_full()
                             .overflow_hidden()
                             .child(self.view.clone()),
                     )
