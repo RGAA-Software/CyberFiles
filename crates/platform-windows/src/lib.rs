@@ -18,6 +18,8 @@ mod shell_folder;
 mod recycle;
 #[cfg(windows)]
 mod shell;
+#[cfg(windows)]
+mod volume;
 
 #[cfg(windows)]
 pub use clipboard::read_clipboard_file_paths;
@@ -34,6 +36,8 @@ pub use shell_folder::{
 };
 #[cfg(windows)]
 pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
+#[cfg(windows)]
+pub use volume::{DriveKind, VolumeDetails, volume_details};
 #[cfg(windows)]
 pub use shell::{
     invoke_shell_context_menu_item, open_item_properties, query_shell_context_menu_items,

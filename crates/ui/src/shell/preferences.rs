@@ -196,6 +196,68 @@ pub fn apply_sidebar_section_file_tags(enabled: bool, cx: &mut App) {
     mutate_config(cx, |c| c.show_sidebar_section_file_tags = enabled);
 }
 
+pub fn home_widget_quick_access(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_home_quick_access)
+        .unwrap_or(true)
+}
+
+pub fn apply_home_widget_quick_access(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_home_quick_access = enabled);
+    refresh_home_if_active(cx);
+}
+
+pub fn home_widget_drives(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_home_drives)
+        .unwrap_or(true)
+}
+
+pub fn apply_home_widget_drives(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_home_drives = enabled);
+    refresh_home_if_active(cx);
+}
+
+pub fn home_widget_network(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_home_network)
+        .unwrap_or(true)
+}
+
+pub fn apply_home_widget_network(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_home_network = enabled);
+    refresh_home_if_active(cx);
+}
+
+pub fn home_widget_file_tags(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_home_file_tags)
+        .unwrap_or(true)
+}
+
+pub fn apply_home_widget_file_tags(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_home_file_tags = enabled);
+    refresh_home_if_active(cx);
+}
+
+pub fn home_widget_recent(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_home_recent)
+        .unwrap_or(true)
+}
+
+pub fn apply_home_widget_recent(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_home_recent = enabled);
+    refresh_home_if_active(cx);
+}
+
+fn refresh_home_if_active(cx: &mut App) {
+    if let Some(nav) = cx.try_global::<crate::app_state::AppNavigation>() {
+        let page = nav.main_page();
+        let _ = page.update(cx, |page, cx| page.refresh_home_widgets(cx));
+    }
+}
+
 pub fn scrollbar_show_from_key(key: &str) -> ScrollbarShow {
     match key {
         "hover" => ScrollbarShow::Hover,
@@ -264,5 +326,15 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         show_sidebar_section_wsl: prior.show_sidebar_section_wsl,
         show_sidebar_section_file_tags: prior.show_sidebar_section_file_tags,
         file_tags: prior.file_tags,
+        show_home_quick_access: prior.show_home_quick_access,
+        show_home_drives: prior.show_home_drives,
+        show_home_network: prior.show_home_network,
+        show_home_file_tags: prior.show_home_file_tags,
+        show_home_recent: prior.show_home_recent,
+        home_quick_access_expanded: prior.home_quick_access_expanded,
+        home_drives_expanded: prior.home_drives_expanded,
+        home_network_expanded: prior.home_network_expanded,
+        home_file_tags_expanded: prior.home_file_tags_expanded,
+        home_recent_expanded: prior.home_recent_expanded,
     }
 }

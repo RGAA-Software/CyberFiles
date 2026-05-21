@@ -81,6 +81,27 @@ impl AppNavigation {
         let page = cx.borrow_mut().global::<Self>().0.clone();
         page.update(cx, |page, cx| page.navigate_to(target, cx));
     }
+
+    pub fn pin_folder(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| {
+            page.pin_folder_path(path, cx);
+            page.refresh_home_widgets(cx);
+        });
+    }
+
+    pub fn unpin_folder(path_string: &str, cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| {
+            page.unpin_folder_path(path_string, cx);
+            page.refresh_home_widgets(cx);
+        });
+    }
+
+    pub fn refresh_home_widgets(cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let nav = cx.borrow_mut().global::<Self>().0.clone();
+        nav.update(cx, |page, cx| page.refresh_home_widgets(cx));
+    }
 }
 
 pub fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget {

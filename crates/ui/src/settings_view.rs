@@ -15,13 +15,15 @@ fn ts(text: impl AsRef<str>) -> SharedString {
 
 use crate::shell::preferences::{
     apply_border_radius, apply_font_size, apply_locale, apply_scrollbar_show,
-    apply_sidebar_display_mode, apply_sidebar_section_cloud, apply_sidebar_section_drives,
-    apply_sidebar_section_file_tags, apply_sidebar_section_library,
-    apply_sidebar_section_network, apply_sidebar_section_pinned, apply_sidebar_section_wsl,
-    apply_theme_mode, apply_theme_name, current_locale, scrollbar_show_from_key,
-    scrollbar_show_key, set_list_active_highlight, sidebar_display_mode, sidebar_section_cloud,
-    sidebar_section_drives, sidebar_section_file_tags, sidebar_section_library,
-    sidebar_section_network, sidebar_section_pinned, sidebar_section_wsl,
+    apply_home_widget_drives, apply_home_widget_file_tags, apply_home_widget_network,
+    apply_home_widget_quick_access, apply_home_widget_recent, apply_sidebar_display_mode,
+    apply_sidebar_section_cloud, apply_sidebar_section_drives, apply_sidebar_section_file_tags,
+    apply_sidebar_section_library, apply_sidebar_section_network, apply_sidebar_section_pinned,
+    apply_sidebar_section_wsl, apply_theme_mode, apply_theme_name, current_locale,
+    home_widget_drives, home_widget_file_tags, home_widget_network, home_widget_quick_access,
+    home_widget_recent, scrollbar_show_from_key, scrollbar_show_key, set_list_active_highlight,
+    sidebar_display_mode, sidebar_section_cloud, sidebar_section_drives, sidebar_section_file_tags,
+    sidebar_section_library, sidebar_section_network, sidebar_section_pinned, sidebar_section_wsl,
 };
 
 pub fn build_settings(cx: &App) -> Settings {
@@ -253,6 +255,48 @@ pub fn build_settings(cx: &App) -> Settings {
                                     apply_sidebar_section_file_tags,
                                 )
                                 .default_value(sidebar_section_file_tags(cx)),
+                            ),
+                        ]),
+                ]),
+            SettingPage::new(ts(t!("settings.page.home")))
+                .icon(Icon::new(IconName::LayoutDashboard))
+                .groups(vec![
+                    SettingGroup::new()
+                        .title(ts(t!("settings.group.home_widgets")))
+                        .items(vec![
+                            SettingItem::new(
+                                ts(t!("settings.home.widget.quick_access")),
+                                SettingField::switch(
+                                    home_widget_quick_access,
+                                    apply_home_widget_quick_access,
+                                )
+                                .default_value(home_widget_quick_access(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.home.widget.drives")),
+                                SettingField::switch(home_widget_drives, apply_home_widget_drives)
+                                    .default_value(home_widget_drives(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.home.widget.network")),
+                                SettingField::switch(
+                                    home_widget_network,
+                                    apply_home_widget_network,
+                                )
+                                .default_value(home_widget_network(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.home.widget.file_tags")),
+                                SettingField::switch(
+                                    home_widget_file_tags,
+                                    apply_home_widget_file_tags,
+                                )
+                                .default_value(home_widget_file_tags(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.home.widget.recent")),
+                                SettingField::switch(home_widget_recent, apply_home_widget_recent)
+                                    .default_value(home_widget_recent(cx)),
                             ),
                         ]),
                 ]),

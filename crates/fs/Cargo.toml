@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+cyberfiles-core.workspace = true
 unicode-width.workspace = true
 
 [target.'cfg(windows)'.dependencies]

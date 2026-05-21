@@ -22,7 +22,7 @@ impl PaneShell {
         Self {
             target,
             file_browser: cx.new(|cx| FileBrowser::for_shell(cx, initial_path)),
-            home: cx.new(|_| HomePage),
+            home: cx.new(HomePage::new),
         }
     }
 
@@ -45,11 +45,20 @@ impl PaneShell {
                 NavigationTarget::FileTag(name) => {
                     browser.open_file_tag(name.clone(), cx);
                 }
+                NavigationTarget::Home => {
+                    self.home.update(cx, |home, cx| home.reload(cx));
+                }
                 _ => {}
             }
             cx.notify();
         });
         cx.notify();
+    }
+
+    pub fn reload_home(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.target, NavigationTarget::Home) {
+            self.home.update(cx, |home, cx| home.reload(cx));
+        }
     }
 }
 

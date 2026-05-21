@@ -62,6 +62,28 @@ pub struct AppConfig {
     /// User-defined file tags for sidebar (full tag system is future work).
     #[serde(default)]
     pub file_tags: Vec<FileTagConfig>,
+    /// Home page widget visibility (Files `Show*Widget`).
+    #[serde(default = "default_true")]
+    pub show_home_quick_access: bool,
+    #[serde(default = "default_true")]
+    pub show_home_drives: bool,
+    #[serde(default = "default_true")]
+    pub show_home_network: bool,
+    #[serde(default = "default_true")]
+    pub show_home_file_tags: bool,
+    #[serde(default = "default_true")]
+    pub show_home_recent: bool,
+    /// Home widget expander state (Files `*WidgetExpanded`).
+    #[serde(default = "default_true")]
+    pub home_quick_access_expanded: bool,
+    #[serde(default = "default_true")]
+    pub home_drives_expanded: bool,
+    #[serde(default = "default_true")]
+    pub home_network_expanded: bool,
+    #[serde(default = "default_true")]
+    pub home_file_tags_expanded: bool,
+    #[serde(default = "default_true")]
+    pub home_recent_expanded: bool,
 }
 
 /// Sidebar file tag entry (Files `FileTagsManager` subset).
@@ -119,8 +141,70 @@ impl Default for AppConfig {
             show_sidebar_section_wsl: true,
             show_sidebar_section_file_tags: true,
             file_tags: Vec::new(),
+            show_home_quick_access: true,
+            show_home_drives: true,
+            show_home_network: true,
+            show_home_file_tags: true,
+            show_home_recent: true,
+            home_quick_access_expanded: true,
+            home_drives_expanded: true,
+            home_network_expanded: true,
+            home_file_tags_expanded: true,
+            home_recent_expanded: true,
         }
     }
+}
+
+/// Home widget visibility from settings.
+pub fn home_widget_prefs() -> HomeWidgetPrefs {
+    load_config().map(HomeWidgetPrefs::from).unwrap_or_default()
+}
+
+/// Persisted Home widget show/expand flags.
+#[derive(Debug, Clone, Default)]
+pub struct HomeWidgetPrefs {
+    pub show_quick_access: bool,
+    pub show_drives: bool,
+    pub show_network: bool,
+    pub show_file_tags: bool,
+    pub show_recent: bool,
+    pub quick_access_expanded: bool,
+    pub drives_expanded: bool,
+    pub network_expanded: bool,
+    pub file_tags_expanded: bool,
+    pub recent_expanded: bool,
+}
+
+impl From<AppConfig> for HomeWidgetPrefs {
+    fn from(c: AppConfig) -> Self {
+        Self {
+            show_quick_access: c.show_home_quick_access,
+            show_drives: c.show_home_drives,
+            show_network: c.show_home_network,
+            show_file_tags: c.show_home_file_tags,
+            show_recent: c.show_home_recent,
+            quick_access_expanded: c.home_quick_access_expanded,
+            drives_expanded: c.home_drives_expanded,
+            network_expanded: c.home_network_expanded,
+            file_tags_expanded: c.home_file_tags_expanded,
+            recent_expanded: c.home_recent_expanded,
+        }
+    }
+}
+
+pub fn save_home_widget_prefs(prefs: &HomeWidgetPrefs) -> anyhow::Result<()> {
+    let mut config = load_config().unwrap_or_default();
+    config.show_home_quick_access = prefs.show_quick_access;
+    config.show_home_drives = prefs.show_drives;
+    config.show_home_network = prefs.show_network;
+    config.show_home_file_tags = prefs.show_file_tags;
+    config.show_home_recent = prefs.show_recent;
+    config.home_quick_access_expanded = prefs.quick_access_expanded;
+    config.home_drives_expanded = prefs.drives_expanded;
+    config.home_network_expanded = prefs.network_expanded;
+    config.home_file_tags_expanded = prefs.file_tags_expanded;
+    config.home_recent_expanded = prefs.recent_expanded;
+    save_config(&config)
 }
 
 /// Sidebar is icon-only when `sidebar_display_mode == "compact"`.

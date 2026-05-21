@@ -601,6 +601,11 @@ impl MainPage {
         cx.notify();
     }
 
+    pub fn refresh_home_widgets(&mut self, cx: &mut Context<Self>) {
+        self.active_pane(cx).update(cx, |pane, cx| pane.reload_home(cx));
+        cx.notify();
+    }
+
     pub fn pin_folder_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let path_string = path.to_string_lossy().to_string();
         let mut config = load_config().unwrap_or_default();
@@ -608,6 +613,7 @@ impl MainPage {
             config.pinned_folders.push(path_string);
             let _ = save_config(&config);
             self.refresh_sidebar_cache(cx);
+            self.refresh_home_widgets(cx);
             cx.notify();
         }
     }
@@ -622,6 +628,7 @@ impl MainPage {
             config.pinned_folders.remove(index);
             let _ = save_config(&config);
             self.refresh_sidebar_cache(cx);
+            self.refresh_home_widgets(cx);
             cx.notify();
         }
     }

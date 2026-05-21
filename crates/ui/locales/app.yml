@@ -259,6 +259,46 @@ home.widget.recent.empty:
   en: No recent files found.
   zh-CN: 暂无最近文件。
   zh-HK: 暫無最近檔案。
+home.loading:
+  en: Loading…
+  zh-CN: 加载中…
+  zh-HK: 載入中…
+home.menu.widgets:
+  en: Widgets
+  zh-CN: 小组件
+  zh-HK: 小工具
+home.widget.tags.preview.empty:
+  en: No files in this tag yet.
+  zh-CN: 此标签下暂无文件。
+  zh-HK: 此標籤下暫無檔案。
+settings.page.home:
+  en: Home
+  zh-CN: 首页
+  zh-HK: 首頁
+settings.group.home_widgets:
+  en: Home widgets
+  zh-CN: 首页小组件
+  zh-HK: 首頁小工具
+settings.home.widget.quick_access:
+  en: Quick access
+  zh-CN: 快速访问
+  zh-HK: 快速存取
+settings.home.widget.drives:
+  en: Drives
+  zh-CN: 驱动器
+  zh-HK: 磁碟機
+settings.home.widget.network:
+  en: Network locations
+  zh-CN: 网络位置
+  zh-HK: 網路位置
+settings.home.widget.file_tags:
+  en: File tags
+  zh-CN: 文件标签
+  zh-HK: 檔案標籤
+settings.home.widget.recent:
+  en: Recent files
+  zh-CN: 最近文件
+  zh-HK: 最近檔案
 nav.recycle_bin:
   en: Recycle Bin
   zh-CN: 回收站

@@ -180,7 +180,7 @@ fn load_library_entries() -> Vec<SidebarEntry> {
 fn load_drive_entries() -> Vec<SidebarEntry> {
     list_drives()
         .into_iter()
-        .map(|DriveInfo { path, label }| SidebarEntry {
+        .map(|DriveInfo { path, label, .. }| SidebarEntry {
             id: format!("drive-{}", label),
             label,
             target: NavigationTarget::Path(path),
