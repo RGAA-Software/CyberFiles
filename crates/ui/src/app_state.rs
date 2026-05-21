@@ -60,6 +60,11 @@ impl AppNavigation {
         });
     }
 
+    pub fn refresh_sidebar(cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        let _ = page.update(cx, |page, cx| page.refresh_sidebar_cache(cx));
+    }
+
     pub fn navigate_breadcrumb(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {
         let target = breadcrumb_navigation_target(&path);
         let page = cx.borrow_mut().global::<Self>().0.clone();

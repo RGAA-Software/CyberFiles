@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use cyberfiles_core::{load_config, AppConfig, FileTagConfig};
+use cyberfiles_core::{AppConfig, FileTagConfig};
 use cyberfiles_fs::{list_drives, DriveInfo};
 #[cfg(windows)]
 use cyberfiles_platform_windows::{
@@ -276,6 +276,3 @@ fn path_key(path: &Path) -> String {
         .to_ascii_lowercase()
 }
 
-pub fn reload_config() -> AppConfig {
-    load_config().unwrap_or_default()
-}

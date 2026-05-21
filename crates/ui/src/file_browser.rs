@@ -85,9 +85,8 @@ impl ViewMode {
     }
 }
 
-/// Drag payload for in-app and breadcrumb drop targets.
-#[derive(Clone, Debug)]
-pub struct DraggedFilePaths(pub Vec<PathBuf>);
+/// Drag payload for in-app, breadcrumb, and sidebar drop targets.
+pub use gpui_component::sidebar::FilePathDrag as DraggedFilePaths;
 
 struct DragPathPreview {
     label: SharedString,

@@ -102,7 +102,16 @@ fn mutate_config(cx: &mut App, mutate: impl FnOnce(&mut AppConfig)) {
     let mut config = cyberfiles_core::load_config().unwrap_or_default();
     mutate(&mut config);
     let _ = save_config(&config);
+    refresh_main_page_sidebar(cx);
     cx.refresh_windows();
+}
+
+fn refresh_main_page_sidebar(cx: &mut App) {
+    let Some(nav) = cx.try_global::<crate::app_state::AppNavigation>() else {
+        return;
+    };
+    let page = nav.main_page();
+    let _ = page.update(cx, |page, cx| page.refresh_sidebar_cache(cx));
 }
 
 pub fn sidebar_display_mode(_cx: &App) -> SharedString {

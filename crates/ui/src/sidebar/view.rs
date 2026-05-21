@@ -6,8 +6,8 @@ use gpui::{prelude::*, *};
 use gpui_component::{
     menu::{PopupMenu, PopupMenuItem},
     sidebar::{
-        Sidebar, SidebarCollapsible, SidebarFooter, SidebarGroup, SidebarHeader, SidebarItem,
-        SidebarMenu, SidebarMenuItem, SidebarToggleButton,
+        Sidebar, SidebarCollapsible, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu,
+        SidebarMenuItem, SidebarToggleButton,
     },
     h_flex, v_flex, ActiveTheme as _, Icon, IconName,
 };
@@ -16,17 +16,18 @@ use rust_i18n::t;
 use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;
 
-use super::data::build_sidebar_sections;
-use super::model::SidebarEntry;
+use gpui_component::sidebar::FilePathDrag;
+
+use super::model::{SidebarEntry, SidebarSection};
 
 pub fn render_sidebar(
     page: Entity<MainPage>,
     active: NavigationTarget,
+    sections: &[SidebarSection],
     window: &mut Window,
     cx: &mut Context<MainPage>,
 ) -> impl IntoElement {
     let config = load_config().unwrap_or_default();
-    let sections = build_sidebar_sections(&config);
     let collapsed = config.sidebar_collapsed;
     let collapsible = if sidebar_is_offcanvas(&config) {
         SidebarCollapsible::Offcanvas
@@ -36,19 +37,33 @@ pub fn render_sidebar(
         SidebarCollapsible::None
     };
 
-    let settings_item = SidebarMenuItem::new(t!("nav.settings"))
-        .icon(IconName::Settings2)
-        .active(active == NavigationTarget::Settings)
-        .collapsed(collapsed)
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.navigate_to(NavigationTarget::Settings, cx);
-        }));
+    let settings_entry = SidebarEntry {
+        id: "settings".into(),
+        label: t!("nav.settings").to_string(),
+        target: NavigationTarget::Settings,
+        pinned_in_settings: false,
+    };
 
-    let mut footer = SidebarFooter::new().child(
-        SidebarMenu::new()
-            .child(settings_item)
-            .render("sidebar-settings", window, cx),
-    );
+    let mut footer = h_flex()
+        .w_full()
+        .gap_2()
+        .items_center()
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    SidebarMenu::new()
+                        .w_full()
+                        .child(menu_item_for_entry(
+                            &page,
+                            &settings_entry,
+                            &active,
+                            collapsed,
+                        ))
+                        .render("sidebar-settings", window, cx),
+                ),
+        );
     if collapsible != SidebarCollapsible::None {
         footer = footer.child(
             SidebarToggleButton::new()
@@ -62,7 +77,8 @@ pub fn render_sidebar(
     let mut sidebar = Sidebar::new("files-sidebar")
         .collapsible(collapsible)
         .collapsed(collapsed)
-        .w(px(255.))
+        .w_full()
+        .min_w_0()
         .border_0()
         .header(render_sidebar_header(cx))
         .footer(footer);
@@ -71,7 +87,7 @@ pub fn render_sidebar(
         let menu = SidebarMenu::new().children(section.entries.iter().map(|entry| {
             menu_item_for_entry(&page, entry, &active, collapsed)
         }));
-        sidebar = sidebar.child(SidebarGroup::new(section.title).child(menu));
+        sidebar = sidebar.child(SidebarGroup::new(section.title.clone()).child(menu));
     }
 
     sidebar
@@ -120,7 +136,7 @@ fn menu_item_for_entry(
     let page_menu = page.clone();
     let entry = entry.clone();
 
-    SidebarMenuItem::new(entry.label.clone())
+    let mut item = SidebarMenuItem::new(entry.label.clone())
         .icon(icon)
         .active(is_active)
         .collapsed(collapsed)
@@ -144,7 +160,36 @@ fn menu_item_for_entry(
         })
         .context_menu(move |menu, window, cx| {
             build_entry_context_menu(menu, &page_menu, &entry, window, cx)
-        })
+        });
+
+    if let Some(dest) = drop_destination(&target) {
+        let page_drop = page.clone();
+        let page_hover = page.clone();
+        let dest_hover = dest.clone();
+        let dest_drop = dest.clone();
+        item = item
+            .on_file_drag_move(move |_, cx| {
+                let path = dest_hover.clone();
+                let _ = page_hover.update(cx, |page, cx| {
+                    page.schedule_breadcrumb_drag_preview(path, cx);
+                });
+            })
+            .on_file_drop(move |paths: &FilePathDrag, window, cx| {
+                let path = dest_drop.clone();
+                let _ = page_drop.update(cx, |page, cx| {
+                    page.drop_paths_on_directory(path, paths.0.clone(), window, cx);
+                });
+            });
+    }
+
+    item
+}
+
+fn drop_destination(target: &NavigationTarget) -> Option<std::path::PathBuf> {
+    match target {
+        NavigationTarget::Path(path) if path.is_dir() => Some(path.clone()),
+        _ => None,
+    }
 }
 
 fn build_entry_context_menu(
@@ -256,17 +301,58 @@ pub fn navigation_matches(active: &NavigationTarget, entry: &NavigationTarget) -
 }
 
 fn paths_match(sidebar: &Path, current: &Path) -> bool {
-    if sidebar == current {
+    if paths_equal(sidebar, current) {
         return true;
     }
-    let Ok(a) = std::fs::canonicalize(sidebar) else {
-        return current.starts_with(sidebar);
-    };
-    let Ok(b) = std::fs::canonicalize(current) else {
-        return current.starts_with(sidebar);
-    };
+    // Drive roots (C:\) highlight only when browsing that root, not the whole tree.
+    if is_windows_drive_root(sidebar) {
+        return false;
+    }
+    if let (Ok(a), Ok(b)) = (std::fs::canonicalize(sidebar), std::fs::canonicalize(current)) {
+        return is_strict_descendant(&a, &b);
+    }
+    is_strict_descendant(sidebar, current)
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
     if a == b {
         return true;
     }
-    b.starts_with(&a) && b.components().count() > a.components().count()
+    if let (Ok(a), Ok(b)) = (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        return a == b;
+    }
+    false
+}
+
+/// True when `path` is a strict child of `ancestor` (not equal).
+fn is_strict_descendant(ancestor: &Path, path: &Path) -> bool {
+    let ancestor_components: Vec<_> = ancestor.components().collect();
+    let mut path_components: Vec<_> = path.components().collect();
+    if path_components.len() <= ancestor_components.len() {
+        return false;
+    }
+    path_components.truncate(ancestor_components.len());
+    path_components == ancestor_components
+}
+
+#[cfg(windows)]
+fn is_windows_drive_root(path: &Path) -> bool {
+    use std::path::Component;
+    let components: Vec<_> = path.components().collect();
+    match components.as_slice() {
+        [Component::Prefix(prefix)] => {
+            let s = prefix.as_os_str().to_string_lossy();
+            s.len() == 2 && s.ends_with(':')
+        }
+        [Component::Prefix(prefix), Component::RootDir] => {
+            let s = prefix.as_os_str().to_string_lossy();
+            s.len() == 2 && s.ends_with(':')
+        }
+        _ => false,
+    }
+}
+
+#[cfg(not(windows))]
+fn is_windows_drive_root(_path: &Path) -> bool {
+    false
 }

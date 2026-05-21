@@ -23,7 +23,7 @@ use rust_i18n::t;
 
 use crate::info_pane::InfoPane;
 use crate::app_state::breadcrumb_navigation_target;
-use crate::sidebar::render_sidebar;
+use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
 use crate::omnibar::{OmnibarBreadcrumbHost, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::{PaneShell, ShellPanes};
@@ -48,6 +48,10 @@ pub struct MainPage {
     breadcrumb_drag_generation: u64,
     search_input: Option<Entity<InputState>>,
     _search_subscription: Option<Subscription>,
+    sidebar_sections: Vec<SidebarSection>,
+    sidebar_cache_key: u64,
+    sidebar_cache_generation: u64,
+    sidebar_cache_loading: bool,
 }
 
 impl MainPage {
@@ -70,7 +74,57 @@ impl MainPage {
             breadcrumb_drag_generation: 0,
             search_input: None,
             _search_subscription: None,
+            sidebar_sections: Vec::new(),
+            sidebar_cache_key: 0,
+            sidebar_cache_generation: 0,
+            sidebar_cache_loading: false,
         }
+    }
+
+    /// Rebuild sidebar section lists when settings or pins change (async when cache exists).
+    pub fn refresh_sidebar_cache(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_cache_key = 0;
+        self.ensure_sidebar_cache(cx);
+    }
+
+    fn ensure_sidebar_cache(&mut self, cx: &mut Context<Self>) {
+        let config = load_config().unwrap_or_default();
+        let key = sidebar_cache_key(&config);
+        if self.sidebar_cache_key == key && !self.sidebar_sections.is_empty() {
+            return;
+        }
+        if self.sidebar_cache_loading {
+            return;
+        }
+        if self.sidebar_sections.is_empty() {
+            self.sidebar_sections = crate::sidebar::build_sidebar_sections_cached(&config);
+            self.sidebar_cache_key = key;
+            return;
+        }
+        self.sidebar_cache_loading = true;
+        self.sidebar_cache_generation = self.sidebar_cache_generation.wrapping_add(1);
+        let generation = self.sidebar_cache_generation;
+        cx.spawn(async move |page, cx| {
+            let sections = cx
+                .background_spawn(async move {
+                    let config = load_config().unwrap_or_default();
+                    crate::sidebar::build_sidebar_sections_cached(&config)
+                })
+                .await;
+            let key = load_config()
+                .map(|c| sidebar_cache_key(&c))
+                .unwrap_or(0);
+            let _ = page.update(cx, |page, cx| {
+                page.sidebar_cache_loading = false;
+                if page.sidebar_cache_generation != generation {
+                    return;
+                }
+                page.sidebar_sections = sections;
+                page.sidebar_cache_key = key;
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn ensure_omnibar_breadcrumb_host(&mut self, cx: &mut Context<Self>) {
@@ -186,7 +240,7 @@ impl MainPage {
         self.add_tab(NavigationTarget::Path(path), cx);
     }
 
-    fn schedule_breadcrumb_drag_preview(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+    pub fn schedule_breadcrumb_drag_preview(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if self.omnibar_working_directory(cx).as_ref() == Some(&path) {
             return;
         }
@@ -526,6 +580,7 @@ impl MainPage {
         if !config.pinned_folders.iter().any(|p| p == &path_string) {
             config.pinned_folders.push(path_string);
             let _ = save_config(&config);
+            self.refresh_sidebar_cache(cx);
             cx.notify();
         }
     }
@@ -539,6 +594,7 @@ impl MainPage {
         {
             config.pinned_folders.remove(index);
             let _ = save_config(&config);
+            self.refresh_sidebar_cache(cx);
             cx.notify();
         }
     }
@@ -560,6 +616,7 @@ impl MainPage {
         let entry = config.pinned_folders.remove(index);
         config.pinned_folders.insert(new_index, entry);
         let _ = save_config(&config);
+        self.refresh_sidebar_cache(cx);
         cx.notify();
     }
 
@@ -877,6 +934,8 @@ impl Focusable for MainPage {
 
 impl Render for MainPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.ensure_sidebar_cache(cx);
+        let sidebar_sections = self.sidebar_sections.clone();
         let active = self.active_tab;
         let active_shell = self.active_shell();
         let show_info_pane = self.show_info_pane;
@@ -949,15 +1008,24 @@ impl Render for MainPage {
                         resizable_panel()
                             .size(px(240.))
                             .size_range(px(200.)..px(360.))
-                            .child(render_sidebar(
-                                cx.entity(),
-                                self.active_navigation_target(cx),
-                                window,
-                                cx,
-                            )),
+                            .flex_none()
+                            .child(
+                                div()
+                                    .id("sidebar-panel")
+                                    .size_full()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .child(render_sidebar(
+                                        cx.entity(),
+                                        self.active_navigation_target(cx),
+                                        &sidebar_sections,
+                                        window,
+                                        cx,
+                                    )),
+                            ),
                     )
                     .child(
-                        resizable_panel().flex_1().child(
+                        resizable_panel().flex_1().min_w_0().child(
                             div()
                                 .size_full()
                                 .min_h_0()
