@@ -2,6 +2,7 @@ mod app_state;
 mod drag;
 mod file_browser;
 mod home;
+mod icons;
 mod i18n;
 mod info_pane;
 mod main_page;
@@ -17,7 +18,6 @@ use gpui::App;
 
 pub use main_page::MainPage;
 pub use cyberfiles_assets::Assets;
-pub use cyberfiles_assets::{files_icon_path, ICON_MAP};
 pub use i18n::{init_locale, locale, set_locale};
 pub use shell::open_main_window;
 

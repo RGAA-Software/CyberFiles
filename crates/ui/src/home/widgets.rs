@@ -1,7 +1,9 @@
 //! Home page widget bodies (Files `*Widget` parity).
 
 use std::path::PathBuf;
+use std::time::SystemTime;
 
+use chrono::{DateTime, Local};
 use cyberfiles_fs::{
     DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
 };
@@ -18,6 +20,7 @@ use gpui_component::{
 use rust_i18n::t;
 
 use crate::app_state::AppNavigation;
+use crate::icons::{compact_icon, inline_icon};
 use crate::home::page::HomePage;
 use crate::home::widget_shell::{
     card_grid, space_progress_bar, CARD_MIN_HEIGHT, CARD_WIDTH, FOLDER_CARD_HEIGHT, FOLDER_CARD_WIDTH,
@@ -76,8 +79,8 @@ impl HomePage {
                     .w_full()
                     .gap_2()
                     .items_center()
-                    .child(Icon::new(chevron).small())
-                    .child(Icon::new(icon).small())
+                    .child(inline_icon(chevron))
+                    .child(inline_icon(icon))
                     .child(
                         Label::new(title)
                             .text_sm()
@@ -256,11 +259,18 @@ impl HomePage {
                     ))
                 })
                 .when(!recent.is_empty(), |b| {
-                    b.child(v_flex().w_full().gap_px().children(
-                        recent.iter().enumerate().map(|(index, item)| {
-                            self.recent_row(window, index, item, cx).into_any_element()
-                        }),
-                    ))
+                    b.child(
+                        v_flex()
+                            .w_full()
+                            .rounded(cx.theme().radius)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .overflow_hidden()
+                            .child(self.recent_table_header(cx))
+                            .children(recent.iter().enumerate().map(|(index, item)| {
+                                self.recent_row(window, index, item, cx).into_any_element()
+                            })),
+                    )
                 })
             })
     }
@@ -295,7 +305,7 @@ impl HomePage {
                                         .absolute()
                                         .top_0()
                                         .right_0()
-                                        .child(Icon::new(IconName::Star).xsmall()),
+                                        .child(compact_icon(IconName::Star)),
                                 )
                             }),
                     )
@@ -376,6 +386,21 @@ impl HomePage {
             })
     }
 
+    fn recent_table_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .h_8()
+            .px_3()
+            .gap_3()
+            .items_center()
+            .bg(cx.theme().muted)
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .child(div().w(px(28.)).flex_none())
+            .child(div().flex_1().min_w_0().child(t!("files.column.name")))
+            .child(div().w(px(210.)).child(t!("info_pane.path")))
+            .child(div().w(px(150.)).child(t!("files.column.modified")))
+    }
+
     fn recent_row(
         &self,
         window: &mut Window,
@@ -385,31 +410,19 @@ impl HomePage {
     ) -> impl IntoElement {
         let path = item.path.clone();
         let name = item.label.clone();
-        let detail = item.path.display().to_string();
-        Button::new(("home-recent-row", index))
-            .ghost()
+        let location = item.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
+        let modified = format_system_time(item.modified);
+        h_flex()
+            .id(("home-recent-row", index))
             .w_full()
-            .child(
-                h_flex()
-                    .w_full()
-                    .gap_3()
-                    .items_center()
-                    .child(shell_icon_for_path(&item.path, px(20.), window))
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_4()
-                            .child(Label::new(name).text_sm().truncate())
-                            .child(
-                                Label::new(detail)
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .truncate()
-                                    .flex_1(),
-                            ),
-                    ),
-            )
+            .h_9()
+            .flex_none()
+            .px_3()
+            .gap_3()
+            .items_center()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .hover(|this| this.bg(cx.theme().accent))
             .on_click(cx.listener({
                 let path = path.clone();
                 move |_, event, window, cx| {
@@ -420,6 +433,38 @@ impl HomePage {
                 let path = path.clone();
                 move |menu, window, cx| file_context_menu(menu, &path, window, cx)
             })
+            .child(
+                div()
+                    .w(px(28.))
+                    .flex_none()
+                    .child(shell_icon_for_path(&item.path, px(16.), window)),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .text_sm()
+                    .child(name),
+            )
+            .child(
+                div()
+                    .w(px(210.))
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(location),
+            )
+            .child(
+                div()
+                    .w(px(150.))
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(modified),
+            )
     }
 
     fn tag_container(
@@ -554,11 +599,22 @@ fn parse_hex_color(s: &str) -> Option<Hsla> {
 }
 
 fn open_path(path: &PathBuf, event: &ClickEvent, _window: &Window, cx: &mut App) {
+    if event.click_count() < 2 {
+        return;
+    }
     if event.modifiers().control {
         AppNavigation::open_path_in_new_tab(path.clone(), cx);
     } else {
         AppNavigation::navigate_to_path(path.clone(), cx);
     }
+}
+
+fn format_system_time(time: Option<SystemTime>) -> String {
+    let Some(time) = time else {
+        return String::new();
+    };
+    let local_time: DateTime<Local> = time.into();
+    local_time.format("%Y-%m-%d %H:%M").to_string()
 }
 
 fn folder_context_menu(

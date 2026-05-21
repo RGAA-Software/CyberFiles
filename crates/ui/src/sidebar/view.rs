@@ -5,16 +5,14 @@ use cyberfiles_platform_windows::{open_item_properties, SHELL_RECYCLE_BIN_PATH};
 use gpui::{prelude::*, ClickEvent, *};
 use gpui_component::{
     menu::{PopupMenu, PopupMenuItem},
-    sidebar::{
-        Sidebar, SidebarCollapsible, SidebarGroup, SidebarItem, SidebarMenu, SidebarMenuItem,
-        SidebarToggleButton,
-    },
+    sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarItem, SidebarToggleButton},
     Collapsible,
     h_flex, ActiveTheme as _, Icon, IconName,
 };
 use rust_i18n::t;
 
 use crate::drag::DraggedFilePaths;
+use crate::icons::sidebar_icon;
 use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;
 
@@ -53,12 +51,11 @@ pub fn render_sidebar(
             div()
                 .flex_1()
                 .min_w_0()
-                .child(
-                    SidebarMenu::new()
-                        .w_full()
-                        .child(menu_item_for_entry(&page, &settings_entry, &active, collapsed).0)
-                        .render("sidebar-settings", window, cx),
-                ),
+                .child({
+                    let mut settings_menu = SidebarMenuWithDrop::new().collapsed(collapsed);
+                    push_nav_entry(&mut settings_menu, &page, &settings_entry, &active);
+                    settings_menu.render("sidebar-settings", window, cx)
+                }),
         );
     if collapsible != SidebarCollapsible::None {
         footer = footer.child(
@@ -81,7 +78,7 @@ pub fn render_sidebar(
     for section in sections {
         let mut menu = SidebarMenuWithDrop::new();
         for entry in &section.entries {
-            append_sidebar_entry(&mut menu, &page, entry, &active, collapsed);
+            append_sidebar_entry(&mut menu, &page, entry, &active);
         }
         let block = if section.kind == SidebarSectionKind::Home {
             SidebarSectionBlock::flat(menu)
@@ -146,15 +143,13 @@ fn append_sidebar_entry(
     page: &Entity<MainPage>,
     entry: &SidebarEntry,
     active: &NavigationTarget,
-    collapsed: bool,
 ) {
     if let Some(shell_path) = shell_path_for_target(&entry.target) {
-        push_shell_sidebar_entry(menu, page, entry, active, collapsed, shell_path);
+        push_shell_sidebar_entry(menu, page, entry, active, shell_path);
         return;
     }
 
-    let (item, middle_click) = menu_item_for_entry(page, entry, active, collapsed);
-    menu.push_child(item, middle_click);
+    push_nav_entry(menu, page, entry, active);
 }
 
 fn shell_path_for_target(target: &NavigationTarget) -> Option<std::path::PathBuf> {
@@ -172,7 +167,6 @@ fn push_shell_sidebar_entry(
     page: &Entity<MainPage>,
     entry: &SidebarEntry,
     active: &NavigationTarget,
-    collapsed: bool,
     shell_path: std::path::PathBuf,
 ) {
     let is_active = navigation_matches(active, &entry.target);
@@ -220,7 +214,6 @@ fn push_shell_sidebar_entry(
             label,
             shell_path,
             is_active,
-            collapsed,
             handler,
             middle_click,
             context_menu,
@@ -242,7 +235,6 @@ fn push_shell_sidebar_entry(
             label,
             shell_path,
             is_active,
-            collapsed,
             handler,
             middle_click,
             context_menu,
@@ -250,12 +242,12 @@ fn push_shell_sidebar_entry(
     }
 }
 
-fn menu_item_for_entry(
+fn push_nav_entry(
+    menu: &mut SidebarMenuWithDrop,
     page: &Entity<MainPage>,
     entry: &SidebarEntry,
     active: &NavigationTarget,
-    collapsed: bool,
-) -> (SidebarMenuItem, Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>>) {
+) {
     let target = entry.target.clone();
     let is_active = navigation_matches(active, &target);
     let icon = icon_for_target(&target);
@@ -263,26 +255,18 @@ fn menu_item_for_entry(
     let page_middle = page.clone();
     let page_menu = page.clone();
     let entry = entry.clone();
+    let label = SharedString::from(entry.label.clone());
 
-    let mut item = SidebarMenuItem::new(entry.label.clone())
-        .icon(icon)
-        .active(is_active)
-        .collapsed(collapsed)
-        .on_click({
-            let target = target.clone();
-            move |_, _, cx| {
-                let _ = page_click.update(cx, |page, cx| {
-                    page.navigate_to(target.clone(), cx);
-                });
-            }
-        })
-        .context_menu(move |menu, window, cx| {
-            build_entry_context_menu(menu, &page_menu, &entry, window, cx)
+    let handler = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+        let target = target.clone();
+        let _ = page_click.update(cx, |page, cx| {
+            page.navigate_to(target, cx);
         });
+    };
 
     let middle_click: Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>> =
-        if matches!(&target, NavigationTarget::Path(_)) {
-            let target = target.clone();
+        if matches!(&entry.target, NavigationTarget::Path(_)) {
+            let target = entry.target.clone();
             Some(std::rc::Rc::new(move |_: &mut Window, cx: &mut App| {
                 if let NavigationTarget::Path(path) = &target {
                     let _ = page_middle.update(cx, |page, cx| {
@@ -294,7 +278,12 @@ fn menu_item_for_entry(
             None
         };
 
-    (item, middle_click)
+    let context_menu: Option<std::rc::Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>> =
+        Some(std::rc::Rc::new(move |menu, window, cx| {
+            build_entry_context_menu(menu, &page_menu, &entry, window, cx)
+        }));
+
+    menu.push_item(label, icon, is_active, handler, middle_click, context_menu);
 }
 
 fn drop_destination(target: &NavigationTarget) -> Option<std::path::PathBuf> {
@@ -383,11 +372,11 @@ fn build_entry_context_menu(
 
 fn icon_for_target(target: &NavigationTarget) -> Icon {
     match target {
-        NavigationTarget::Home => Icon::new(IconName::LayoutDashboard),
-        NavigationTarget::RecycleBin => Icon::new(IconName::Delete),
-        NavigationTarget::Settings => Icon::new(IconName::Settings2),
-        NavigationTarget::FileTag(_) => Icon::new(IconName::Inbox),
-        NavigationTarget::Path(_) => Icon::new(IconName::Folder),
+        NavigationTarget::Home => sidebar_icon(IconName::LayoutDashboard),
+        NavigationTarget::RecycleBin => sidebar_icon(IconName::Delete),
+        NavigationTarget::Settings => sidebar_icon(IconName::Settings2),
+        NavigationTarget::FileTag(_) => sidebar_icon(IconName::Inbox),
+        NavigationTarget::Path(_) => sidebar_icon(IconName::Folder),
     }
 }
 

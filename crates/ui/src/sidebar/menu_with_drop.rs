@@ -1,7 +1,7 @@
-//! Sidebar menu that wraps [`SidebarMenuItem`] rows with folder drop targets.
+//! Sidebar menu that wraps nav rows with folder drop targets.
 //!
 //! Upstream `gpui-component` does not expose file drop on sidebar items; CyberFiles
-//! implements that here without patching the dependency.
+//! implements that here without patching the dependency. Row height matches the title tab bar.
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -15,13 +15,14 @@ use gpui::{
 use gpui_component::{
     h_flex,
     menu::{ContextMenuExt as _, PopupMenu},
-    Collapsible, StyledExt,
-    sidebar::{SidebarItem, SidebarMenuItem},
+    Collapsible, Icon, StyledExt,
+    sidebar::SidebarItem,
     v_flex, ActiveTheme as _,
 };
 
 use crate::drag::DraggedFilePaths;
 use crate::shell_icon::shell_icon_for_path;
+use super::constants::SIDEBAR_ITEM_HEIGHT;
 
 #[derive(Clone)]
 struct FolderDropHandlers {
@@ -30,22 +31,17 @@ struct FolderDropHandlers {
 }
 
 #[derive(Clone)]
+enum SidebarRowIcon {
+    App(Icon),
+    Shell(PathBuf),
+}
+
+#[derive(Clone)]
 enum SidebarRow {
-    Plain {
-        item: SidebarMenuItem,
-        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    },
-    Droppable {
-        item: SidebarMenuItem,
-        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-        handlers: FolderDropHandlers,
-    },
-    /// Folder row with Windows Shell icon (Files sidebar parity).
-    ShellPath {
+    Item {
         label: SharedString,
-        path: PathBuf,
+        icon: SidebarRowIcon,
         active: bool,
-        collapsed: bool,
         handler: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>,
         on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
         context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>>,
@@ -61,145 +57,10 @@ pub struct SidebarMenuWithDrop {
     rows: Vec<SidebarRow>,
 }
 
-fn render_sidebar_row(
-    row_id: SharedString,
-    item: SidebarMenuItem,
-    collapsed: bool,
-    on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    drop_handlers: Option<FolderDropHandlers>,
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyElement {
-    let inner = item
-        .collapsed(collapsed)
-        .render(row_id.clone(), window, cx)
-        .into_any_element();
-    let mut row_el = div().id(row_id).w_full().child(inner);
-    if let Some(middle) = on_middle_click {
-        row_el = row_el.on_mouse_down(MouseButton::Middle, move |_, window, cx| {
-            middle(window, cx);
-        });
-    }
-    if let Some(handlers) = drop_handlers {
-        let drag_move = handlers.on_drag_move.clone();
-        let drop = handlers.on_drop.clone();
-        row_el = row_el
-            .on_drag_move::<DraggedFilePaths>(move |_, window, cx| {
-                drag_move(window, cx);
-            })
-            .on_drop(move |paths: &DraggedFilePaths, window, cx| {
-                drop(paths, window, cx);
-            });
-    }
-    row_el.into_any_element()
-}
-
-impl SidebarMenuWithDrop {
-    pub fn new() -> Self {
-        Self {
-            style: StyleRefinement::default(),
-            collapsed: false,
-            rows: Vec::new(),
-        }
-    }
-
-    pub fn child(mut self, item: impl Into<SidebarMenuItem>) -> Self {
-        self.push_child(item, None);
-        self
-    }
-
-    pub fn children(
-        mut self,
-        children: impl IntoIterator<Item = impl Into<SidebarMenuItem>>,
-    ) -> Self {
-        for child in children {
-            self.push_child(child, None);
-        }
-        self
-    }
-
-    pub fn push_child(
-        &mut self,
-        item: impl Into<SidebarMenuItem>,
-        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    ) {
-        self.rows.push(SidebarRow::Plain {
-            item: item.into(),
-            on_middle_click,
-        });
-    }
-
-    pub fn push_child_with_folder_drop(
-        &mut self,
-        item: impl Into<SidebarMenuItem>,
-        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-        on_drag_move: impl Fn(&mut Window, &mut App) + 'static,
-        on_drop: impl Fn(&DraggedFilePaths, &mut Window, &mut App) + 'static,
-    ) {
-        self.rows.push(SidebarRow::Droppable {
-            item: item.into(),
-            on_middle_click,
-            handlers: FolderDropHandlers {
-                on_drag_move: Rc::new(on_drag_move),
-                on_drop: Rc::new(on_drop),
-            },
-        });
-    }
-
-    pub fn push_shell_path(
-        &mut self,
-        label: impl Into<SharedString>,
-        path: PathBuf,
-        active: bool,
-        collapsed: bool,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-        context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>>,
-    ) {
-        self.rows.push(SidebarRow::ShellPath {
-            label: label.into(),
-            path,
-            active,
-            collapsed,
-            handler: Rc::new(handler),
-            on_middle_click,
-            context_menu,
-            drop_handlers: None,
-        });
-    }
-
-    pub fn push_shell_path_with_folder_drop(
-        &mut self,
-        label: impl Into<SharedString>,
-        path: PathBuf,
-        active: bool,
-        collapsed: bool,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-        context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>>,
-        on_drag_move: impl Fn(&mut Window, &mut App) + 'static,
-        on_drop: impl Fn(&DraggedFilePaths, &mut Window, &mut App) + 'static,
-    ) {
-        self.rows.push(SidebarRow::ShellPath {
-            label: label.into(),
-            path,
-            active,
-            collapsed,
-            handler: Rc::new(handler),
-            on_middle_click,
-            context_menu,
-            drop_handlers: Some(FolderDropHandlers {
-                on_drag_move: Rc::new(on_drag_move),
-                on_drop: Rc::new(on_drop),
-            }),
-        });
-    }
-}
-
-fn render_shell_path_row(
+fn render_item_row(
     row_id: SharedString,
     label: SharedString,
-    path: PathBuf,
+    icon: SidebarRowIcon,
     active: bool,
     collapsed: bool,
     handler: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>,
@@ -210,13 +71,18 @@ fn render_shell_path_row(
     cx: &mut App,
 ) -> AnyElement {
     let is_hoverable = !active;
-    let icon = shell_icon_for_path(&path, px(16.), window);
+    let icon_element = match icon {
+        SidebarRowIcon::App(icon) => icon.into_any_element(),
+        SidebarRowIcon::Shell(path) => shell_icon_for_path(&path, px(16.), window).into_any_element(),
+    };
 
     let mut item_inner = h_flex()
         .id("item")
         .w_full()
-        .p_2()
+        .h(SIDEBAR_ITEM_HEIGHT)
+        .px_2()
         .gap_x_2()
+        .items_center()
         .rounded(cx.theme().radius)
         .text_sm()
         .when(is_hoverable, |this| {
@@ -231,8 +97,7 @@ fn render_shell_path_row(
                 .text_color(cx.theme().sidebar_accent_foreground)
         })
         .when(collapsed, |this| this.justify_center())
-        .when(!collapsed, |this| this.h_7())
-        .child(icon)
+        .child(icon_element)
         .when(!collapsed, |this| this.child(label))
         .on_click(move |event, window, cx| handler(event, window, cx));
 
@@ -265,6 +130,106 @@ fn render_shell_path_row(
     row_el.into_any_element()
 }
 
+impl SidebarMenuWithDrop {
+    pub fn new() -> Self {
+        Self {
+            style: StyleRefinement::default(),
+            collapsed: false,
+            rows: Vec::new(),
+        }
+    }
+
+    pub fn push_item(
+        &mut self,
+        label: impl Into<SharedString>,
+        icon: Icon,
+        active: bool,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+        context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>>,
+    ) {
+        self.rows.push(SidebarRow::Item {
+            label: label.into(),
+            icon: SidebarRowIcon::App(icon),
+            active,
+            handler: Rc::new(handler),
+            on_middle_click,
+            context_menu,
+            drop_handlers: None,
+        });
+    }
+
+    pub fn push_item_with_folder_drop(
+        &mut self,
+        label: impl Into<SharedString>,
+        icon: Icon,
+        active: bool,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+        context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>>,
+        on_drag_move: impl Fn(&mut Window, &mut App) + 'static,
+        on_drop: impl Fn(&DraggedFilePaths, &mut Window, &mut App) + 'static,
+    ) {
+        self.rows.push(SidebarRow::Item {
+            label: label.into(),
+            icon: SidebarRowIcon::App(icon),
+            active,
+            handler: Rc::new(handler),
+            on_middle_click,
+            context_menu,
+            drop_handlers: Some(FolderDropHandlers {
+                on_drag_move: Rc::new(on_drag_move),
+                on_drop: Rc::new(on_drop),
+            }),
+        });
+    }
+
+    pub fn push_shell_path(
+        &mut self,
+        label: impl Into<SharedString>,
+        path: PathBuf,
+        active: bool,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+        context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>>,
+    ) {
+        self.rows.push(SidebarRow::Item {
+            label: label.into(),
+            icon: SidebarRowIcon::Shell(path),
+            active,
+            handler: Rc::new(handler),
+            on_middle_click,
+            context_menu,
+            drop_handlers: None,
+        });
+    }
+
+    pub fn push_shell_path_with_folder_drop(
+        &mut self,
+        label: impl Into<SharedString>,
+        path: PathBuf,
+        active: bool,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+        context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>>,
+        on_drag_move: impl Fn(&mut Window, &mut App) + 'static,
+        on_drop: impl Fn(&DraggedFilePaths, &mut Window, &mut App) + 'static,
+    ) {
+        self.rows.push(SidebarRow::Item {
+            label: label.into(),
+            icon: SidebarRowIcon::Shell(path),
+            active,
+            handler: Rc::new(handler),
+            on_middle_click,
+            context_menu,
+            drop_handlers: Some(FolderDropHandlers {
+                on_drag_move: Rc::new(on_drag_move),
+                on_drop: Rc::new(on_drop),
+            }),
+        });
+    }
+}
+
 impl Collapsible for SidebarMenuWithDrop {
     fn is_collapsed(&self) -> bool {
         self.collapsed
@@ -290,6 +255,7 @@ impl SidebarItem for SidebarMenuWithDrop {
         cx: &mut App,
     ) -> impl IntoElement {
         let id = id.into();
+        let collapsed = self.collapsed;
 
         v_flex()
             .w_full()
@@ -298,44 +264,18 @@ impl SidebarItem for SidebarMenuWithDrop {
             .children(self.rows.into_iter().enumerate().map(|(ix, row)| {
                 let row_id = SharedString::from(format!("{}-{}", id, ix));
                 match row {
-                    SidebarRow::Plain {
-                        item,
-                        on_middle_click,
-                    } => render_sidebar_row(
-                        row_id,
-                        item,
-                        self.collapsed,
-                        on_middle_click,
-                        None,
-                        window,
-                        cx,
-                    ),
-                    SidebarRow::Droppable {
-                        item,
-                        on_middle_click,
-                        handlers,
-                    } => render_sidebar_row(
-                        row_id,
-                        item,
-                        self.collapsed,
-                        on_middle_click,
-                        Some(handlers),
-                        window,
-                        cx,
-                    ),
-                    SidebarRow::ShellPath {
+                    SidebarRow::Item {
                         label,
-                        path,
+                        icon,
                         active,
-                        collapsed,
                         handler,
                         on_middle_click,
                         context_menu,
                         drop_handlers,
-                    } => render_shell_path_row(
+                    } => render_item_row(
                         row_id,
                         label,
-                        path,
+                        icon,
                         active,
                         collapsed,
                         handler,

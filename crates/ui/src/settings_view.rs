@@ -13,6 +13,7 @@ fn ts(text: impl AsRef<str>) -> SharedString {
     SharedString::from(text.as_ref())
 }
 
+use crate::icons::sidebar_icon;
 use crate::shell::preferences::{
     apply_border_radius, apply_font_size, apply_locale, apply_scrollbar_show,
     apply_home_widget_drives, apply_home_widget_file_tags, apply_home_widget_network,
@@ -69,7 +70,7 @@ pub fn build_settings(cx: &App) -> Settings {
         .pages(vec![
             SettingPage::new(ts(t!("settings.page.general")))
                 .default_open(true)
-                .icon(Icon::new(IconName::Settings2))
+                .icon(sidebar_icon(IconName::Settings2))
                 .groups(vec![
                     SettingGroup::new()
                         .title(ts(t!("settings.group.appearance")))
@@ -188,7 +189,7 @@ pub fn build_settings(cx: &App) -> Settings {
                         ]),
                 ]),
             SettingPage::new(ts(t!("settings.page.sidebar")))
-                .icon(Icon::new(IconName::GalleryVerticalEnd))
+                .icon(sidebar_icon(IconName::GalleryVerticalEnd))
                 .groups(vec![
                     SettingGroup::new()
                         .title(ts(t!("settings.group.sidebar")))
@@ -259,7 +260,7 @@ pub fn build_settings(cx: &App) -> Settings {
                         ]),
                 ]),
             SettingPage::new(ts(t!("settings.page.home")))
-                .icon(Icon::new(IconName::LayoutDashboard))
+                .icon(sidebar_icon(IconName::LayoutDashboard))
                 .groups(vec![
                     SettingGroup::new()
                         .title(ts(t!("settings.group.home_widgets")))
@@ -301,7 +302,7 @@ pub fn build_settings(cx: &App) -> Settings {
                         ]),
                 ]),
             SettingPage::new(ts(t!("settings.page.about")))
-                .icon(Icon::new(IconName::Info))
+                .icon(sidebar_icon(IconName::Info))
                 .group(
                     SettingGroup::new().item(SettingItem::render(|_, _, cx| {
                         v_flex()
@@ -309,7 +310,7 @@ pub fn build_settings(cx: &App) -> Settings {
                             .w_full()
                             .items_center()
                             .justify_center()
-                            .child(Icon::new(IconName::GalleryVerticalEnd).size_16())
+                            .child(sidebar_icon(IconName::GalleryVerticalEnd))
                             .child(APP_NAME)
                             .child(
                                 Label::new(ts(t!(

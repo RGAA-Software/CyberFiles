@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Extract Files ThemedIcon paths to SVG and map to gpui IconName filenames."""
+"""Legacy: extract Files ThemedIcon paths to SVG.
+
+CyberFiles UI icons now use `scripts/sync_material_icons.py` (Google Material Symbols).
+This script remains only for reference or one-off Files asset extraction.
+"""
 
 from __future__ import annotations
 

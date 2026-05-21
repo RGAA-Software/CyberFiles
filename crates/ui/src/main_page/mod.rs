@@ -20,11 +20,12 @@ use gpui_component::{
     notification::Notification,
     resizable::{h_resizable, resizable_panel},
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, Icon, IconName, ThemeMode,
+    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, Icon, IconName, Size, ThemeMode,
     Sizable as _, TitleBar, WindowExt as _,
 };
 use rust_i18n::t;
 
+use crate::icons::{compact_icon, toolbar_icon};
 use crate::info_pane::InfoPane;
 use crate::app_state::breadcrumb_navigation_target;
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
@@ -595,7 +596,11 @@ impl MainPage {
                         .min_w_0()
                         .flex_1()
                         .when_some(path_input.as_ref(), |row, input| {
-                            row.child(Input::new(input).w_full().small())
+                            row.child(
+                                Input::new(input)
+                                    .w_full()
+                                    .with_size(Size::Medium),
+                            )
                         }),
                 )
             })
@@ -845,7 +850,7 @@ impl MainPage {
                         Button::new("main-new-tab")
                             .xsmall()
                             .ghost()
-                            .icon(IconName::Plus)
+                            .icon(compact_icon(IconName::Plus))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.add_tab(
                                     NavigationTarget::Path(home_navigation_path()),
@@ -875,7 +880,7 @@ impl MainPage {
                             .mr(TITLE_TAB_CLOSE_RIGHT_INSET)
                             .xsmall()
                             .ghost()
-                            .icon(IconName::Close)
+                            .icon(compact_icon(IconName::Close))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
                                 this.close_tab(index, cx);
@@ -941,7 +946,7 @@ impl MainPage {
                                 Button::new("theme-toggle")
                                     .small()
                                     .ghost()
-                                    .icon(Icon::new(theme_icon))
+                                    .icon(toolbar_icon(theme_icon))
                                     .on_click(move |_, _, cx| {
                                         let mode = if cx.theme().mode.is_dark() {
                                             ThemeMode::Light
@@ -953,7 +958,7 @@ impl MainPage {
                             )
                             .child(
                                 Button::new("github")
-                                    .icon(IconName::Github)
+                                    .icon(toolbar_icon(IconName::Github))
                                     .small()
                                     .ghost()
                                     .on_click(|_, _, cx| {
@@ -967,7 +972,7 @@ impl MainPage {
                                             .small()
                                             .ghost()
                                             .compact()
-                                            .icon(IconName::Bell),
+                                            .icon(toolbar_icon(IconName::Bell)),
                                     ),
                                 ),
                             ),
@@ -1029,11 +1034,11 @@ impl MainPage {
                         Button::new("nav-sidebar-toggle")
                             .small()
                             .ghost()
-                            .icon(if sidebar_collapsed {
+                            .icon(toolbar_icon(if sidebar_collapsed {
                                 IconName::PanelLeftOpen
                             } else {
                                 IconName::PanelLeftClose
-                            })
+                            }))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_sidebar_collapsed(cx);
                             })),
@@ -1042,7 +1047,7 @@ impl MainPage {
                         Button::new("nav-back")
                             .small()
                             .ghost()
-                            .icon(IconName::ArrowLeft)
+                            .icon(toolbar_icon(IconName::ArrowLeft))
                             .disabled(!can_back)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let browser =
@@ -1054,7 +1059,7 @@ impl MainPage {
                         Button::new("nav-forward")
                             .small()
                             .ghost()
-                            .icon(IconName::ArrowRight)
+                            .icon(toolbar_icon(IconName::ArrowRight))
                             .disabled(!can_forward)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let browser =
@@ -1066,7 +1071,7 @@ impl MainPage {
                         Button::new("nav-up")
                             .small()
                             .ghost()
-                            .icon(IconName::ArrowUp)
+                            .icon(toolbar_icon(IconName::ArrowUp))
                             .disabled(!can_up)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let browser =
@@ -1078,7 +1083,7 @@ impl MainPage {
                         Button::new("nav-refresh")
                             .small()
                             .ghost()
-                            .icon(IconName::Redo2)
+                            .icon(toolbar_icon(IconName::Redo2))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let pane = this.active_pane(cx);
                                 pane.update(cx, |shell, cx| {
@@ -1125,7 +1130,7 @@ impl MainPage {
                         Button::new("nav-split-pane")
                             .small()
                             .ghost()
-                            .icon(IconName::LayoutDashboard)
+                            .icon(toolbar_icon(IconName::LayoutDashboard))
                             .tooltip(t!("nav.split_pane"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_dual_pane(cx);
@@ -1135,11 +1140,11 @@ impl MainPage {
                         Button::new("nav-toggle-info")
                             .small()
                             .ghost()
-                            .icon(if show_info_pane {
+                            .icon(toolbar_icon(if show_info_pane {
                                 IconName::PanelRightClose
                             } else {
                                 IconName::PanelRightOpen
-                            })
+                            }))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_info_pane(cx);
                             })),
@@ -1151,17 +1156,25 @@ impl MainPage {
                             Button::new("nav-pin-folder")
                                 .small()
                                 .outline()
-                                .icon(IconName::Star)
+                                .icon(toolbar_icon(IconName::Star))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.pin_current_folder(cx);
                                 })),
                         )
                         .child(
                             div()
+                                .id("nav-search-wrap")
                                 .w(px(200.))
                                 .min_w(px(140.))
                                 .flex_none()
-                                .child(Input::new(&search_input).w_full().small()),
+                                .h(OMNIBAR_BAR_HEIGHT)
+                                .flex()
+                                .items_center()
+                                .child(
+                                    Input::new(&search_input)
+                                        .w_full()
+                                        .with_size(Size::Medium),
+                                ),
                         );
                 }
                 trailing

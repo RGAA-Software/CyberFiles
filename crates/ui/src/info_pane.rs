@@ -8,9 +8,11 @@ use gpui_component::{
     h_flex,
     label::Label,
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
+    v_flex, ActiveTheme as _, IconName,
 };
 use rust_i18n::t;
+
+use crate::icons::inline_icon;
 
 pub struct InfoPane {
     selected_tab: usize,
@@ -44,7 +46,7 @@ impl Render for InfoPane {
             .bg(cx.theme().background)
             .child(
                 TabBar::new("info-pane-tabs")
-                    .small()
+                    .w_full()
                     .selected_index(selected_tab)
                     .on_click(cx.listener(|this, ix: &usize, _, cx| {
                         this.selected_tab = *ix;
@@ -89,7 +91,7 @@ fn details_panel(item: Option<&FileItem>, _cx: &mut Context<InfoPane>) -> impl I
                     h_flex()
                         .gap_2()
                         .items_center()
-                        .child(Icon::new(IconName::Info).small())
+                        .child(inline_icon(IconName::Info))
                         .child(Label::new(name).text_sm()),
                 )
                 .child(

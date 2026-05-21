@@ -17,6 +17,7 @@ use rust_i18n::t;
 
 use super::breadcrumb_flyout::BreadcrumbFlyout;
 use crate::app_state::AppNavigation;
+use crate::icons::toolbar_icon;
 use crate::file_browser::DraggedFilePaths;
 
 /// Breadcrumb dropdown outer width (Files-style flyout).
@@ -27,8 +28,8 @@ const BREADCRUMB_DROPDOWN_ROW_WIDTH: Pixels = px(310.);
 /// Menu item `text_sm()` (0.875rem @ 16px base).
 const BREADCRUMB_MENU_FONT_SIZE: Pixels = px(14.);
 const BREADCRUMB_MENU_ELLIPSIS: &str = "…";
-/// `Icon::small()` / `size_3p5()` + `gap_2()`.
-const BREADCRUMB_MENU_ICON_WIDTH: f32 = 14.;
+/// App icon size (18px) + `gap_2()`.
+const BREADCRUMB_MENU_ICON_WIDTH: f32 = 18.;
 const BREADCRUMB_MENU_ICON_GAP: f32 = 8.;
 
 /// Files-style path breadcrumb: home root + unified segment blocks (label + chevron), optional ellipsis.
@@ -196,7 +197,7 @@ fn render_root_item(
                 .xsmall()
                 .compact()
                 .ghost()
-                .icon(IconName::LayoutDashboard)
+                .icon(toolbar_icon(IconName::LayoutDashboard))
                 .tooltip(home_tip)
                 .on_click(move |_, window, cx| on_home(window, cx)),
         )

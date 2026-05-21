@@ -80,7 +80,8 @@ fn list_windows_drives() -> Vec<DriveInfo> {
         let volume_label = details.volume_label.clone();
         let label = volume_label
             .as_ref()
-            .map(|name| format!("{name} ({root})"))
+            .filter(|name| !name.is_empty())
+            .map(|name| format!("{root} ({name})"))
             .unwrap_or_else(|| root.clone());
         drives.push(DriveInfo {
             path,

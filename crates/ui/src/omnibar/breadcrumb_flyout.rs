@@ -7,7 +7,8 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use gpui::{
-    anchored, deferred, div, percentage, point, prelude::FluentBuilder, px, Anchor, AnyElement,
+    anchored, deferred, div, percentage, point, prelude::FluentBuilder, px, Anchor,
+    AnyElement,
     App, AppContext, Context, DismissEvent, Element, ElementId, Entity, Focusable, GlobalElementId,
     Hitbox,
     HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement, MouseButton,
@@ -18,8 +19,10 @@ use cyberfiles_fs::BreadcrumbDropdownResult;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     menu::PopupMenu,
-    Icon, IconName, Selectable, Sizable as _,
+    IconName, Selectable, Sizable as _,
 };
+
+use crate::icons::inline_icon;
 
 /// Chevron trigger; rotates 90° while flyout is open (Files `ChevronNormalOn`).
 #[derive(IntoElement)]
@@ -31,16 +34,24 @@ struct BreadcrumbChevronTrigger {
 
 impl RenderOnce for BreadcrumbChevronTrigger {
     fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
-        Button::new(self.id)
-            .xsmall()
-            .compact()
-            .ghost()
-            .tooltip(self.tooltip)
-            .selected(self.open)
+        div()
+            .h(px(28.))
+            .w(px(28.))
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
             .child(
-                Icon::new(IconName::ChevronRight)
-                    .small()
-                    .when(self.open, |icon| icon.rotate(percentage(90. / 360.))),
+                Button::new(self.id)
+                    .xsmall()
+                    .compact()
+                    .ghost()
+                    .tooltip(self.tooltip)
+                    .selected(self.open)
+                    .child(
+                        inline_icon(IconName::ChevronRight)
+                            .when(self.open, |icon| icon.rotate(percentage(90. / 360.))),
+                    ),
             )
     }
 }

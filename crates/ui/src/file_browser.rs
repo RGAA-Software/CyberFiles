@@ -25,6 +25,7 @@ use cyberfiles_fs::{
     SortOption, SortPreferences,
 };
 use crate::app_state::AppNavigation;
+use crate::icons::{compact_icon, toolbar_icon};
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry, ShellIconHint};
 use crate::app_state::AppFileClipboard;
 use gpui::{
@@ -1345,9 +1346,9 @@ impl FileBrowser {
                         .xsmall()
                         .ghost()
                         .icon(match kind {
-                            FileItemKind::Folder => IconName::ChevronRight,
+                            FileItemKind::Folder => compact_icon(IconName::ChevronRight),
                             FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
-                                IconName::ExternalLink
+                                compact_icon(IconName::ExternalLink)
                             }
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -1426,7 +1427,7 @@ impl FileBrowser {
                 Button::new(format!("grid-open-{index}"))
                     .xsmall()
                     .ghost()
-                    .icon(IconName::ExternalLink)
+                    .icon(toolbar_icon(IconName::ExternalLink))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.open_item(open_path.clone(), kind, cx);
                     })),
@@ -1740,7 +1741,7 @@ impl FileBrowser {
                 Button::new("content-new-folder")
                     .small()
                     .outline()
-                    .icon(IconName::Folder)
+                    .icon(toolbar_icon(IconName::Folder))
                     .tooltip(t!("files.new_folder"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.create_new_folder(window, cx);
@@ -1751,7 +1752,7 @@ impl FileBrowser {
                 Button::new("content-new-file")
                     .small()
                     .outline()
-                    .icon(IconName::File)
+                    .icon(toolbar_icon(IconName::File))
                     .tooltip(t!("files.new_file"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.create_new_file(window, cx);
@@ -1762,7 +1763,7 @@ impl FileBrowser {
                 Button::new("content-view-details")
                     .small()
                     .ghost()
-                    .icon(IconName::GalleryVerticalEnd)
+                    .icon(toolbar_icon(IconName::GalleryVerticalEnd))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Details, cx);
                     })),
@@ -1771,7 +1772,7 @@ impl FileBrowser {
                 Button::new("content-view-grid")
                     .small()
                     .ghost()
-                    .icon(IconName::LayoutDashboard)
+                    .icon(toolbar_icon(IconName::LayoutDashboard))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Grid, cx);
                     })),
@@ -1780,7 +1781,7 @@ impl FileBrowser {
                 Button::new("content-view-columns")
                     .small()
                     .ghost()
-                    .icon(IconName::PanelLeft)
+                    .icon(toolbar_icon(IconName::PanelLeft))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Columns, cx);
                     })),
@@ -1789,7 +1790,7 @@ impl FileBrowser {
                 Button::new("content-delete")
                     .small()
                     .outline()
-                    .icon(IconName::Delete)
+                    .icon(toolbar_icon(IconName::Delete))
                     .disabled(selected_count == 0)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.perform_delete(window, cx);
@@ -1893,7 +1894,7 @@ impl Render for FileBrowser {
                         Button::new("files-back")
                             .small()
                             .ghost()
-                            .icon(IconName::ArrowLeft)
+                            .icon(toolbar_icon(IconName::ArrowLeft))
                             .disabled(!can_go_back)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.navigate_back(cx);
@@ -1903,7 +1904,7 @@ impl Render for FileBrowser {
                         Button::new("files-forward")
                             .small()
                             .ghost()
-                            .icon(IconName::ArrowRight)
+                            .icon(toolbar_icon(IconName::ArrowRight))
                             .disabled(!can_go_forward)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.navigate_forward(cx);
@@ -1913,7 +1914,7 @@ impl Render for FileBrowser {
                         Button::new("files-up")
                             .small()
                             .ghost()
-                            .icon(IconName::ArrowUp)
+                            .icon(toolbar_icon(IconName::ArrowUp))
                             .disabled(!can_go_up)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.navigate_parent(cx);
@@ -1923,7 +1924,7 @@ impl Render for FileBrowser {
                         Button::new("files-refresh")
                             .small()
                             .ghost()
-                            .icon(IconName::Redo2)
+                            .icon(toolbar_icon(IconName::Redo2))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.refresh();
                                 cx.notify();
@@ -1933,7 +1934,7 @@ impl Render for FileBrowser {
                         Button::new("files-new-folder-btn")
                             .small()
                             .outline()
-                            .icon(IconName::Folder)
+                            .icon(toolbar_icon(IconName::Folder))
                             .tooltip(t!("files.new_folder"))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.create_new_folder(window, cx);
@@ -1944,7 +1945,7 @@ impl Render for FileBrowser {
                         Button::new("files-new-file-btn")
                             .small()
                             .outline()
-                            .icon(IconName::File)
+                            .icon(toolbar_icon(IconName::File))
                             .tooltip(t!("files.new_file"))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.create_new_file(window, cx);
@@ -1955,7 +1956,7 @@ impl Render for FileBrowser {
                         Button::new("files-view-details")
                             .small()
                             .ghost()
-                            .icon(IconName::GalleryVerticalEnd)
+                            .icon(toolbar_icon(IconName::GalleryVerticalEnd))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_view_mode(ViewMode::Details, cx);
                             })),
@@ -1964,7 +1965,7 @@ impl Render for FileBrowser {
                         Button::new("files-view-grid")
                             .small()
                             .ghost()
-                            .icon(IconName::LayoutDashboard)
+                            .icon(toolbar_icon(IconName::LayoutDashboard))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_view_mode(ViewMode::Grid, cx);
                             })),
@@ -1973,7 +1974,7 @@ impl Render for FileBrowser {
                         Button::new("files-view-columns")
                             .small()
                             .ghost()
-                            .icon(IconName::PanelLeft)
+                            .icon(toolbar_icon(IconName::PanelLeft))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_view_mode(ViewMode::Columns, cx);
                             })),
@@ -1982,7 +1983,7 @@ impl Render for FileBrowser {
                         Button::new("files-delete-btn")
                             .small()
                             .outline()
-                            .icon(IconName::Delete)
+                            .icon(toolbar_icon(IconName::Delete))
                             .disabled(selected_count == 0)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.perform_delete(window, cx);
