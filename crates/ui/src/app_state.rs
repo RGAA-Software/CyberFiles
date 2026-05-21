@@ -56,7 +56,11 @@ impl AppNavigation {
     pub fn location_changed(cx: &mut (impl AppContext + BorrowMut<App>)) {
         let page = cx.borrow_mut().global::<Self>().0.clone();
         cx.borrow_mut().defer(move |cx| {
-            let _ = page.update(cx, |_, cx| cx.notify());
+            let _ = page.update(cx, |page, cx| {
+                // Folder open / back / up in the list must leave path-edit mode and show breadcrumbs.
+                page.dismiss_omnibar_path_edit(cx);
+                cx.notify();
+            });
         });
     }
 
