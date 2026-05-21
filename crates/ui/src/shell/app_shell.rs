@@ -100,7 +100,6 @@ impl Render for AppShell {
                     .child(
                         div()
                             .id("app-shell-main")
-                            .track_focus(&self.focus_handle)
                             .flex_1()
                             .min_h_0()
                             .min_w_0()

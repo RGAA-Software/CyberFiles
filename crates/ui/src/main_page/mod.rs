@@ -7,7 +7,9 @@ use cyberfiles_fs::{
     path_breadcrumbs, DirectoryReadOptions, PathBreadcrumb,
 };
 use cyberfiles_platform_windows::list_shell_quick_access_folders;
-use cyberfiles_commands::FocusOmnibar;
+use cyberfiles_commands::{
+    FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, FILE_BROWSER,
+};
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
@@ -358,6 +360,19 @@ impl MainPage {
 
     fn active_pane(&self, cx: &App) -> Entity<PaneShell> {
         self.active_shell().read(cx).active_pane()
+    }
+
+    fn active_file_browser(&self, cx: &App) -> Entity<crate::file_browser::FileBrowser> {
+        self.active_pane(cx).read(cx).file_browser()
+    }
+
+    fn file_navigation_active(&self, cx: &App) -> bool {
+        matches!(
+            self.active_pane(cx).read(cx).target(),
+            NavigationTarget::Path(_)
+                | NavigationTarget::RecycleBin
+                | NavigationTarget::FileTag(_)
+        )
     }
 
     pub fn navigate_to(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
@@ -1051,6 +1066,7 @@ impl Render for MainPage {
         let active = self.active_tab;
         let active_shell = self.active_shell();
         let show_info_pane = self.show_info_pane;
+        let file_navigation_active = self.file_navigation_active(cx);
         let info_item = self.info_selection(cx);
         self.info_pane.update(cx, |pane, _| pane.set_item(info_item));
 
@@ -1060,8 +1076,30 @@ impl Render for MainPage {
             .min_h_0()
             .min_w_0()
             .track_focus(&self.focus_handle)
+            .when(file_navigation_active, |page| page.key_context(FILE_BROWSER))
             .on_action(cx.listener(|this, _: &FocusOmnibar, window, cx| {
                 this.focus_search_input(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &NavigateUp, _, cx| {
+                if !this.file_navigation_active(cx) || this.omnibar_path_edit_active() {
+                    return;
+                }
+                this.active_file_browser(cx)
+                    .update(cx, |browser, cx| browser.go_up(cx));
+            }))
+            .on_action(cx.listener(|this, _: &NavigateBack, _, cx| {
+                if !this.file_navigation_active(cx) || this.omnibar_path_edit_active() {
+                    return;
+                }
+                this.active_file_browser(cx)
+                    .update(cx, |browser, cx| browser.go_back(cx));
+            }))
+            .on_action(cx.listener(|this, _: &NavigateForward, _, cx| {
+                if !this.file_navigation_active(cx) || this.omnibar_path_edit_active() {
+                    return;
+                }
+                this.active_file_browser(cx)
+                    .update(cx, |browser, cx| browser.go_forward(cx));
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 if event.keystroke.key.as_str() == "escape" {

@@ -7,8 +7,8 @@ use std::{
 
 use chrono::{DateTime, Local};
 use cyberfiles_commands::{
-    CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch, NavigateBack,
-    NavigateForward, NavigateNext, NavigatePrevious, NavigateUp, NewFile, NewFolder, OpenItem,
+    CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch, NavigateNext,
+    NavigatePrevious, NewFile, NewFolder, OpenItem,
     PasteItems, RefreshDirectory, RenameItem, SelectAll, ShellProperties, ViewColumns, ViewDetails,
     ViewGrid, FILE_BROWSER,
 };
@@ -1458,18 +1458,6 @@ impl Focusable for FileBrowser {
 }
 
 impl FileBrowser {
-    fn on_navigate_back(&mut self, _: &NavigateBack, _: &mut Window, cx: &mut Context<Self>) {
-        self.navigate_back(cx);
-    }
-
-    fn on_navigate_forward(&mut self, _: &NavigateForward, _: &mut Window, cx: &mut Context<Self>) {
-        self.navigate_forward(cx);
-    }
-
-    fn on_navigate_up(&mut self, _: &NavigateUp, _: &mut Window, cx: &mut Context<Self>) {
-        self.navigate_parent(cx);
-    }
-
     fn on_refresh(&mut self, _: &RefreshDirectory, _: &mut Window, cx: &mut Context<Self>) {
         self.refresh();
         cx.notify();
@@ -1843,9 +1831,6 @@ impl Render for FileBrowser {
             .gap(page_gap)
             .track_focus(&self.focus_handle)
             .key_context(FILE_BROWSER)
-            .on_action(cx.listener(Self::on_navigate_back))
-            .on_action(cx.listener(Self::on_navigate_forward))
-            .on_action(cx.listener(Self::on_navigate_up))
             .on_action(cx.listener(Self::on_refresh))
             .on_action(cx.listener(Self::on_open_item))
             .on_action(cx.listener(Self::on_select_all))

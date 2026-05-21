@@ -5,6 +5,7 @@ use gpui::{
 };
 use gpui_component::{Root, TitleBar};
 
+use crate::app_state::AppNavigation;
 use super::app_shell::AppShell;
 
 pub fn open_main_window<F, E>(crate_view_fn: F, cx: &mut App)
@@ -43,10 +44,14 @@ where
                 let view = crate_view_fn(window, cx);
                 let shell = cx.new(|cx| AppShell::new(title.clone(), view, window, cx));
 
-                let focus_handle = shell.focus_handle(cx);
                 window.defer(cx, move |window, cx| {
                     if window.focused(cx).is_none() {
-                        focus_handle.focus(window, cx);
+                        if let Some(nav) = cx.try_global::<AppNavigation>() {
+                            nav.main_page()
+                                .read(cx)
+                                .focus_handle(cx)
+                                .focus(window, cx);
+                        }
                     }
                 });
 
