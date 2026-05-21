@@ -20,9 +20,9 @@ use rust_i18n::t;
 use crate::app_state::AppNavigation;
 use crate::home::page::HomePage;
 use crate::home::widget_shell::{
-    card_grid, shell_icon_for_path, space_progress_bar, CARD_MIN_HEIGHT, CARD_WIDTH,
-    FOLDER_CARD_HEIGHT, FOLDER_CARD_WIDTH,
+    card_grid, space_progress_bar, CARD_MIN_HEIGHT, CARD_WIDTH, FOLDER_CARD_HEIGHT, FOLDER_CARD_WIDTH,
 };
+use crate::shell_icon::shell_icon_for_path;
 
 #[cfg(windows)]
 use cyberfiles_platform_windows::{list_known_folder_folders, FOLDERID_NETWORK};
@@ -91,7 +91,7 @@ impl HomePage {
 
     pub(super) fn render_quick_access_widget(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
         entries: &[QuickAccessEntry],
     ) -> impl IntoElement {
@@ -117,7 +117,7 @@ impl HomePage {
                 })
                 .when(!entries.is_empty(), |b| {
                     b.child(card_grid(entries.iter().enumerate().map(|(index, entry)| {
-                        self.folder_card(index, "home-qa", entry, cx)
+                        self.folder_card(window, index, "home-qa", entry, cx)
                             .into_any_element()
                     })))
                 })
@@ -126,7 +126,7 @@ impl HomePage {
 
     pub(super) fn render_drives_widget(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
         drives: &[DriveInfo],
     ) -> impl IntoElement {
@@ -145,7 +145,7 @@ impl HomePage {
             ))
             .when(expanded, |body| {
                 body.child(card_grid(drives.iter().enumerate().map(|(index, drive)| {
-                    self.drive_card(index, "home-drive", drive, cx)
+                    self.drive_card(window, index, "home-drive", drive, cx)
                         .into_any_element()
                 })))
             })
@@ -153,7 +153,7 @@ impl HomePage {
 
     pub(super) fn render_network_widget(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
         entries: &[NetworkEntry],
     ) -> impl IntoElement {
@@ -188,7 +188,7 @@ impl HomePage {
                             is_removable: false,
                             is_network: true,
                         };
-                        self.drive_card(index, "home-network", &drive, cx)
+                        self.drive_card(window, index, "home-network", &drive, cx)
                             .into_any_element()
                     })))
                 })
@@ -197,7 +197,7 @@ impl HomePage {
 
     pub(super) fn render_file_tags_widget(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
         previews: &[FileTagPreview],
     ) -> impl IntoElement {
@@ -223,7 +223,7 @@ impl HomePage {
                 })
                 .when(!previews.is_empty(), |b| {
                     b.child(card_grid(previews.iter().enumerate().map(|(index, preview)| {
-                        self.tag_container(index, preview, cx).into_any_element()
+                        self.tag_container(window, index, preview, cx).into_any_element()
                     })))
                 })
             })
@@ -231,7 +231,7 @@ impl HomePage {
 
     pub(super) fn render_recent_widget(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
         recent: &[RecentItem],
     ) -> impl IntoElement {
@@ -258,7 +258,7 @@ impl HomePage {
                 .when(!recent.is_empty(), |b| {
                     b.child(v_flex().w_full().gap_px().children(
                         recent.iter().enumerate().map(|(index, item)| {
-                            self.recent_row(index, item, cx).into_any_element()
+                            self.recent_row(window, index, item, cx).into_any_element()
                         }),
                     ))
                 })
@@ -267,6 +267,7 @@ impl HomePage {
 
     fn folder_card(
         &self,
+        window: &mut Window,
         index: usize,
         prefix: &str,
         entry: &QuickAccessEntry,
@@ -287,7 +288,7 @@ impl HomePage {
                     .child(
                         div()
                             .relative()
-                            .child(shell_icon_for_path(&entry.path).size_8())
+                            .child(shell_icon_for_path(&entry.path, px(32.), window))
                             .when(pinned, |el| {
                                 el.child(
                                     div()
@@ -317,6 +318,7 @@ impl HomePage {
 
     fn drive_card(
         &self,
+        window: &mut Window,
         index: usize,
         prefix: &str,
         drive: &DriveInfo,
@@ -334,7 +336,7 @@ impl HomePage {
                 h_flex()
                     .w_full()
                     .gap_2()
-                    .child(shell_icon_for_path(&drive.path).size_8())
+                    .child(shell_icon_for_path(&drive.path, px(32.), window))
                     .child(
                         v_flex()
                             .flex_1()
@@ -376,6 +378,7 @@ impl HomePage {
 
     fn recent_row(
         &self,
+        window: &mut Window,
         index: usize,
         item: &RecentItem,
         cx: &mut Context<Self>,
@@ -391,7 +394,7 @@ impl HomePage {
                     .w_full()
                     .gap_3()
                     .items_center()
-                    .child(shell_icon_for_path(&item.path))
+                    .child(shell_icon_for_path(&item.path, px(20.), window))
                     .child(
                         h_flex()
                             .flex_1()
@@ -421,6 +424,7 @@ impl HomePage {
 
     fn tag_container(
         &self,
+        window: &mut Window,
         index: usize,
         preview: &FileTagPreview,
         cx: &mut Context<Self>,
@@ -497,7 +501,9 @@ impl HomePage {
                                                 h_flex()
                                                     .gap_2()
                                                     .items_center()
-                                                    .child(shell_icon_for_path(file_path))
+                                                    .child(shell_icon_for_path(
+                                                        file_path, px(16.), window,
+                                                    ))
                                                     .child(
                                                         Label::new(name.clone())
                                                             .text_sm()

@@ -9,6 +9,8 @@ mod context_menu;
 #[cfg(windows)]
 mod icons;
 #[cfg(windows)]
+mod shell_icon;
+#[cfg(windows)]
 mod paths;
 #[cfg(windows)]
 mod quick_access;
@@ -25,6 +27,8 @@ mod volume;
 pub use clipboard::read_clipboard_file_paths;
 #[cfg(windows)]
 pub use icons::{icon_hint_for_path, ShellIconHint};
+#[cfg(windows)]
+pub use shell_icon::{shell_icon_pixel_size, shell_icon_png, shell_icon_png_scaled};
 #[cfg(windows)]
 pub use paths::{is_recycle_bin_path, recycle_bin_folder};
 #[cfg(windows)]

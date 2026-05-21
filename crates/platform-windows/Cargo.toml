@@ -9,6 +9,7 @@ publish.workspace = true
 anyhow.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
 clipboard-win = { version = "5.4", features = ["std"] }
 windows = { version = "0.58", features = [
     "Win32_Foundation",

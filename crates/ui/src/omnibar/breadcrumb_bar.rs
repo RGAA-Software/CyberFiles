@@ -5,7 +5,6 @@ use cyberfiles_fs::{
     breadcrumb_dropdown_entries, breadcrumb_visible_layout_for_width, BreadcrumbDropdownResult,
     BreadcrumbMenuSection, DirectoryReadOptions, OmnibarPathSuggestion, PathBreadcrumb,
 };
-use cyberfiles_platform_windows::{icon_hint_for_path, ShellIconHint};
 use gpui::{prelude::*, *};
 use gpui_component::plot::label::measure_text_width;
 use gpui_component::{
@@ -331,20 +330,6 @@ fn render_path_segment(
     segment
 }
 
-fn shell_icon_for_path(path: &Path) -> Icon {
-    Icon::new(shell_icon_name(icon_hint_for_path(path))).small()
-}
-
-fn shell_icon_name(hint: ShellIconHint) -> IconName {
-    match hint {
-        ShellIconHint::Folder => IconName::Folder,
-        ShellIconHint::Symlink => IconName::ExternalLink,
-        ShellIconHint::Executable => IconName::File,
-        ShellIconHint::Image => IconName::File,
-        ShellIconHint::Archive => IconName::Folder,
-        ShellIconHint::File => IconName::File,
-    }
-}
 
 fn apply_breadcrumb_menu_style(menu: PopupMenu) -> PopupMenu {
     menu.min_w(BREADCRUMB_DROPDOWN_MIN_WIDTH)
@@ -389,7 +374,7 @@ fn truncate_breadcrumb_menu_label(label: &str, max_width: f32, window: &mut Wind
 /// One menu row: fixed label budget + pixel-accurate ellipsis (not CSS `truncate`).
 fn breadcrumb_menu_row(
     label: String,
-    icon: Option<Icon>,
+    icon: Option<AnyElement>,
     dimmed: bool,
     window: &mut Window,
 ) -> impl IntoElement {
@@ -404,7 +389,7 @@ fn breadcrumb_menu_row(
         .gap_2()
         .text_sm()
         .when(dimmed, |row| row.opacity(0.55))
-        .when_some(icon, |row, icon| row.child(icon.flex_none()))
+        .when_some(icon, |row, icon| row.child(icon))
         .child(
             div()
                 .flex_1()
@@ -425,7 +410,7 @@ fn popup_menu_path_item(
     PopupMenuItem::element(move |window, _| {
         breadcrumb_menu_row(
             label.clone(),
-            Some(shell_icon_for_path(&path)),
+            Some(crate::shell_icon::shell_icon_for_path(&path, px(16.), window)),
             dimmed,
             window,
         )

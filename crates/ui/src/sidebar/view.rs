@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use cyberfiles_core::{load_config, sidebar_is_compact, sidebar_is_offcanvas};
-use cyberfiles_platform_windows::{icon_hint_for_path, open_item_properties, ShellIconHint};
-use gpui::{prelude::*, *};
+use cyberfiles_platform_windows::{open_item_properties, recycle_bin_folder};
+use gpui::{prelude::*, ClickEvent, *};
 use gpui_component::{
     menu::{PopupMenu, PopupMenuItem},
     sidebar::{
@@ -125,15 +125,81 @@ fn append_sidebar_entry(
     active: &NavigationTarget,
     collapsed: bool,
 ) {
+    if let Some(shell_path) = shell_path_for_target(&entry.target) {
+        push_shell_sidebar_entry(menu, page, entry, active, collapsed, shell_path);
+        return;
+    }
+
     let (item, middle_click) = menu_item_for_entry(page, entry, active, collapsed);
-    if let Some(dest) = drop_destination(&entry.target) {
+    menu.push_child(item, middle_click);
+}
+
+fn shell_path_for_target(target: &NavigationTarget) -> Option<std::path::PathBuf> {
+    match target {
+        NavigationTarget::Path(path) => Some(path.clone()),
+        NavigationTarget::Home => std::env::var_os("USERPROFILE").map(std::path::PathBuf::from),
+        NavigationTarget::RecycleBin => recycle_bin_folder(),
+        _ => None,
+    }
+}
+
+fn push_shell_sidebar_entry(
+    menu: &mut SidebarMenuWithDrop,
+    page: &Entity<MainPage>,
+    entry: &SidebarEntry,
+    active: &NavigationTarget,
+    collapsed: bool,
+    shell_path: std::path::PathBuf,
+) {
+    let is_active = navigation_matches(active, &entry.target);
+    let page_click = page.clone();
+    let page_middle = page.clone();
+    let page_menu = page.clone();
+    let entry = entry.clone();
+    let target = entry.target.clone();
+    let label = SharedString::from(entry.label.clone());
+
+    let target_click = target.clone();
+    let handler = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+        let _ = page_click.update(cx, |page, cx| {
+            page.navigate_to(target_click.clone(), cx);
+        });
+    };
+
+    let middle_click: Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>> =
+        if matches!(&target, NavigationTarget::Path(_)) {
+            let target = target.clone();
+            Some(std::rc::Rc::new(move |_: &mut Window, cx: &mut App| {
+                if let NavigationTarget::Path(path) = &target {
+                    let _ = page_middle.update(cx, |page, cx| {
+                        page.open_path_in_new_tab(path.clone(), cx);
+                    });
+                }
+            }))
+        } else {
+            None
+        };
+
+    let entry_menu = entry.clone();
+    let context_menu: Option<std::rc::Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>> =
+        Some(std::rc::Rc::new(move |menu, window, cx| {
+            build_entry_context_menu(menu, &page_menu, &entry_menu, window, cx)
+        }));
+
+    let drop_dest = drop_destination(&entry.target);
+    if let Some(dest) = drop_dest {
         let page_drop = page.clone();
         let page_hover = page.clone();
         let dest_hover = dest.clone();
         let dest_drop = dest.clone();
-        menu.push_child_with_folder_drop(
-            item,
+        menu.push_shell_path_with_folder_drop(
+            label,
+            shell_path,
+            is_active,
+            collapsed,
+            handler,
             middle_click,
+            context_menu,
             move |_, cx| {
                 let path = dest_hover.clone();
                 let _ = page_hover.update(cx, |page, cx| {
@@ -148,7 +214,15 @@ fn append_sidebar_entry(
             },
         );
     } else {
-        menu.push_child(item, middle_click);
+        menu.push_shell_path(
+            label,
+            shell_path,
+            is_active,
+            collapsed,
+            handler,
+            middle_click,
+            context_menu,
+        );
     }
 }
 
@@ -289,17 +363,7 @@ fn icon_for_target(target: &NavigationTarget) -> Icon {
         NavigationTarget::RecycleBin => Icon::new(IconName::Delete),
         NavigationTarget::Settings => Icon::new(IconName::Settings2),
         NavigationTarget::FileTag(_) => Icon::new(IconName::Inbox),
-        NavigationTarget::Path(path) => {
-            let name = match icon_hint_for_path(path) {
-                ShellIconHint::Folder => IconName::Folder,
-                ShellIconHint::File => IconName::File,
-                ShellIconHint::Symlink => IconName::ExternalLink,
-                ShellIconHint::Executable => IconName::File,
-                ShellIconHint::Image => IconName::File,
-                ShellIconHint::Archive => IconName::Folder,
-            };
-            Icon::new(name)
-        }
+        NavigationTarget::Path(_) => Icon::new(IconName::Folder),
     }
 }
 

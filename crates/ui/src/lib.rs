@@ -8,6 +8,7 @@ mod main_page;
 mod omnibar;
 mod settings_view;
 mod shell;
+mod shell_icon;
 mod sidebar;
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -15,7 +16,8 @@ rust_i18n::i18n!("locales", fallback = "en");
 use gpui::App;
 
 pub use main_page::MainPage;
-pub use gpui_component_assets::Assets;
+pub use cyberfiles_assets::Assets;
+pub use cyberfiles_assets::{files_icon_path, ICON_MAP};
 pub use i18n::{init_locale, locale, set_locale};
 pub use shell::open_main_window;
 

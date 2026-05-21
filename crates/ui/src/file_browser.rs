@@ -1005,15 +1005,15 @@ impl FileBrowser {
         format!("{field} {arrow}")
     }
 
-    fn file_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn file_list(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         match self.view_mode {
-            ViewMode::Details => self.details_table(cx).into_any_element(),
-            ViewMode::Grid => self.grid_view(cx).into_any_element(),
-            ViewMode::Columns => self.columns_view(cx).into_any_element(),
+            ViewMode::Details => self.details_table(window, cx).into_any_element(),
+            ViewMode::Grid => self.grid_view(window, cx).into_any_element(),
+            ViewMode::Columns => self.columns_view(window, cx).into_any_element(),
         }
     }
 
-    fn columns_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn columns_view(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let columns = self
             .column_trail
             .iter()
@@ -1032,7 +1032,7 @@ impl FileBrowser {
                         let is_selected =
                             selected_name.as_deref() == Some(item.display_name.as_str());
                         let drag_paths = vec![item.path.clone()];
-                        Self::column_cell(col_index, item, is_selected, drag_paths, cx)
+                        Self::column_cell(window, col_index, item, is_selected, drag_paths, cx)
                     })
                     .collect::<Vec<_>>();
 
@@ -1084,6 +1084,7 @@ impl FileBrowser {
     }
 
     fn column_cell(
+        window: &mut Window,
         col_index: usize,
         item: FileItem,
         selected: bool,
@@ -1134,7 +1135,11 @@ impl FileBrowser {
                 div()
                     .w(px(20.))
                     .flex_none()
-                    .child(Icon::new(icon_for_item(&item)).small()),
+                    .child(crate::shell_icon::shell_icon_for_path(
+                        &item.path,
+                        px(16.),
+                        window,
+                    )),
             )
             .child(
                 div()
@@ -1147,7 +1152,7 @@ impl FileBrowser {
             .into_any_element()
     }
 
-    fn details_table(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn details_table(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .id("files-details-table")
             .size_full()
@@ -1183,7 +1188,7 @@ impl FileBrowser {
                             cx.entity().clone(),
                             "files-virtual-list",
                             self.item_sizes.clone(),
-                            |this, visible_range, _, cx| {
+                            |this, visible_range, window, cx| {
                                 visible_range
                                     .filter_map(|index| {
                                         let item = this.display_items.get(index)?.clone();
@@ -1191,7 +1196,14 @@ impl FileBrowser {
                                             this.selected_paths.contains(&item.path);
                                         let drag_paths =
                                             this.drag_paths_for_item(index, &item.path);
-                                        Some(Self::row(index, item, selected, drag_paths, cx))
+                                        Some(Self::row(
+                                            window,
+                                            index,
+                                            item,
+                                            selected,
+                                            drag_paths,
+                                            cx,
+                                        ))
                                     })
                                     .collect()
                             },
@@ -1202,7 +1214,7 @@ impl FileBrowser {
             )
     }
 
-    fn grid_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn grid_view(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let cells = self
             .display_items
             .iter()
@@ -1211,7 +1223,7 @@ impl FileBrowser {
                 let item = item.clone();
                 let selected = self.selected_paths.contains(&item.path);
                 let drag_paths = self.drag_paths_for_item(index, &item.path);
-                Self::grid_cell(index, item, selected, drag_paths, cx)
+                Self::grid_cell(window, index, item, selected, drag_paths, cx)
             })
             .collect::<Vec<_>>();
 
@@ -1240,6 +1252,7 @@ impl FileBrowser {
     }
 
     fn row(
+        window: &mut Window,
         index: usize,
         item: FileItem,
         selected: bool,
@@ -1249,7 +1262,6 @@ impl FileBrowser {
         let open_path = item.path.clone();
         let double_click_path = item.path.clone();
         let kind = item.kind;
-        let icon = icon_for_item(&item);
         h_flex()
             .id(("file-row", index))
             .w_full()
@@ -1292,7 +1304,11 @@ impl FileBrowser {
                     .w(px(28.))
                     .flex_none()
                     .text_color(cx.theme().muted_foreground)
-                    .child(Icon::new(icon).small()),
+                    .child(crate::shell_icon::shell_icon_for_path(
+                        &item.path,
+                        px(16.),
+                        window,
+                    )),
             )
             .child(
                 div()
@@ -1343,6 +1359,7 @@ impl FileBrowser {
     }
 
     fn grid_cell(
+        window: &mut Window,
         index: usize,
         item: FileItem,
         selected: bool,
@@ -1391,7 +1408,11 @@ impl FileBrowser {
                     label: drag_preview_label(&paths.0).into(),
                 })
             })
-            .child(Icon::new(icon_for_item(&item)).small())
+            .child(crate::shell_icon::shell_icon_for_path(
+                &item.path,
+                px(16.),
+                window,
+            ))
             .child(
                 div()
                     .w_full()
@@ -2043,7 +2064,7 @@ impl Render for FileBrowser {
                         this.clear_selection();
                         cx.notify();
                     }))
-                    .child(self.file_list(cx)),
+                    .child(self.file_list(window, cx)),
             )
             .context_menu(move |menu, _window, menu_cx| {
                 browser.update(menu_cx, |browser, cx| {
