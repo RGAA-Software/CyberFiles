@@ -35,6 +35,10 @@ omnibar.breadcrumb.empty:
   en: No subfolders
   zh-CN: 没有子文件夹
   zh-HK: 沒有子資料夾
+omnibar.breadcrumb.access_denied:
+  en: Access denied
+  zh-CN: 访问被拒绝
+  zh-HK: 存取被拒
 omnibar.breadcrumb.quick_access:
   en: Quick access
   zh-CN: 快速访问
@@ -323,6 +327,10 @@ files.menu.paste:
   en: Paste
   zh-CN: 粘贴
   zh-HK: 貼上
+files.menu.refresh:
+  en: Refresh
+  zh-CN: 刷新
+  zh-HK: 重新整理
 files.menu.delete:
   en: Delete
   zh-CN: 删除

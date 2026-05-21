@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use cyberfiles_fs::{
-    breadcrumb_dropdown_entries, breadcrumb_visible_layout_for_width, BreadcrumbMenuSection,
-    OmnibarPathSuggestion, PathBreadcrumb,
+    breadcrumb_dropdown_entries, breadcrumb_visible_layout_for_width, BreadcrumbDropdownResult,
+    BreadcrumbMenuSection, DirectoryReadOptions, OmnibarPathSuggestion, PathBreadcrumb,
 };
 use cyberfiles_platform_windows::{icon_hint_for_path, ShellIconHint};
 use gpui::{prelude::*, *};
@@ -38,7 +38,7 @@ pub struct PathBreadcrumbBar {
     show_root: bool,
     segments: Vec<PathBreadcrumb>,
     available_width: f32,
-    show_hidden: bool,
+    read_options: DirectoryReadOptions,
     working_directory: Option<PathBuf>,
     root_menu: Rc<dyn Fn() -> Vec<BreadcrumbMenuSection>>,
     on_navigate: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
@@ -56,7 +56,7 @@ impl PathBreadcrumbBar {
         show_root: bool,
         segments: Vec<PathBreadcrumb>,
         available_width: f32,
-        show_hidden: bool,
+        read_options: DirectoryReadOptions,
         working_directory: Option<PathBuf>,
         root_menu: Rc<dyn Fn() -> Vec<BreadcrumbMenuSection>>,
         on_navigate: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
@@ -70,7 +70,7 @@ impl PathBreadcrumbBar {
             show_root,
             segments,
             available_width,
-            show_hidden,
+            read_options,
             working_directory,
             root_menu,
             on_navigate,
@@ -97,7 +97,7 @@ impl RenderOnce for PathBreadcrumbBar {
         let on_drag_hover = self.on_drag_hover.clone();
         let on_show_full_path = self.on_show_full_path.clone();
         let root_menu = self.root_menu.clone();
-        let show_hidden = self.show_hidden;
+        let read_options = self.read_options;
         let working_directory = self.working_directory.clone();
 
         let mut bar = h_flex()
@@ -133,7 +133,7 @@ impl RenderOnce for PathBreadcrumbBar {
                 crumb.clone(),
                 show_chevron,
                 is_last,
-                show_hidden,
+                read_options,
                 working_directory.as_deref(),
                 on_navigate.clone(),
                 on_navigate_new_tab.clone(),
@@ -219,7 +219,7 @@ fn render_path_segment(
     crumb: PathBreadcrumb,
     show_chevron: bool,
     is_last: bool,
-    show_hidden: bool,
+    read_options: DirectoryReadOptions,
     working_directory: Option<&Path>,
     on_navigate: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
     on_navigate_new_tab: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
@@ -232,7 +232,7 @@ fn render_path_segment(
     let label = crumb.label.clone();
     let tooltip = crumb.path.display().to_string();
     let menu_builder =
-        segment_dropdown_menu_builder(path_menu, show_hidden, working_directory.map(Path::to_path_buf));
+        segment_dropdown_menu_builder(path_menu, read_options, working_directory.map(Path::to_path_buf));
     let navigate = on_navigate.clone();
     let new_tab = on_navigate_new_tab.clone();
     let drop_target = path_nav.clone();
@@ -366,7 +366,12 @@ fn truncate_breadcrumb_menu_label(label: &str, max_width: f32, window: &mut Wind
 }
 
 /// One menu row: fixed label budget + pixel-accurate ellipsis (not CSS `truncate`).
-fn breadcrumb_menu_row(label: String, icon: Option<Icon>, window: &mut Window) -> impl IntoElement {
+fn breadcrumb_menu_row(
+    label: String,
+    icon: Option<Icon>,
+    dimmed: bool,
+    window: &mut Window,
+) -> impl IntoElement {
     let display =
         truncate_breadcrumb_menu_label(&label, breadcrumb_menu_label_max_width(icon.is_some()), window);
     h_flex()
@@ -377,6 +382,7 @@ fn breadcrumb_menu_row(label: String, icon: Option<Icon>, window: &mut Window) -
         .items_center()
         .gap_2()
         .text_sm()
+        .when(dimmed, |row| row.opacity(0.55))
         .when_some(icon, |row, icon| row.child(icon.flex_none()))
         .child(
             div()
@@ -394,8 +400,14 @@ fn popup_menu_path_item(
 ) -> PopupMenuItem {
     let path = entry.path.clone();
     let label = entry.label.clone();
+    let dimmed = entry.dimmed;
     PopupMenuItem::element(move |window, _| {
-        breadcrumb_menu_row(label.clone(), Some(shell_icon_for_path(&path)), window)
+        breadcrumb_menu_row(
+            label.clone(),
+            Some(shell_icon_for_path(&path)),
+            dimmed,
+            window,
+        )
     })
     .on_click(on_click)
 }
@@ -404,32 +416,41 @@ fn popup_menu_text_item(
     label: String,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> PopupMenuItem {
-    PopupMenuItem::element(move |window, _| breadcrumb_menu_row(label.clone(), None, window))
+    PopupMenuItem::element(move |window, _| breadcrumb_menu_row(label.clone(), None, false, window))
         .on_click(on_click)
 }
 
 fn segment_dropdown_menu_builder(
     path: PathBuf,
-    show_hidden: bool,
+    read_options: DirectoryReadOptions,
     working_directory: Option<PathBuf>,
 ) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static {
     move |menu, _, _| {
-        let entries = breadcrumb_dropdown_entries(
+        let result = breadcrumb_dropdown_entries(
             &path,
-            show_hidden,
+            read_options,
             working_directory.as_deref(),
         );
         let mut menu = menu.scrollable(true);
-        if entries.is_empty() {
-            menu = menu.item(
-                PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
-            );
-        } else {
-            for entry in entries {
-                let target = entry.path.clone();
-                menu = menu.item(popup_menu_path_item(entry, move |_, _, cx| {
-                    AppNavigation::navigate_to_path(target.clone(), cx);
-                }));
+        match result {
+            BreadcrumbDropdownResult::AccessDenied => {
+                menu = menu.item(
+                    PopupMenuItem::new(t!("omnibar.breadcrumb.access_denied").to_string())
+                        .disabled(true),
+                );
+            }
+            BreadcrumbDropdownResult::Empty => {
+                menu = menu.item(
+                    PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
+                );
+            }
+            BreadcrumbDropdownResult::Entries(entries) => {
+                for entry in entries {
+                    let target = entry.path.clone();
+                    menu = menu.item(popup_menu_path_item(entry, move |_, _, cx| {
+                        AppNavigation::navigate_to_path(target.clone(), cx);
+                    }));
+                }
             }
         }
         apply_breadcrumb_menu_style(menu)

@@ -4,8 +4,9 @@ use std::rc::Rc;
 use cyberfiles_core::{load_config, pinned_folder_paths, record_path_history, save_config};
 use cyberfiles_fs::{
     breadcrumb_root_menu_sections, copy_items, home_navigation_path, list_drives, move_items,
-    path_breadcrumbs, PathBreadcrumb,
+    path_breadcrumbs, DirectoryReadOptions, PathBreadcrumb,
 };
+use cyberfiles_platform_windows::list_shell_quick_access_folders;
 use cyberfiles_commands::FocusOmnibar;
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -116,17 +117,30 @@ impl MainPage {
             });
         });
         let root_menu = Rc::new(|| {
-            let quick_access: Vec<(String, PathBuf)> = pinned_folder_paths()
-                .into_iter()
-                .map(|p| {
-                    let label = p
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .filter(|n| !n.is_empty())
-                        .unwrap_or_else(|| p.to_string_lossy().to_string());
-                    (label, p)
-                })
-                .collect();
+            let quick_access: Vec<(String, PathBuf)> = {
+                #[cfg(windows)]
+                {
+                    list_shell_quick_access_folders()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|e| (e.display_name, e.path))
+                        .collect()
+                }
+                #[cfg(not(windows))]
+                {
+                    pinned_folder_paths()
+                        .into_iter()
+                        .map(|p| {
+                            let label = p
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .filter(|n| !n.is_empty())
+                                .unwrap_or_else(|| p.to_string_lossy().to_string());
+                            (label, p)
+                        })
+                        .collect()
+                }
+            };
             let drive_entries: Vec<(String, PathBuf)> = list_drives()
                 .into_iter()
                 .map(|d| (d.label, d.path))
@@ -142,7 +156,7 @@ impl MainPage {
             OmnibarBreadcrumbHost::new(
                 true,
                 Vec::new(),
-                false,
+                DirectoryReadOptions::default(),
                 None,
                 root_menu,
                 on_navigate,
@@ -443,16 +457,15 @@ impl MainPage {
         let breadcrumbs = self.omnibar_breadcrumbs(cx);
         self.ensure_omnibar_breadcrumb_host(cx);
         let working_directory = self.omnibar_working_directory(cx);
-        let show_hidden = self
+        let read_options = *self
             .active_pane(cx)
             .read(cx)
             .file_browser()
             .read(cx)
-            .read_options()
-            .show_hidden_items;
+            .read_options();
         if let Some(host) = self.omnibar_breadcrumb_host.clone() {
             host.update(cx, |host, _| {
-                host.set_path_context(breadcrumbs, working_directory, show_hidden);
+                host.set_path_context(breadcrumbs, working_directory, read_options);
             });
         }
         let breadcrumb_host = self.omnibar_breadcrumb_host.clone().expect("breadcrumb host");
@@ -685,7 +698,7 @@ impl MainPage {
                         .small()
                         .outline()
                         .icon(IconName::Folder)
-                        .label(t!("files.new_folder"))
+                        .tooltip(t!("files.new_folder"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             let pane = this.active_pane(cx);
                             pane.update(cx, |shell, cx| {
@@ -710,7 +723,7 @@ impl MainPage {
                         .small()
                         .outline()
                         .icon(IconName::File)
-                        .label(t!("files.new_file"))
+                        .tooltip(t!("files.new_file"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             let pane = this.active_pane(cx);
                             pane.update(cx, |shell, cx| {

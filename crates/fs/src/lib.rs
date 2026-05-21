@@ -19,8 +19,8 @@ pub use item::{DirectoryReadOptions, FileItem, FileItemKind};
 pub use local::read_directory;
 pub use omnibar::{
     breadcrumb_dropdown_entries, breadcrumb_root_menu_sections, breadcrumb_visible_layout,
-    breadcrumb_visible_layout_for_width,
-    omnibar_path_suggestions, path_breadcrumbs, BreadcrumbMenuSection, BreadcrumbVisibleLayout,
+    breadcrumb_visible_layout_for_width, omnibar_path_suggestions, path_breadcrumbs,
+    BreadcrumbDropdownResult, BreadcrumbMenuSection, BreadcrumbVisibleLayout,
     OmnibarPathSuggestion, PathBreadcrumb,
 };
 pub use ops::{

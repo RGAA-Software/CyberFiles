@@ -11,6 +11,8 @@ mod icons;
 #[cfg(windows)]
 mod paths;
 #[cfg(windows)]
+mod quick_access;
+#[cfg(windows)]
 mod recycle;
 #[cfg(windows)]
 mod shell;
@@ -21,6 +23,8 @@ pub use clipboard::read_clipboard_file_paths;
 pub use icons::{icon_hint_for_path, ShellIconHint};
 #[cfg(windows)]
 pub use paths::{is_recycle_bin_path, recycle_bin_folder};
+#[cfg(windows)]
+pub use quick_access::{list_shell_quick_access_folders, ShellQuickAccessEntry};
 #[cfg(windows)]
 pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 #[cfg(windows)]
@@ -100,6 +104,16 @@ mod stubs {
 
     pub fn list_recycle_bin_entries() -> Vec<RecycleBinEntry> {
         Vec::new()
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ShellQuickAccessEntry {
+        pub display_name: String,
+        pub path: PathBuf,
+    }
+
+    pub fn list_shell_quick_access_folders() -> anyhow::Result<Vec<ShellQuickAccessEntry>> {
+        Ok(Vec::new())
     }
 
     pub fn open_item_properties(_path: &Path) -> anyhow::Result<()> {

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use cyberfiles_fs::{BreadcrumbMenuSection, PathBreadcrumb};
+use cyberfiles_fs::{BreadcrumbMenuSection, DirectoryReadOptions, PathBreadcrumb};
 use gpui::{prelude::*, *};
 use gpui_component::ElementExt as _;
 
@@ -11,7 +11,7 @@ use super::breadcrumb_bar::PathBreadcrumbBar;
 pub struct OmnibarBreadcrumbHost {
     show_root: bool,
     segments: Vec<PathBreadcrumb>,
-    show_hidden: bool,
+    read_options: DirectoryReadOptions,
     working_directory: Option<PathBuf>,
     root_menu: Rc<dyn Fn() -> Vec<BreadcrumbMenuSection>>,
     on_navigate: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
@@ -28,11 +28,11 @@ impl OmnibarBreadcrumbHost {
         &mut self,
         segments: Vec<PathBreadcrumb>,
         working_directory: Option<PathBuf>,
-        show_hidden: bool,
+        read_options: DirectoryReadOptions,
     ) {
         self.segments = segments;
         self.working_directory = working_directory;
-        self.show_hidden = show_hidden;
+        self.read_options = read_options;
     }
 
     pub fn set_measured_width(&mut self, width: f32) {
@@ -45,7 +45,7 @@ impl OmnibarBreadcrumbHost {
     pub fn new(
         show_root: bool,
         segments: Vec<PathBreadcrumb>,
-        show_hidden: bool,
+        read_options: DirectoryReadOptions,
         working_directory: Option<PathBuf>,
         root_menu: Rc<dyn Fn() -> Vec<BreadcrumbMenuSection>>,
         on_navigate: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
@@ -58,7 +58,7 @@ impl OmnibarBreadcrumbHost {
         Self {
             show_root,
             segments,
-            show_hidden,
+            read_options,
             working_directory,
             root_menu,
             on_navigate,
@@ -94,7 +94,7 @@ impl Render for OmnibarBreadcrumbHost {
                 self.show_root,
                 self.segments.clone(),
                 self.measured_width,
-                self.show_hidden,
+                self.read_options,
                 self.working_directory.clone(),
                 self.root_menu.clone(),
                 self.on_navigate.clone(),

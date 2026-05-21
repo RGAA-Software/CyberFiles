@@ -6,4 +6,5 @@ pub use breadcrumb_bar::PathBreadcrumbBar;
 pub use breadcrumb_host::OmnibarBreadcrumbHost;
 
 /// Drag-hover delay before navigating into a breadcrumb folder (ms). Files uses 1300ms.
-pub const BREADCRUMB_DRAG_HOVER_OPEN_MS: u64 = 350;
+/// Files `HoverToOpenTimespan` for drag-hover navigation into breadcrumb folders.
+pub const BREADCRUMB_DRAG_HOVER_OPEN_MS: u64 = 1300;

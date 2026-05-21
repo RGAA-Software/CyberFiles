@@ -1575,6 +1575,15 @@ impl FileBrowser {
         .detach();
     }
 
+    /// Right-click on empty list area (Files `BaseContextMenuFlyout` subset).
+    fn build_background_context_menu(&self, menu: PopupMenu) -> PopupMenu {
+        menu.menu(t!("files.menu.paste"), Box::new(PasteItems))
+            .menu(t!("files.new_folder"), Box::new(NewFolder))
+            .menu(t!("files.new_file"), Box::new(NewFile))
+            .separator()
+            .menu(t!("files.menu.refresh"), Box::new(RefreshDirectory))
+    }
+
     /// Files-style item context flyout: app commands first, then cached Shell extensions.
     fn build_item_context_menu(&self, menu: PopupMenu, browser: Entity<Self>) -> PopupMenu {
         let mut menu = menu
@@ -1640,6 +1649,14 @@ impl FileBrowser {
         }
 
         menu
+    }
+
+    fn build_context_menu(&self, menu: PopupMenu, browser: Entity<Self>) -> PopupMenu {
+        if self.browse_location == BrowseLocation::Directory && self.selected_paths.is_empty() {
+            self.build_background_context_menu(menu)
+        } else {
+            self.build_item_context_menu(menu, browser)
+        }
     }
 }
 
@@ -1749,7 +1766,7 @@ impl Render for FileBrowser {
                             .small()
                             .outline()
                             .icon(IconName::Folder)
-                            .label(t!("files.new_folder"))
+                            .tooltip(t!("files.new_folder"))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.create_new_folder(window, cx);
                                 cx.notify();
@@ -1760,7 +1777,7 @@ impl Render for FileBrowser {
                             .small()
                             .outline()
                             .icon(IconName::File)
-                            .label(t!("files.new_file"))
+                            .tooltip(t!("files.new_file"))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.create_new_file(window, cx);
                                 cx.notify();
@@ -1887,7 +1904,7 @@ impl Render for FileBrowser {
                 });
                 browser
                     .read(menu_cx)
-                    .build_item_context_menu(menu, browser.clone())
+                    .build_context_menu(menu, browser.clone())
             })
     }
 }

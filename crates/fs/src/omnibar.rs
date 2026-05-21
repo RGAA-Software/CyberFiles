@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use unicode_width::UnicodeWidthChar;
 
+use crate::item::DirectoryReadOptions;
+
 /// One clickable segment in the omnibar breadcrumb trail.
 #[derive(Debug, Clone)]
 pub struct PathBreadcrumb {
@@ -54,25 +56,41 @@ fn breadcrumb_label(path: &Path) -> String {
 }
 
 /// Suggestion row for omnibar autocomplete.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OmnibarPathSuggestion {
     pub path: PathBuf,
     pub label: String,
+    /// Semi-transparent row in breadcrumb dropdown (Files: hidden folders when shown).
+    pub dimmed: bool,
 }
 
 const MAX_SUGGESTIONS: usize = 10;
 const MAX_BREADCRUMB_ENTRIES: usize = 50;
+
+/// Result of loading a breadcrumb segment chevron menu (Files `ItemDropDownFlyoutOpening`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum BreadcrumbDropdownResult {
+    /// `read_dir` failed (e.g. access denied).
+    AccessDenied,
+    /// Readable but no subfolders after filtering.
+    Empty,
+    Entries(Vec<OmnibarPathSuggestion>),
+}
 
 /// Subfolder entries for a breadcrumb segment dropdown (chevron menu).
 ///
 /// `exclude_path` — skip the active directory (Files: no navigate to current folder).
 pub fn breadcrumb_dropdown_entries(
     path: &Path,
-    show_hidden: bool,
+    read_options: DirectoryReadOptions,
     exclude_path: Option<&Path>,
-) -> Vec<OmnibarPathSuggestion> {
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return Vec::new();
+) -> BreadcrumbDropdownResult {
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            return BreadcrumbDropdownResult::AccessDenied;
+        }
+        Err(_) => return BreadcrumbDropdownResult::AccessDenied,
     };
 
     let mut suggestions = Vec::new();
@@ -81,15 +99,29 @@ pub fn breadcrumb_dropdown_entries(
         if !entry_path.is_dir() {
             continue;
         }
-        if !show_hidden && is_hidden_dir_entry(&entry_path, &entry) {
+        let hidden = is_hidden_dir_entry(&entry_path, &entry);
+        let system = is_system_dir_entry(&entry);
+        let dot = entry_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with('.'));
+        if hidden && !read_options.show_hidden_items {
+            continue;
+        }
+        if system && !read_options.show_system_items {
+            continue;
+        }
+        if dot && !read_options.show_dot_files {
             continue;
         }
         if exclude_path.is_some_and(|ex| paths_equal(&entry_path, ex)) {
             continue;
         }
+        let dimmed = hidden && read_options.show_hidden_items;
         suggestions.push(OmnibarPathSuggestion {
             label: entry.file_name().to_string_lossy().to_string(),
             path: entry_path,
+            dimmed,
         });
         if suggestions.len() >= MAX_BREADCRUMB_ENTRIES {
             break;
@@ -97,7 +129,11 @@ pub fn breadcrumb_dropdown_entries(
     }
 
     suggestions.sort_by(|a, b| a.label.cmp(&b.label));
-    suggestions
+    if suggestions.is_empty() {
+        BreadcrumbDropdownResult::Empty
+    } else {
+        BreadcrumbDropdownResult::Entries(suggestions)
+    }
 }
 
 fn paths_equal(a: &Path, b: &Path) -> bool {
@@ -129,6 +165,21 @@ fn is_hidden_dir_entry(path: &Path, _: &std::fs::DirEntry) -> bool {
         .is_some_and(|n| n.starts_with('.'))
 }
 
+#[cfg(windows)]
+fn is_system_dir_entry(entry: &std::fs::DirEntry) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
+    entry
+        .metadata()
+        .map(|m| m.file_attributes() & FILE_ATTRIBUTE_SYSTEM != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn is_system_dir_entry(_: &std::fs::DirEntry) -> bool {
+    false
+}
+
 /// Root chevron menu: pinned folders then drives (Files `ItemDropDownFlyoutOpening` parity).
 pub fn breadcrumb_root_menu_sections(
     quick_access: impl IntoIterator<Item = (String, PathBuf)>,
@@ -138,11 +189,19 @@ pub fn breadcrumb_root_menu_sections(
 ) -> Vec<BreadcrumbMenuSection> {
     let quick: Vec<_> = quick_access
         .into_iter()
-        .map(|(label, path)| OmnibarPathSuggestion { label, path })
+        .map(|(label, path)| OmnibarPathSuggestion {
+            label,
+            path,
+            dimmed: false,
+        })
         .collect();
     let drive_list: Vec<_> = drives
         .into_iter()
-        .map(|(label, path)| OmnibarPathSuggestion { label, path })
+        .map(|(label, path)| OmnibarPathSuggestion {
+            label,
+            path,
+            dimmed: false,
+        })
         .collect();
 
     let mut sections = Vec::new();
@@ -180,6 +239,7 @@ pub fn omnibar_path_suggestions(
                 OmnibarPathSuggestion {
                     label: entry.clone(),
                     path,
+                    dimmed: false,
                 }
             })
             .collect();
@@ -210,6 +270,7 @@ pub fn omnibar_path_suggestions(
         suggestions.push(OmnibarPathSuggestion {
             label: path.to_string_lossy().to_string(),
             path,
+            dimmed: false,
         });
         if suggestions.len() >= MAX_SUGGESTIONS {
             break;
@@ -368,7 +429,17 @@ mod tests {
         let parent = std::env::temp_dir();
         let child = parent.join("breadcrumb_dropdown_test_dir");
         let _ = std::fs::create_dir_all(&child);
-        let entries = breadcrumb_dropdown_entries(&parent, true, Some(&child));
+        let result = breadcrumb_dropdown_entries(
+            &parent,
+            DirectoryReadOptions {
+                show_hidden_items: true,
+                ..Default::default()
+            },
+            Some(&child),
+        );
+        let BreadcrumbDropdownResult::Entries(entries) = result else {
+            panic!("expected entries, got {result:?}");
+        };
         assert!(!entries.iter().any(|e| e.path == child));
         let _ = std::fs::remove_dir_all(&child);
     }
