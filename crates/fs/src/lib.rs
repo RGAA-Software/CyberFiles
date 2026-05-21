@@ -18,7 +18,9 @@ pub use drives::{default_user_profile, home_navigation_path, list_drives, DriveI
 pub use item::{DirectoryReadOptions, FileItem, FileItemKind};
 pub use local::read_directory;
 pub use omnibar::{
-    breadcrumb_dropdown_entries, omnibar_path_suggestions, path_breadcrumbs,
+    breadcrumb_dropdown_entries, breadcrumb_root_menu_sections, breadcrumb_visible_layout,
+    breadcrumb_visible_layout_for_width,
+    omnibar_path_suggestions, path_breadcrumbs, BreadcrumbMenuSection, BreadcrumbVisibleLayout,
     OmnibarPathSuggestion, PathBreadcrumb,
 };
 pub use ops::{

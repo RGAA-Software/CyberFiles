@@ -24,15 +24,36 @@ impl AppNavigation {
         });
     }
 
+    pub fn open_path_in_new_tab(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| {
+            page.open_path_in_new_tab(path, cx);
+        });
+    }
+
+    pub fn drop_paths_on_directory(
+        dest: PathBuf,
+        paths: Vec<PathBuf>,
+        window: &mut Window,
+        cx: &mut (impl AppContext + BorrowMut<App>),
+    ) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| page.drop_paths_on_directory(dest, paths, window, cx));
+    }
+
     pub fn focus_search(window: &mut Window, cx: &mut (impl AppContext + BorrowMut<App>)) {
         let page = cx.borrow_mut().global::<Self>().0.clone();
         page.update(cx, |page, cx| page.focus_search_input(window, cx));
     }
 
     /// Notify the shell so Omnibar breadcrumbs/path stay in sync with the active file browser.
+    ///
+    /// Deferred to avoid panics when called from nested updates (e.g. toolbar back inside `MainPage`).
     pub fn location_changed(cx: &mut (impl AppContext + BorrowMut<App>)) {
         let page = cx.borrow_mut().global::<Self>().0.clone();
-        page.update(cx, |_, cx| cx.notify());
+        cx.borrow_mut().defer(move |cx| {
+            let _ = page.update(cx, |_, cx| cx.notify());
+        });
     }
 
     pub fn navigate_breadcrumb(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {

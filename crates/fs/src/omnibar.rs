@@ -7,6 +7,13 @@ pub struct PathBreadcrumb {
     pub path: PathBuf,
 }
 
+/// Group in the breadcrumb root (home) chevron menu (Files: Quick access, Drives).
+#[derive(Debug, Clone)]
+pub struct BreadcrumbMenuSection {
+    pub heading: Option<String>,
+    pub entries: Vec<OmnibarPathSuggestion>,
+}
+
 /// Builds path segments for breadcrumb UI (e.g. `C:\` → `Users` → `hy`).
 pub fn path_breadcrumbs(path: &Path) -> Vec<PathBreadcrumb> {
     let mut segments: Vec<PathBuf> = path
@@ -55,7 +62,13 @@ const MAX_SUGGESTIONS: usize = 10;
 const MAX_BREADCRUMB_ENTRIES: usize = 50;
 
 /// Subfolder entries for a breadcrumb segment dropdown (chevron menu).
-pub fn breadcrumb_dropdown_entries(path: &Path) -> Vec<OmnibarPathSuggestion> {
+///
+/// `exclude_path` — skip the active directory (Files: no navigate to current folder).
+pub fn breadcrumb_dropdown_entries(
+    path: &Path,
+    show_hidden: bool,
+    exclude_path: Option<&Path>,
+) -> Vec<OmnibarPathSuggestion> {
     let Ok(entries) = std::fs::read_dir(path) else {
         return Vec::new();
     };
@@ -64,6 +77,12 @@ pub fn breadcrumb_dropdown_entries(path: &Path) -> Vec<OmnibarPathSuggestion> {
     for entry in entries.flatten() {
         let entry_path = entry.path();
         if !entry_path.is_dir() {
+            continue;
+        }
+        if !show_hidden && is_hidden_dir_entry(&entry_path, &entry) {
+            continue;
+        }
+        if exclude_path.is_some_and(|ex| paths_equal(&entry_path, ex)) {
             continue;
         }
         suggestions.push(OmnibarPathSuggestion {
@@ -77,6 +96,67 @@ pub fn breadcrumb_dropdown_entries(path: &Path) -> Vec<OmnibarPathSuggestion> {
 
     suggestions.sort_by(|a, b| a.label.cmp(&b.label));
     suggestions
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    std::fs::canonicalize(a)
+        .ok()
+        .zip(std::fs::canonicalize(b).ok())
+        .map(|(a, b)| a == b)
+        .unwrap_or_else(|| a == b)
+}
+
+#[cfg(windows)]
+fn is_hidden_dir_entry(path: &Path, entry: &std::fs::DirEntry) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+    entry
+        .metadata()
+        .map(|m| m.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
+        .unwrap_or_else(|_| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with('.'))
+        })
+}
+
+#[cfg(not(windows))]
+fn is_hidden_dir_entry(path: &Path, _: &std::fs::DirEntry) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with('.'))
+}
+
+/// Root chevron menu: pinned folders then drives (Files `ItemDropDownFlyoutOpening` parity).
+pub fn breadcrumb_root_menu_sections(
+    quick_access: impl IntoIterator<Item = (String, PathBuf)>,
+    drives: impl IntoIterator<Item = (String, PathBuf)>,
+    quick_access_heading: Option<String>,
+    drives_heading: Option<String>,
+) -> Vec<BreadcrumbMenuSection> {
+    let quick: Vec<_> = quick_access
+        .into_iter()
+        .map(|(label, path)| OmnibarPathSuggestion { label, path })
+        .collect();
+    let drive_list: Vec<_> = drives
+        .into_iter()
+        .map(|(label, path)| OmnibarPathSuggestion { label, path })
+        .collect();
+
+    let mut sections = Vec::new();
+    if !quick.is_empty() {
+        sections.push(BreadcrumbMenuSection {
+            heading: quick_access_heading,
+            entries: quick,
+        });
+    }
+    if !drive_list.is_empty() {
+        sections.push(BreadcrumbMenuSection {
+            heading: drives_heading,
+            entries: drive_list,
+        });
+    }
+    sections
 }
 
 /// Path-mode suggestions: history when input is empty/special, otherwise child folder names.
@@ -138,6 +218,84 @@ pub fn omnibar_path_suggestions(
     suggestions
 }
 
+/// Which path segments are visible vs hidden in the ellipsis menu (Files `BreadcrumbBarLayout`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BreadcrumbVisibleLayout {
+    /// Segments `[0..hidden_prefix_len)` appear only in the `…` dropdown.
+    pub hidden_prefix_len: usize,
+    /// Visible segment indices (suffix), in order.
+    pub visible_indices: Vec<usize>,
+}
+
+const ROOT_BLOCK_WIDTH: f32 = 72.0;
+const ELLIPSIS_BLOCK_WIDTH: f32 = 36.0;
+const SEGMENT_PADDING: f32 = 16.0;
+const CHAR_WIDTH: f32 = 7.0;
+const CHEVRON_WIDTH: f32 = 28.0;
+
+fn segment_width_px(label: &str, has_chevron: bool) -> f32 {
+    let chars = label.chars().count().max(1) as f32;
+    SEGMENT_PADDING + chars * CHAR_WIDTH + if has_chevron { CHEVRON_WIDTH } else { 0.0 }
+}
+
+/// Files-style collapse: hide the **prefix** when the trail does not fit (keep tail visible).
+pub fn breadcrumb_visible_layout_for_width(
+    segments: &[PathBreadcrumb],
+    available_width: f32,
+    show_root: bool,
+) -> BreadcrumbVisibleLayout {
+    let n = segments.len();
+    if n == 0 {
+        return BreadcrumbVisibleLayout {
+            hidden_prefix_len: 0,
+            visible_indices: Vec::new(),
+        };
+    }
+
+    let widths: Vec<f32> = segments
+        .iter()
+        .enumerate()
+        .map(|(i, s)| segment_width_px(&s.label, i + 1 < n))
+        .collect();
+
+    let root = if show_root { ROOT_BLOCK_WIDTH } else { 0.0 };
+
+    for first_visible in 0..=n {
+        let mut total = root;
+        if first_visible > 0 {
+            total += ELLIPSIS_BLOCK_WIDTH;
+        }
+        for i in first_visible..n {
+            total += widths[i];
+        }
+        if total <= available_width {
+            return BreadcrumbVisibleLayout {
+                hidden_prefix_len: first_visible,
+                visible_indices: (first_visible..n).collect(),
+            };
+        }
+    }
+
+    BreadcrumbVisibleLayout {
+        hidden_prefix_len: n.saturating_sub(1),
+        visible_indices: vec![n - 1],
+    }
+}
+
+/// Back-compat helper when width is unknown (assume a wide bar).
+pub fn breadcrumb_visible_layout(segment_count: usize) -> BreadcrumbVisibleLayout {
+    breadcrumb_visible_layout_for_width(
+        &(0..segment_count)
+            .map(|i| PathBreadcrumb {
+                label: format!("segment-{i}"),
+                path: PathBuf::from(format!("/{i}")),
+            })
+            .collect::<Vec<_>>(),
+        f32::MAX,
+        true,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +316,55 @@ mod tests {
         assert_eq!(crumbs[0].path, Path::new(r"C:\"));
         assert_eq!(crumbs[1].path, Path::new(r"C:\Users"));
         assert_eq!(crumbs[2].path, Path::new(r"C:\Users\hy"));
+    }
+
+    #[test]
+    fn breadcrumb_visible_layout_hides_prefix_when_narrow() {
+        let segments: Vec<PathBreadcrumb> = (0..6)
+            .map(|i| PathBreadcrumb {
+                label: format!("part-{i}"),
+                path: PathBuf::from(format!(r"C:\p{i}")),
+            })
+            .collect();
+        let layout = breadcrumb_visible_layout_for_width(&segments, 200.0, true);
+        assert!(layout.hidden_prefix_len > 0);
+        assert_eq!(
+            *layout.visible_indices.last().unwrap(),
+            5,
+            "last segment stays visible"
+        );
+        assert!(layout.visible_indices.windows(2).all(|w| w[0] + 1 == w[1]));
+    }
+
+    #[test]
+    fn breadcrumb_visible_layout_shows_all_when_wide() {
+        let segments = path_breadcrumbs(Path::new(r"C:\Users\hy"));
+        let layout = breadcrumb_visible_layout_for_width(&segments, 10_000.0, true);
+        assert_eq!(layout.hidden_prefix_len, 0);
+        assert_eq!(layout.visible_indices, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn breadcrumb_dropdown_excludes_working_path() {
+        let parent = std::env::temp_dir();
+        let child = parent.join("breadcrumb_dropdown_test_dir");
+        let _ = std::fs::create_dir_all(&child);
+        let entries = breadcrumb_dropdown_entries(&parent, true, Some(&child));
+        assert!(!entries.iter().any(|e| e.path == child));
+        let _ = std::fs::remove_dir_all(&child);
+    }
+
+    #[test]
+    fn breadcrumb_root_menu_sections_order() {
+        let sections = breadcrumb_root_menu_sections(
+            [("Docs".into(), PathBuf::from(r"C:\Docs"))],
+            [("C:\\".into(), PathBuf::from(r"C:\"))],
+            Some("Quick".into()),
+            Some("Drives".into()),
+        );
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].entries[0].label, "Docs");
+        assert_eq!(sections[1].entries[0].label, "C:\\");
     }
 }
 

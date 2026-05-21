@@ -35,6 +35,26 @@ omnibar.breadcrumb.empty:
   en: No subfolders
   zh-CN: 没有子文件夹
   zh-HK: 沒有子資料夾
+omnibar.breadcrumb.quick_access:
+  en: Quick access
+  zh-CN: 快速访问
+  zh-HK: 快速存取
+omnibar.breadcrumb.drives:
+  en: Drives
+  zh-CN: 驱动器
+  zh-HK: 磁碟機
+omnibar.breadcrumb.root_tooltip:
+  en: Home
+  zh-CN: 首页
+  zh-HK: 首頁
+omnibar.breadcrumb.chevron_tooltip:
+  en: Show subfolders
+  zh-CN: 显示子文件夹
+  zh-HK: 顯示子資料夾
+omnibar.breadcrumb.ellipsis_tooltip:
+  en: Hidden path segments
+  zh-CN: 隐藏的路径段
+  zh-HK: 隱藏的路徑段
 nav.split_pane:
   en: Toggle dual pane
   zh-CN: 切换双栏

@@ -85,8 +85,9 @@ impl ViewMode {
     }
 }
 
+/// Drag payload for in-app and breadcrumb drop targets.
 #[derive(Clone, Debug)]
-struct DraggedFilePaths(Vec<PathBuf>);
+pub struct DraggedFilePaths(pub Vec<PathBuf>);
 
 struct DragPathPreview {
     label: SharedString,
@@ -346,6 +347,10 @@ impl FileBrowser {
                 });
             }
         }));
+    }
+
+    pub fn read_options(&self) -> &DirectoryReadOptions {
+        &self.read_options
     }
 
     pub fn current_directory(&self) -> &PathBuf {

@@ -1,9 +1,10 @@
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use cyberfiles_core::{load_config, pinned_folder_paths, record_path_history, save_config};
 use cyberfiles_fs::{
-    breadcrumb_dropdown_entries, home_navigation_path, list_drives, path_breadcrumbs,
-    PathBreadcrumb,
+    breadcrumb_root_menu_sections, copy_items, home_navigation_path, list_drives, move_items,
+    path_breadcrumbs, PathBreadcrumb,
 };
 use cyberfiles_commands::FocusOmnibar;
 use gpui::{prelude::*, *};
@@ -12,20 +13,21 @@ use gpui_component::{
     h_flex,
     label::Label,
     input::{Input, InputEvent, InputState},
-    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
+    notification::Notification,
     resizable::{h_resizable, resizable_panel},
     sidebar::{
         Sidebar, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu, SidebarMenuItem,
     },
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, StyledExt as _,
+    v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
 };
 use rust_i18n::t;
 
 use crate::info_pane::InfoPane;
+use crate::app_state::breadcrumb_navigation_target;
 use crate::omnibar::{
     mode_button_label, mode_placeholder, refresh_suggestions, resolve_path_submit, OmnibarCommand,
-    OmnibarMode, OmnibarSuggestion,
+    OmnibarMode, OmnibarSuggestion, OmnibarBreadcrumbHost,
 };
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::{PaneShell, ShellPanes};
@@ -48,6 +50,7 @@ pub struct MainPage {
     omnibar_mode: OmnibarMode,
     omnibar_editing: bool,
     omnibar_suggestions: Vec<OmnibarSuggestion>,
+    omnibar_breadcrumb_host: Option<Entity<OmnibarBreadcrumbHost>>,
     search_input: Option<Entity<InputState>>,
     _search_subscription: Option<Subscription>,
 }
@@ -70,8 +73,149 @@ impl MainPage {
             omnibar_mode: OmnibarMode::Path,
             omnibar_editing: false,
             omnibar_suggestions: Vec::new(),
+            omnibar_breadcrumb_host: None,
             search_input: None,
             _search_subscription: None,
+        }
+    }
+
+    fn ensure_omnibar_breadcrumb_host(&mut self, cx: &mut Context<Self>) {
+        if self.omnibar_breadcrumb_host.is_some() {
+            return;
+        }
+        let page = cx.entity();
+        let on_navigate = Rc::new(move |path: PathBuf, _: &mut Window, cx: &mut App| {
+            let _ = page.update(cx, |page, cx| {
+                page.navigate_to(breadcrumb_navigation_target(&path), cx);
+            });
+        });
+        let page_tab = cx.entity();
+        let on_navigate_new_tab = Rc::new(move |path: PathBuf, _: &mut Window, cx: &mut App| {
+            let _ = page_tab.update(cx, |page, cx| page.open_path_in_new_tab(path, cx));
+        });
+        let page_home = cx.entity();
+        let on_home = Rc::new(move |_: &mut Window, cx: &mut App| {
+            let _ = page_home.update(cx, |page, cx| {
+                page.navigate_to(NavigationTarget::Home, cx);
+            });
+        });
+        let page_drop = cx.entity();
+        let on_drop_paths = Rc::new(
+            move |dest: PathBuf, paths: Vec<PathBuf>, window: &mut Window, cx: &mut App| {
+                let _ = page_drop.update(cx, |page, cx| {
+                    page.drop_paths_on_directory(dest, paths, window, cx);
+                });
+            },
+        );
+        let page_hover = cx.entity();
+        let on_drag_hover = Rc::new(move |path: PathBuf, _: &mut Window, cx: &mut App| {
+            let target = breadcrumb_navigation_target(&path);
+            let page = page_hover.clone();
+            cx.defer(move |cx| {
+                let _ = page.update(cx, |page, cx| {
+                    if page.omnibar_working_directory(cx).as_ref() != Some(&path) {
+                        page.navigate_to(target, cx);
+                    }
+                });
+            });
+        });
+        let root_menu = Rc::new(|| {
+            let quick_access: Vec<(String, PathBuf)> = pinned_folder_paths()
+                .into_iter()
+                .map(|p| {
+                    let label = p
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .filter(|n| !n.is_empty())
+                        .unwrap_or_else(|| p.to_string_lossy().to_string());
+                    (label, p)
+                })
+                .collect();
+            let drive_entries: Vec<(String, PathBuf)> = list_drives()
+                .into_iter()
+                .map(|d| (d.label, d.path))
+                .collect();
+            breadcrumb_root_menu_sections(
+                quick_access,
+                drive_entries,
+                Some(t!("omnibar.breadcrumb.quick_access").to_string()),
+                Some(t!("omnibar.breadcrumb.drives").to_string()),
+            )
+        });
+        self.omnibar_breadcrumb_host = Some(cx.new(|_| {
+            OmnibarBreadcrumbHost::new(
+                true,
+                Vec::new(),
+                false,
+                None,
+                root_menu,
+                on_navigate,
+                on_navigate_new_tab,
+                on_home,
+                on_drop_paths,
+                on_drag_hover,
+            )
+        }));
+    }
+
+    fn omnibar_working_directory(&self, cx: &App) -> Option<PathBuf> {
+        let pane = self.active_pane(cx);
+        if matches!(pane.read(cx).target(), NavigationTarget::Path(_)) {
+            Some(
+                pane.read(cx)
+                    .file_browser()
+                    .read(cx)
+                    .current_directory()
+                    .to_path_buf(),
+            )
+        } else {
+            None
+        }
+    }
+
+    pub fn open_path_in_new_tab(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        record_path_history(&path);
+        self.add_tab(NavigationTarget::Path(path), cx);
+    }
+
+    pub fn drop_paths_on_directory(
+        &mut self,
+        dest: PathBuf,
+        paths: Vec<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if paths.is_empty() || !dest.is_dir() {
+            return;
+        }
+        if paths.iter().all(|p| p.parent() == Some(dest.as_path())) {
+            return;
+        }
+        let copy = window.modifiers().control;
+        let result = if copy {
+            copy_items(&paths, &dest)
+        } else {
+            move_items(&paths, &dest)
+        };
+        match result {
+            Ok(()) => {
+                let pane = self.active_pane(cx);
+                pane.update(cx, |shell, cx| {
+                    shell.file_browser().update(cx, |browser, cx| {
+                        if *browser.current_directory() == dest {
+                            browser.reload();
+                        }
+                        cx.notify();
+                    });
+                });
+                cx.notify();
+            }
+            Err(error) => {
+                window.push_notification(
+                    Notification::error(format!("{}: {error}", t!("files.drop.error"))),
+                    cx,
+                );
+            }
         }
     }
 
@@ -184,6 +328,8 @@ impl MainPage {
                 }
                 InputEvent::Blur => {
                     page.omnibar_editing = false;
+                    page.omnibar_mode = OmnibarMode::Path;
+                    page.omnibar_suggestions.clear();
                     cx.notify();
                 }
             }
@@ -340,10 +486,7 @@ impl MainPage {
                     .clone();
                 path_breadcrumbs(&dir)
             }
-            NavigationTarget::Home => vec![PathBreadcrumb {
-                label: t!("nav.home").to_string(),
-                path: PathBuf::from("home"),
-            }],
+            NavigationTarget::Home => Vec::new(),
             NavigationTarget::Settings => vec![PathBreadcrumb {
                 label: t!("nav.settings").to_string(),
                 path: PathBuf::from("settings"),
@@ -367,6 +510,23 @@ impl MainPage {
         let suggestions = self.omnibar_suggestions.clone();
         let breadcrumbs = self.omnibar_breadcrumbs(cx);
         let show_breadcrumbs = mode == OmnibarMode::Path && !editing;
+        self.ensure_omnibar_breadcrumb_host(cx);
+        let working_directory = self.omnibar_working_directory(cx);
+        let show_hidden = self
+            .active_pane(cx)
+            .read(cx)
+            .file_browser()
+            .read(cx)
+            .read_options()
+            .show_hidden_items;
+        let bar_width = f32::from((window.window_bounds().get_bounds().size.width - px(360.)).max(px(160.)));
+        if let Some(host) = self.omnibar_breadcrumb_host.clone() {
+            host.update(cx, |host, _| {
+                host.set_path_context(breadcrumbs, working_directory, show_hidden);
+                host.set_measured_width(bar_width);
+            });
+        }
+        let breadcrumb_host = self.omnibar_breadcrumb_host.clone().expect("breadcrumb host");
 
         div()
             .id("omnibar-host")
@@ -396,72 +556,15 @@ impl MainPage {
                     )
                     .when(show_breadcrumbs, |bar| {
                         bar.child(
-                            h_flex()
-                                .id("omnibar-breadcrumbs")
+                            div()
+                                .id("omnibar-breadcrumb-host")
                                 .flex_1()
                                 .min_w_0()
-                                .gap_1()
-                                .items_center()
-                                .overflow_x_scroll()
-                                .children(breadcrumbs.iter().enumerate().map(
-                                    |(index, crumb)| {
-                                        let is_last = index + 1 == breadcrumbs.len();
-                                        let path_nav = crumb.path.clone();
-                                        let path_menu = crumb.path.clone();
-                                        let label = crumb.label.clone();
-                                        let show_sep = !is_last;
-                                        h_flex()
-                                            .items_center()
-                                            .child(
-                                                h_flex()
-                                                    .id(("omnibar-crumb-segment", index))
-                                                    .items_center()
-                                                    .rounded(cx.theme().radius)
-                                                    .child(
-                                                        Button::new(("omnibar-crumb-label", index))
-                                                            .xsmall()
-                                                            .ghost()
-                                                            .label(label)
-                                                            .on_click(cx.listener(
-                                                                move |this, _: &ClickEvent, _, cx| {
-                                                                    if is_last {
-                                                                        return;
-                                                                    }
-                                                                    let target =
-                                                                        crate::app_state::breadcrumb_navigation_target(
-                                                                            &path_nav,
-                                                                        );
-                                                                    this.navigate_to(target, cx);
-                                                                },
-                                                            )),
-                                                    )
-                                                    .when(!is_last, |segment| {
-                                                        segment.child(
-                                                            Button::new((
-                                                                "omnibar-crumb-chevron",
-                                                                index,
-                                                            ))
-                                                            .xsmall()
-                                                            .ghost()
-                                                            .icon(IconName::ChevronDown)
-                                                            .dropdown_menu_with_anchor(
-                                                                Anchor::BottomLeft,
-                                                                breadcrumb_dropdown_menu_builder(
-                                                                    path_menu,
-                                                                ),
-                                                            ),
-                                                        )
-                                                    }),
-                                            )
-                                            .when(show_sep, |row| {
-                                                row.child(
-                                                    Icon::new(IconName::ChevronRight)
-                                                        .small()
-                                                        .text_color(cx.theme().muted_foreground),
-                                                )
-                                            })
-                                    },
-                                )),
+                                .cursor_pointer()
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.start_omnibar_edit(window, cx);
+                                }))
+                                .child(breadcrumb_host.clone()),
                         )
                     })
                     .when(!show_breadcrumbs, |bar| {
@@ -640,15 +743,8 @@ impl MainPage {
                     .icon(IconName::ArrowLeft)
                     .disabled(!can_back)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        let pane = this.active_pane(cx);
-                        pane.update(cx, |shell, cx| {
-                            if let NavigationTarget::Path(_) = shell.target() {
-                                shell.file_browser().update(cx, |b, cx| {
-                                    b.go_back(cx);
-                                });
-                            }
-                        });
-                        cx.notify();
+                        let browser = this.active_pane(cx).read(cx).file_browser().clone();
+                        browser.update(cx, |b, cx| b.go_back(cx));
                     })),
             )
             .child(
@@ -658,13 +754,8 @@ impl MainPage {
                     .icon(IconName::ArrowRight)
                     .disabled(!can_forward)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        let pane = this.active_pane(cx);
-                        pane.update(cx, |shell, cx| {
-                            shell.file_browser().update(cx, |b, cx| {
-                                b.go_forward(cx);
-                            });
-                        });
-                        cx.notify();
+                        let browser = this.active_pane(cx).read(cx).file_browser().clone();
+                        browser.update(cx, |b, cx| b.go_forward(cx));
                     })),
             )
             .child(
@@ -674,13 +765,8 @@ impl MainPage {
                     .icon(IconName::ArrowUp)
                     .disabled(!can_up)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        let pane = this.active_pane(cx);
-                        pane.update(cx, |shell, cx| {
-                            shell.file_browser().update(cx, |b, cx| {
-                                b.go_up(cx);
-                            });
-                        });
-                        cx.notify();
+                        let browser = this.active_pane(cx).read(cx).file_browser().clone();
+                        browser.update(cx, |b, cx| b.go_up(cx));
                     })),
             )
             .child(
@@ -958,6 +1044,20 @@ impl Render for MainPage {
             .on_action(cx.listener(|this, _: &FocusOmnibar, window, cx| {
                 this.focus_omnibar(window, cx);
             }))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if event.keystroke.key.as_str() == "escape" && this.omnibar_editing {
+                    this.omnibar_editing = false;
+                    this.omnibar_mode = OmnibarMode::Path;
+                    this.omnibar_suggestions.clear();
+                    if let Some(input) = this.path_input.clone() {
+                        let text = this.omnibar_text(cx);
+                        input.update(cx, |state, cx| {
+                            state.set_value(text, window, cx);
+                        });
+                    }
+                    cx.notify();
+                }
+            }))
             .child(
                 TabBar::new("main-tab-bar")
                     .small()
@@ -1048,27 +1148,3 @@ impl Render for MainPage {
     }
 }
 
-fn breadcrumb_dropdown_menu_builder(
-    path: PathBuf,
-) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static {
-    move |menu, _, _| {
-        let entries = breadcrumb_dropdown_entries(&path);
-        let mut menu = menu.scrollable(true);
-        if entries.is_empty() {
-            menu = menu.item(
-                PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
-            );
-        } else {
-            for entry in entries {
-                let target = entry.path.clone();
-                let entry_label = entry.label.clone();
-                menu = menu.item(
-                    PopupMenuItem::new(entry_label).on_click(move |_, _, cx| {
-                        crate::app_state::AppNavigation::navigate_to_path(target.clone(), cx);
-                    }),
-                );
-            }
-        }
-        menu
-    }
-}

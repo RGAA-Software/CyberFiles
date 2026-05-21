@@ -1,4 +1,10 @@
+mod breadcrumb_bar;
+mod breadcrumb_host;
+
 use std::path::PathBuf;
+
+pub use breadcrumb_bar::PathBreadcrumbBar;
+pub use breadcrumb_host::OmnibarBreadcrumbHost;
 
 use cyberfiles_core::path_history_list;
 use cyberfiles_fs::omnibar_path_suggestions;
