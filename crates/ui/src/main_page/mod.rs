@@ -36,6 +36,9 @@ use crate::shell::{PaneShell, ShellPanes};
 
 /// Matches Files `NavigationToolbar` height.
 const NAV_TOOLBAR_HEIGHT: Pixels = px(48.);
+/// Default `Tab` + medium `TabBar` height; bottom 1px is the variant's full-width border line.
+const TITLE_TAB_BAR_HEIGHT: Pixels = px(32.);
+const TITLE_TAB_BAR_VISIBLE_HEIGHT: Pixels = px(31.);
 /// Omnibar height (Files `AddressToolbarButtonStyle` uses 32px).
 const OMNIBAR_BAR_HEIGHT: Pixels = px(32.);
 
@@ -898,7 +901,17 @@ impl MainPage {
                             .min_w_0()
                             .h_full()
                             .overflow_hidden()
-                            .child(tab_bar),
+                            .flex()
+                            .items_center()
+                            .child(
+                                div()
+                                    .id("title-bar-tabs-clip")
+                                    .w_full()
+                                    .h(TITLE_TAB_BAR_VISIBLE_HEIGHT)
+                                    .max_h(TITLE_TAB_BAR_VISIBLE_HEIGHT)
+                                    .overflow_hidden()
+                                    .child(tab_bar.h(TITLE_TAB_BAR_HEIGHT)),
+                            ),
                     )
                     .child(
                         h_flex()
