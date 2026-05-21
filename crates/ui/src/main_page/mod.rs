@@ -31,7 +31,7 @@ use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
 use crate::omnibar::{OmnibarBreadcrumbCallbacks, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::app_menus;
 use crate::shell::navigation::NavigationTarget;
-use crate::shell::preferences::apply_theme_mode;
+use crate::shell::preferences::{apply_theme_mode, persist_window_bounds};
 use crate::shell::{PaneShell, ShellPanes};
 
 /// Matches Files `NavigationToolbar` height.
@@ -39,6 +39,9 @@ const NAV_TOOLBAR_HEIGHT: Pixels = px(48.);
 /// Default `Tab` + medium `TabBar` height; bottom 1px is the variant's full-width border line.
 const TITLE_TAB_BAR_HEIGHT: Pixels = px(32.);
 const TITLE_TAB_BAR_VISIBLE_HEIGHT: Pixels = px(31.);
+/// Fixed width per document tab in the title bar (label truncates inside).
+const TITLE_TAB_WIDTH: Pixels = px(200.);
+const TITLE_TAB_CLOSE_RIGHT_INSET: Pixels = px(5.);
 /// Omnibar height (Files `AddressToolbarButtonStyle` uses 32px).
 const OMNIBAR_BAR_HEIGHT: Pixels = px(32.);
 
@@ -714,6 +717,8 @@ impl MainPage {
 
     fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         if self.tabs.len() <= 1 {
+            persist_window_bounds(cx);
+            cx.quit();
             return;
         }
         self.tabs.remove(index);
@@ -851,20 +856,31 @@ impl MainPage {
             )
             .children(self.tabs.iter().enumerate().map(|(index, tab)| {
                 let title = self.tab_title(index, cx);
-                let closable = self.tabs.len() > 1;
-                let mut tab_el = Tab::new().label(title);
-                if closable {
-                    tab_el = tab_el.suffix(
+                Tab::new()
+                    .w(TITLE_TAB_WIDTH)
+                    .min_w(TITLE_TAB_WIDTH)
+                    .max_w(TITLE_TAB_WIDTH)
+                    .flex_shrink_0()
+                    .child(
+                        div()
+                            .w_full()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .flex()
+                            .items_center()
+                            .child(Label::new(title).text_left().truncate()),
+                    )
+                    .suffix(
                         Button::new(format!("main-tab-close-{}", tab.id))
+                            .mr(TITLE_TAB_CLOSE_RIGHT_INSET)
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
                             .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
                                 this.close_tab(index, cx);
                             })),
-                    );
-                }
-                tab_el
+                    )
             }))
             .on_click(cx.listener(|this, ix: &usize, _, cx| {
                 this.active_tab = *ix;
