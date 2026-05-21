@@ -12,7 +12,7 @@ use gpui_component::{
     h_flex,
     label::Label,
     input::{Input, InputEvent, InputState},
-    menu::{DropdownMenu as _, PopupMenuItem},
+    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
     resizable::{h_resizable, resizable_panel},
     sidebar::{
         Sidebar, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu, SidebarMenuItem,
@@ -413,70 +413,51 @@ impl MainPage {
                                         h_flex()
                                             .items_center()
                                             .child(
-                                                Button::new(("omnibar-crumb", index))
-                                                    .xsmall()
-                                                    .ghost()
-                                                    .label(label)
-                                                    .on_click(cx.listener(
-                                                        move |this, _: &ClickEvent, _, cx| {
-                                                            if is_last {
-                                                                return;
-                                                            }
-                                                            let target = crate::app_state::breadcrumb_navigation_target(
-                                                                &path_nav,
-                                                            );
-                                                            this.navigate_to(target, cx);
-                                                        },
-                                                    )),
-                                            )
-                                            .child(
-                                                Button::new(("omnibar-crumb-menu", index))
-                                                    .xsmall()
-                                                    .ghost()
-                                                    .icon(IconName::ChevronDown)
-                                                    .dropdown_menu_with_anchor(
-                                                        Anchor::BottomLeft,
-                                                        move |menu, _, _| {
-                                                            let entries =
-                                                                breadcrumb_dropdown_entries(
-                                                                    &path_menu,
-                                                                );
-                                                            let mut menu = menu.scrollable(true);
-                                                            if entries.is_empty() {
-                                                                menu = menu.item(
-                                                                    PopupMenuItem::new(t!(
-                                                                        "omnibar.breadcrumb.empty"
-                                                                    ))
-                                                                    .disabled(true),
-                                                                );
-                                                            } else {
-                                                                for entry in entries {
+                                                h_flex()
+                                                    .id(("omnibar-crumb-segment", index))
+                                                    .items_center()
+                                                    .rounded(cx.theme().radius)
+                                                    .child(
+                                                        Button::new(("omnibar-crumb-label", index))
+                                                            .xsmall()
+                                                            .ghost()
+                                                            .label(label)
+                                                            .on_click(cx.listener(
+                                                                move |this, _: &ClickEvent, _, cx| {
+                                                                    if is_last {
+                                                                        return;
+                                                                    }
                                                                     let target =
-                                                                        entry.path.clone();
-                                                                    let entry_label =
-                                                                        entry.label.clone();
-                                                                    menu = menu.item(
-                                                                        PopupMenuItem::new(
-                                                                            entry_label,
-                                                                        )
-                                                                        .on_click(
-                                                                            move |_, _, cx| {
-                                                                                crate::app_state::AppNavigation::navigate_to_path(
-                                                                                    target.clone(),
-                                                                                    cx,
-                                                                                );
-                                                                            },
-                                                                        ),
-                                                                    );
-                                                                }
-                                                            }
-                                                            menu
-                                                        },
-                                                    ),
+                                                                        crate::app_state::breadcrumb_navigation_target(
+                                                                            &path_nav,
+                                                                        );
+                                                                    this.navigate_to(target, cx);
+                                                                },
+                                                            )),
+                                                    )
+                                                    .when(!is_last, |segment| {
+                                                        segment.child(
+                                                            Button::new((
+                                                                "omnibar-crumb-chevron",
+                                                                index,
+                                                            ))
+                                                            .xsmall()
+                                                            .ghost()
+                                                            .icon(IconName::ChevronDown)
+                                                            .dropdown_menu_with_anchor(
+                                                                Anchor::BottomLeft,
+                                                                breadcrumb_dropdown_menu_builder(
+                                                                    path_menu,
+                                                                ),
+                                                            ),
+                                                        )
+                                                    }),
                                             )
                                             .when(show_sep, |row| {
                                                 row.child(
-                                                    Icon::new(IconName::ChevronRight).small(),
+                                                    Icon::new(IconName::ChevronRight)
+                                                        .small()
+                                                        .text_color(cx.theme().muted_foreground),
                                                 )
                                             })
                                     },
@@ -1064,5 +1045,30 @@ impl Render for MainPage {
                     ),
                     ),
             )
+    }
+}
+
+fn breadcrumb_dropdown_menu_builder(
+    path: PathBuf,
+) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static {
+    move |menu, _, _| {
+        let entries = breadcrumb_dropdown_entries(&path);
+        let mut menu = menu.scrollable(true);
+        if entries.is_empty() {
+            menu = menu.item(
+                PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
+            );
+        } else {
+            for entry in entries {
+                let target = entry.path.clone();
+                let entry_label = entry.label.clone();
+                menu = menu.item(
+                    PopupMenuItem::new(entry_label).on_click(move |_, _, cx| {
+                        crate::app_state::AppNavigation::navigate_to_path(target.clone(), cx);
+                    }),
+                );
+            }
+        }
+        menu
     }
 }
