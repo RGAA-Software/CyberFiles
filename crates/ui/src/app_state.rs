@@ -17,6 +17,10 @@ impl AppNavigation {
         cx.set_global(Self(main_page));
     }
 
+    pub fn main_page(&self) -> Entity<MainPage> {
+        self.0.clone()
+    }
+
     pub fn navigate_to_path(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {
         let page = cx.borrow_mut().global::<Self>().0.clone();
         page.update(cx, |page, cx| {

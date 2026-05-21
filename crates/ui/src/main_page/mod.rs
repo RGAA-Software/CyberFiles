@@ -25,10 +25,7 @@ use rust_i18n::t;
 
 use crate::info_pane::InfoPane;
 use crate::app_state::breadcrumb_navigation_target;
-use crate::omnibar::{
-    mode_button_label, mode_placeholder, refresh_suggestions, resolve_path_submit, OmnibarCommand,
-    OmnibarMode, OmnibarSuggestion, OmnibarBreadcrumbHost,
-};
+use crate::omnibar::{OmnibarBreadcrumbHost, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::{PaneShell, ShellPanes};
 use cyberfiles_core::APP_NAME;
@@ -45,12 +42,12 @@ pub struct MainPage {
     next_tab_id: u64,
     show_info_pane: bool,
     info_pane: Entity<InfoPane>,
-    path_input: Option<Entity<InputState>>,
-    _omnibar_subscription: Option<Subscription>,
-    omnibar_mode: OmnibarMode,
-    omnibar_editing: bool,
-    omnibar_suggestions: Vec<OmnibarSuggestion>,
+    /// When true, show an editable path field instead of breadcrumb segments.
+    omnibar_show_full_path: bool,
+    omnibar_path_input: Option<Entity<InputState>>,
+    _omnibar_path_subscription: Option<Subscription>,
     omnibar_breadcrumb_host: Option<Entity<OmnibarBreadcrumbHost>>,
+    breadcrumb_drag_generation: u64,
     search_input: Option<Entity<InputState>>,
     _search_subscription: Option<Subscription>,
 }
@@ -68,12 +65,11 @@ impl MainPage {
             next_tab_id: 1,
             show_info_pane,
             info_pane: cx.new(|_| InfoPane::new()),
-            path_input: None,
-            _omnibar_subscription: None,
-            omnibar_mode: OmnibarMode::Path,
-            omnibar_editing: false,
-            omnibar_suggestions: Vec::new(),
+            omnibar_show_full_path: false,
+            omnibar_path_input: None,
+            _omnibar_path_subscription: None,
             omnibar_breadcrumb_host: None,
+            breadcrumb_drag_generation: 0,
             search_input: None,
             _search_subscription: None,
         }
@@ -109,14 +105,14 @@ impl MainPage {
         );
         let page_hover = cx.entity();
         let on_drag_hover = Rc::new(move |path: PathBuf, _: &mut Window, cx: &mut App| {
-            let target = breadcrumb_navigation_target(&path);
-            let page = page_hover.clone();
-            cx.defer(move |cx| {
-                let _ = page.update(cx, |page, cx| {
-                    if page.omnibar_working_directory(cx).as_ref() != Some(&path) {
-                        page.navigate_to(target, cx);
-                    }
-                });
+            let _ = page_hover.update(cx, |page, cx| {
+                page.schedule_breadcrumb_drag_preview(path, cx);
+            });
+        });
+        let page_path_bar = cx.entity();
+        let on_show_full_path = Rc::new(move |window: &mut Window, cx: &mut App| {
+            let _ = page_path_bar.update(cx, |page, cx| {
+                page.enter_omnibar_path_edit(window, cx);
             });
         });
         let root_menu = Rc::new(|| {
@@ -154,6 +150,7 @@ impl MainPage {
                 on_home,
                 on_drop_paths,
                 on_drag_hover,
+                on_show_full_path,
             )
         }));
     }
@@ -176,6 +173,30 @@ impl MainPage {
     pub fn open_path_in_new_tab(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         record_path_history(&path);
         self.add_tab(NavigationTarget::Path(path), cx);
+    }
+
+    fn schedule_breadcrumb_drag_preview(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self.omnibar_working_directory(cx).as_ref() == Some(&path) {
+            return;
+        }
+        self.breadcrumb_drag_generation = self.breadcrumb_drag_generation.wrapping_add(1);
+        let generation = self.breadcrumb_drag_generation;
+        let target = breadcrumb_navigation_target(&path);
+        cx.spawn(async move |page, cx| {
+            cx.background_spawn(async move {
+                std::thread::sleep(std::time::Duration::from_millis(
+                    BREADCRUMB_DRAG_HOVER_OPEN_MS,
+                ));
+            })
+            .await;
+            let _ = page.update(cx, |page, cx| {
+                if page.breadcrumb_drag_generation != generation {
+                    return;
+                }
+                page.navigate_to(target, cx);
+            });
+        })
+        .detach();
     }
 
     pub fn drop_paths_on_directory(
@@ -280,7 +301,7 @@ impl MainPage {
         shell.update(cx, |shell, cx| {
             shell.navigate_active(target, cx);
         });
-        self.omnibar_editing = false;
+        self.omnibar_show_full_path = false;
         cx.notify();
     }
 
@@ -290,186 +311,100 @@ impl MainPage {
         cx.notify();
     }
 
-    fn omnibar_text(&self, cx: &App) -> String {
+    pub fn omnibar_path_edit_active(&self) -> bool {
+        self.omnibar_show_full_path
+    }
+
+    pub fn dismiss_omnibar_path_edit(&mut self, cx: &mut Context<Self>) {
+        if !self.omnibar_show_full_path {
+            return;
+        }
+        self.omnibar_show_full_path = false;
+        cx.notify();
+    }
+
+    fn ensure_omnibar_path_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+        if let Some(input) = self.omnibar_path_input.clone() {
+            return input;
+        }
+
+        let input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t!("nav.path.placeholder"))
+        });
+        self._omnibar_path_subscription = Some(cx.subscribe(&input, move |page, _, event: &InputEvent, cx| {
+            match event {
+                InputEvent::PressEnter { .. } => page.submit_omnibar_path(cx),
+                InputEvent::Blur => page.dismiss_omnibar_path_edit(cx),
+                _ => {}
+            }
+        }));
+        self.omnibar_path_input = Some(input.clone());
+        input
+    }
+
+    pub fn enter_omnibar_path_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.omnibar_show_full_path = true;
+        let text = self.omnibar_full_path_text(cx);
+        let input = self.ensure_omnibar_path_input(window, cx);
+        input.update(cx, |state, cx| {
+            state.set_value(text, window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    fn submit_omnibar_path(&mut self, cx: &mut Context<Self>) {
+        let Some(input) = self.omnibar_path_input.clone() else {
+            return;
+        };
+        let text = input.read(cx).value().to_string();
+        if let Some(target) = Self::resolve_path_submit(&text) {
+            if let NavigationTarget::Path(ref path) = target {
+                record_path_history(path);
+            }
+            self.omnibar_show_full_path = false;
+            self.navigate_to(target, cx);
+        }
+    }
+
+    fn resolve_path_submit(text: &str) -> Option<NavigationTarget> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if trimmed.eq_ignore_ascii_case("home") {
+            return Some(NavigationTarget::Home);
+        }
+        if trimmed.eq_ignore_ascii_case("settings") {
+            return Some(NavigationTarget::Settings);
+        }
+        if trimmed.eq_ignore_ascii_case("recycle bin") || trimmed.eq_ignore_ascii_case("recycle") {
+            return Some(NavigationTarget::RecycleBin);
+        }
+
+        let path = PathBuf::from(trimmed);
+        if path.is_dir() {
+            return Some(NavigationTarget::Path(path));
+        }
+        if path.is_file() {
+            return path
+                .parent()
+                .map(|parent| NavigationTarget::Path(parent.to_path_buf()));
+        }
+        None
+    }
+
+    fn omnibar_full_path_text(&self, cx: &App) -> String {
         let pane = self.active_pane(cx);
-        let target = pane.read(cx).target().clone();
-        if matches!(&target, NavigationTarget::Path(_)) {
-            pane.read(cx)
+        match pane.read(cx).target() {
+            NavigationTarget::Path(_) | NavigationTarget::RecycleBin => pane
+                .read(cx)
                 .file_browser()
                 .read(cx)
                 .current_directory()
                 .to_string_lossy()
-                .to_string()
-        } else {
-            target.toolbar_path_label()
-        }
-    }
-
-    fn ensure_path_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
-        if let Some(input) = self.path_input.clone() {
-            return input;
-        }
-
-        let path = self.omnibar_text(cx);
-        let placeholder = mode_placeholder(self.omnibar_mode);
-        let input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .default_value(path)
-                .placeholder(placeholder)
-        });
-        self._omnibar_subscription = Some(cx.subscribe(&input, move |page, _, event: &InputEvent, cx| {
-            match event {
-                InputEvent::PressEnter { .. } => page.submit_omnibar(cx),
-                InputEvent::Change => page.refresh_omnibar_suggestions(cx),
-                InputEvent::Focus => {
-                    page.omnibar_editing = true;
-                    page.refresh_omnibar_suggestions(cx);
-                    cx.notify();
-                }
-                InputEvent::Blur => {
-                    page.omnibar_editing = false;
-                    page.omnibar_mode = OmnibarMode::Path;
-                    page.omnibar_suggestions.clear();
-                    cx.notify();
-                }
-            }
-        }));
-        self.path_input = Some(input.clone());
-        input
-    }
-
-    fn sync_omnibar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let input = self.ensure_path_input(window, cx);
-        let placeholder = mode_placeholder(self.omnibar_mode);
-        input.update(cx, |state, cx| {
-            state.set_placeholder(placeholder, window, cx);
-        });
-
-        if !self.omnibar_editing {
-            let text = self.omnibar_text(cx);
-            input.update(cx, |state, cx| {
-                state.set_value(text, window, cx);
-            });
-        }
-    }
-
-    pub fn focus_omnibar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.omnibar_editing = true;
-        self.omnibar_mode = OmnibarMode::Path;
-        let input = self.ensure_path_input(window, cx);
-        let text = self.omnibar_text(cx);
-        input.update(cx, |state, cx| {
-            state.set_value(text, window, cx);
-            state.focus(window, cx);
-        });
-        self.refresh_omnibar_suggestions(cx);
-        cx.notify();
-    }
-
-    fn refresh_omnibar_suggestions(&mut self, cx: &mut Context<Self>) {
-        let query = self
-            .path_input
-            .as_ref()
-            .map(|input| input.read(cx).value().to_string())
-            .unwrap_or_default();
-        self.omnibar_suggestions = refresh_suggestions(self.omnibar_mode, &query);
-        cx.notify();
-    }
-
-    fn toggle_omnibar_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.omnibar_mode = match self.omnibar_mode {
-            OmnibarMode::Path => OmnibarMode::CommandPalette,
-            OmnibarMode::CommandPalette => OmnibarMode::Path,
-        };
-        self.omnibar_editing = true;
-        let input = self.ensure_path_input(window, cx);
-        input.update(cx, |state, cx| {
-            state.set_placeholder(mode_placeholder(self.omnibar_mode), window, cx);
-            state.set_value(String::new(), window, cx);
-            state.focus(window, cx);
-        });
-        self.refresh_omnibar_suggestions(cx);
-        cx.notify();
-    }
-
-    fn start_omnibar_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.omnibar_editing = true;
-        self.omnibar_mode = OmnibarMode::Path;
-        let input = self.ensure_path_input(window, cx);
-        let text = self.omnibar_text(cx);
-        input.update(cx, |state, cx| {
-            state.set_value(text, window, cx);
-            state.focus(window, cx);
-        });
-        self.refresh_omnibar_suggestions(cx);
-        cx.notify();
-    }
-
-    fn apply_omnibar_suggestion(
-        &mut self,
-        index: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(suggestion) = self.omnibar_suggestions.get(index).cloned() else {
-            return;
-        };
-        match suggestion {
-            OmnibarSuggestion::Path { path, label } => {
-                if self.omnibar_mode == OmnibarMode::Path {
-                    if let Some(input) = self.path_input.clone() {
-                        input.update(cx, |state, cx| {
-                            state.set_value(label, window, cx);
-                        });
-                    }
-                    self.omnibar_editing = false;
-                    self.navigate_to(NavigationTarget::Path(path), cx);
-                }
-            }
-            OmnibarSuggestion::Command { id, .. } => {
-                self.execute_omnibar_command(id, cx);
-                self.omnibar_editing = false;
-            }
-        }
-        self.omnibar_suggestions.clear();
-        cx.notify();
-    }
-
-    fn execute_omnibar_command(&mut self, command: OmnibarCommand, cx: &mut Context<Self>) {
-        match command {
-            OmnibarCommand::NavigateHome => self.navigate_to(NavigationTarget::Home, cx),
-            OmnibarCommand::OpenSettings => self.navigate_to(NavigationTarget::Settings, cx),
-            OmnibarCommand::OpenRecycleBin => self.navigate_to(NavigationTarget::RecycleBin, cx),
-            OmnibarCommand::ToggleDualPane => self.toggle_dual_pane(cx),
-            OmnibarCommand::ToggleInfoPane => self.toggle_info_pane(cx),
-            OmnibarCommand::NewTab => {
-                self.add_tab(NavigationTarget::Path(home_navigation_path()), cx);
-            }
-        }
-    }
-
-    fn submit_omnibar(&mut self, cx: &mut Context<Self>) {
-        if self.omnibar_mode == OmnibarMode::CommandPalette {
-            if let Some(OmnibarSuggestion::Command { id, .. }) = self.omnibar_suggestions.first() {
-                let id = *id;
-                self.execute_omnibar_command(id, cx);
-                self.omnibar_suggestions.clear();
-                self.omnibar_editing = false;
-                return;
-            }
-        }
-
-        let Some(input) = self.path_input.clone() else {
-            return;
-        };
-        let text = input.read(cx).value().to_string();
-        if let Some(target) = resolve_path_submit(&text) {
-            if let NavigationTarget::Path(ref path) = target {
-                record_path_history(path);
-            }
-            self.omnibar_editing = false;
-            self.omnibar_suggestions.clear();
-            self.navigate_to(target, cx);
+                .to_string(),
+            target => target.toolbar_path_label(),
         }
     }
 
@@ -498,18 +433,14 @@ impl MainPage {
         }
     }
 
-    fn render_omnibar(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        self.sync_omnibar(window, cx);
-        let path_input = self.ensure_path_input(window, cx);
-        let mode = self.omnibar_mode;
-        let editing = self.omnibar_editing;
-        let suggestions = self.omnibar_suggestions.clone();
+    fn render_omnibar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let show_breadcrumbs = !self.omnibar_show_full_path;
+        let path_input = if self.omnibar_show_full_path {
+            Some(self.ensure_omnibar_path_input(window, cx))
+        } else {
+            None
+        };
         let breadcrumbs = self.omnibar_breadcrumbs(cx);
-        let show_breadcrumbs = mode == OmnibarMode::Path && !editing;
         self.ensure_omnibar_breadcrumb_host(cx);
         let working_directory = self.omnibar_working_directory(cx);
         let show_hidden = self
@@ -519,11 +450,9 @@ impl MainPage {
             .read(cx)
             .read_options()
             .show_hidden_items;
-        let bar_width = f32::from((window.window_bounds().get_bounds().size.width - px(360.)).max(px(160.)));
         if let Some(host) = self.omnibar_breadcrumb_host.clone() {
             host.update(cx, |host, _| {
                 host.set_path_context(breadcrumbs, working_directory, show_hidden);
-                host.set_measured_width(bar_width);
             });
         }
         let breadcrumb_host = self.omnibar_breadcrumb_host.clone().expect("breadcrumb host");
@@ -533,6 +462,7 @@ impl MainPage {
             .flex_1()
             .min_w_0()
             .relative()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 h_flex()
                     .id("omnibar-bar")
@@ -545,64 +475,28 @@ impl MainPage {
                     .border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
-                    .child(
-                        Button::new("omnibar-mode")
-                            .xsmall()
-                            .ghost()
-                            .label(mode_button_label(mode))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.toggle_omnibar_mode(window, cx);
-                            })),
-                    )
                     .when(show_breadcrumbs, |bar| {
                         bar.child(
                             div()
                                 .id("omnibar-breadcrumb-host")
                                 .flex_1()
                                 .min_w_0()
-                                .cursor_pointer()
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.start_omnibar_edit(window, cx);
-                                }))
+                                .h_full()
                                 .child(breadcrumb_host.clone()),
                         )
                     })
                     .when(!show_breadcrumbs, |bar| {
-                        bar.child(div().flex_1().min_w_0().child(Input::new(&path_input).w_full().small()))
+                        bar.child(
+                            div()
+                                .id("omnibar-path-input")
+                                .flex_1()
+                                .min_w_0()
+                                .when_some(path_input.as_ref(), |row, input| {
+                                    row.child(Input::new(input).w_full().small())
+                                }),
+                        )
                     }),
             )
-            .when(editing && !suggestions.is_empty(), |host| {
-                host.child(
-                    div()
-                        .id("omnibar-suggestions")
-                        .absolute()
-                        .top_8()
-                        .left_0()
-                        .w_full()
-                        .max_h(px(240.))
-                        .overflow_y_scroll()
-                        .rounded(cx.theme().radius)
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .bg(cx.theme().popover)
-                        .shadow_md()
-                        .py_1()
-                        .children(suggestions.into_iter().enumerate().map(|(index, item)| {
-                            let label = match &item {
-                                OmnibarSuggestion::Path { label, .. } => label.clone(),
-                                OmnibarSuggestion::Command { label, .. } => label.clone(),
-                            };
-                            Button::new(("omnibar-suggestion", index))
-                                .ghost()
-                                .small()
-                                .w_full()
-                                .label(label)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.apply_omnibar_suggestion(index, window, cx);
-                                }))
-                        })),
-                )
-            })
     }
 
     fn pin_current_folder(&mut self, cx: &mut Context<Self>) {
@@ -1042,20 +936,11 @@ impl Render for MainPage {
             .min_h_0()
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(|this, _: &FocusOmnibar, window, cx| {
-                this.focus_omnibar(window, cx);
+                this.focus_search_input(window, cx);
             }))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                if event.keystroke.key.as_str() == "escape" && this.omnibar_editing {
-                    this.omnibar_editing = false;
-                    this.omnibar_mode = OmnibarMode::Path;
-                    this.omnibar_suggestions.clear();
-                    if let Some(input) = this.path_input.clone() {
-                        let text = this.omnibar_text(cx);
-                        input.update(cx, |state, cx| {
-                            state.set_value(text, window, cx);
-                        });
-                    }
-                    cx.notify();
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
+                if event.keystroke.key.as_str() == "escape" {
+                    this.dismiss_omnibar_path_edit(cx);
                 }
             }))
             .child(

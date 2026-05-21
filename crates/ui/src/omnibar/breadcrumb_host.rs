@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use cyberfiles_fs::{BreadcrumbMenuSection, PathBreadcrumb};
 use gpui::{prelude::*, *};
+use gpui_component::ElementExt as _;
 
 use super::breadcrumb_bar::PathBreadcrumbBar;
 
@@ -18,6 +19,7 @@ pub struct OmnibarBreadcrumbHost {
     on_home: Rc<dyn Fn(&mut Window, &mut App)>,
     on_drop_paths: Rc<dyn Fn(PathBuf, Vec<PathBuf>, &mut Window, &mut App)>,
     on_drag_hover: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
+    on_show_full_path: Rc<dyn Fn(&mut Window, &mut App)>,
     measured_width: f32,
 }
 
@@ -51,6 +53,7 @@ impl OmnibarBreadcrumbHost {
         on_home: Rc<dyn Fn(&mut Window, &mut App)>,
         on_drop_paths: Rc<dyn Fn(PathBuf, Vec<PathBuf>, &mut Window, &mut App)>,
         on_drag_hover: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
+        on_show_full_path: Rc<dyn Fn(&mut Window, &mut App)>,
     ) -> Self {
         Self {
             show_root,
@@ -63,6 +66,7 @@ impl OmnibarBreadcrumbHost {
             on_home,
             on_drop_paths,
             on_drag_hover,
+            on_show_full_path,
             measured_width: 10_000.,
         }
     }
@@ -70,10 +74,22 @@ impl OmnibarBreadcrumbHost {
 
 impl Render for OmnibarBreadcrumbHost {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let host = cx.entity();
         div()
             .id("omnibar-breadcrumb-measure")
             .flex_1()
             .min_w_0()
+            .on_prepaint({
+                move |bounds, _, cx| {
+                    let w = f32::from(bounds.size.width);
+                    let _ = host.update(cx, |host, cx| {
+                        if w >= 1.0 && (host.measured_width - w).abs() > 1.5 {
+                            host.measured_width = w;
+                            cx.notify();
+                        }
+                    });
+                }
+            })
             .child(PathBreadcrumbBar::new(
                 self.show_root,
                 self.segments.clone(),
@@ -86,6 +102,7 @@ impl Render for OmnibarBreadcrumbHost {
                 self.on_home.clone(),
                 self.on_drop_paths.clone(),
                 self.on_drag_hover.clone(),
+                self.on_show_full_path.clone(),
             ))
     }
 }

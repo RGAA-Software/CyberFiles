@@ -1,0 +1,20 @@
+---
+description: After code changes in CyberFiles, run cargo run and check terminal for crashes
+alwaysApply: true
+---
+
+# cargo run 验证（每次改完必做）
+
+在本仓库完成实现、修 bug 或改 UI/Rust 代码后，**回答结束前**必须：
+
+1. 在 workspace 根目录执行：`cargo run -p cyberfiles`（GUI 长时间运行可放后台）。
+2. **监听 terminal**：读取 `terminals/` 对应会话或 `Await`，确认：
+   - 编译成功（`Finished` + `Running ...cyberfiles.exe`）
+   - 无 `panic`、`thread 'main' panicked`、非预期的 `error:` 退出
+3. 在回复末尾用简短「运行验证」说明结果（成功 / 编译失败 / 运行中 / 崩溃摘要）。
+
+若已有 `cargo run` 在跑且代码未变，可读现有 terminal；代码变更后应重新编译运行。
+
+失败时：先修到 `cargo check` 通过，再 `cargo run`，直至启动无 panic 或向用户说明阻塞原因。
+
+详见 `.cursor/skills/cargo-run-verify/SKILL.md`。

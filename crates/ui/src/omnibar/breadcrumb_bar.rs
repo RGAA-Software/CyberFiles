@@ -3,10 +3,12 @@ use std::rc::Rc;
 
 use cyberfiles_fs::{
     breadcrumb_dropdown_entries, breadcrumb_visible_layout_for_width, BreadcrumbMenuSection,
-    PathBreadcrumb,
+    OmnibarPathSuggestion, PathBreadcrumb,
 };
+use cyberfiles_platform_windows::{icon_hint_for_path, ShellIconHint};
 use gpui::{prelude::*, *};
-use     gpui_component::{
+use gpui_component::plot::label::measure_text_width;
+use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
@@ -14,8 +16,21 @@ use     gpui_component::{
 };
 use rust_i18n::t;
 
+use super::breadcrumb_flyout::BreadcrumbFlyout;
 use crate::app_state::AppNavigation;
 use crate::file_browser::DraggedFilePaths;
+
+/// Breadcrumb dropdown outer width (Files-style flyout).
+const BREADCRUMB_DROPDOWN_MIN_WIDTH: Pixels = px(220.);
+const BREADCRUMB_DROPDOWN_MAX_WIDTH: Pixels = px(350.);
+/// Content row inside the menu: 350 − scrollbar(16) − menu padding(8) − item padding(16).
+const BREADCRUMB_DROPDOWN_ROW_WIDTH: Pixels = px(310.);
+/// Menu item `text_sm()` (0.875rem @ 16px base).
+const BREADCRUMB_MENU_FONT_SIZE: Pixels = px(14.);
+const BREADCRUMB_MENU_ELLIPSIS: &str = "…";
+/// `Icon::small()` / `size_3p5()` + `gap_2()`.
+const BREADCRUMB_MENU_ICON_WIDTH: f32 = 14.;
+const BREADCRUMB_MENU_ICON_GAP: f32 = 8.;
 
 /// Files-style path breadcrumb: home root + unified segment blocks (label + chevron), optional ellipsis.
 #[derive(IntoElement)]
@@ -31,6 +46,8 @@ pub struct PathBreadcrumbBar {
     on_home: Rc<dyn Fn(&mut Window, &mut App)>,
     on_drop_paths: Rc<dyn Fn(PathBuf, Vec<PathBuf>, &mut Window, &mut App)>,
     on_drag_hover: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
+    /// Click on non-item chrome (empty bar area) shows the full path string.
+    on_show_full_path: Rc<dyn Fn(&mut Window, &mut App)>,
 }
 
 impl PathBreadcrumbBar {
@@ -47,6 +64,7 @@ impl PathBreadcrumbBar {
         on_home: Rc<dyn Fn(&mut Window, &mut App)>,
         on_drop_paths: Rc<dyn Fn(PathBuf, Vec<PathBuf>, &mut Window, &mut App)>,
         on_drag_hover: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
+        on_show_full_path: Rc<dyn Fn(&mut Window, &mut App)>,
     ) -> Self {
         Self {
             show_root,
@@ -60,6 +78,7 @@ impl PathBreadcrumbBar {
             on_home,
             on_drop_paths,
             on_drag_hover,
+            on_show_full_path,
         }
     }
 }
@@ -76,6 +95,7 @@ impl RenderOnce for PathBreadcrumbBar {
         let on_home = self.on_home.clone();
         let on_drop_paths = self.on_drop_paths.clone();
         let on_drag_hover = self.on_drag_hover.clone();
+        let on_show_full_path = self.on_show_full_path.clone();
         let root_menu = self.root_menu.clone();
         let show_hidden = self.show_hidden;
         let working_directory = self.working_directory.clone();
@@ -86,7 +106,8 @@ impl RenderOnce for PathBreadcrumbBar {
             .min_w_0()
             .gap(px(2.))
             .items_center()
-            .overflow_hidden();
+            .cursor_pointer()
+            .on_click(move |_, window, cx| on_show_full_path(window, cx));
 
         if self.show_root {
             bar = bar.child(render_root_item(on_home, root_menu, cx));
@@ -97,7 +118,6 @@ impl RenderOnce for PathBreadcrumbBar {
             bar = bar.child(render_ellipsis_item(
                 collapsed,
                 on_navigate.clone(),
-                on_navigate_new_tab.clone(),
                 cx,
             ));
         }
@@ -127,6 +147,20 @@ impl RenderOnce for PathBreadcrumbBar {
     }
 }
 
+fn render_chevron_menu(
+    button_id: impl Into<ElementId>,
+    tooltip: String,
+    menu_builder: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+) -> BreadcrumbFlyout {
+    let button_id = button_id.into();
+    BreadcrumbFlyout::new(
+        SharedString::from(format!("breadcrumb-flyout-{button_id:?}")),
+        button_id.clone(),
+        tooltip,
+        menu_builder,
+    )
+}
+
 fn render_root_item(
     on_home: Rc<dyn Fn(&mut Window, &mut App)>,
     root_menu: Rc<dyn Fn() -> Vec<BreadcrumbMenuSection>>,
@@ -149,24 +183,16 @@ fn render_root_item(
                 .tooltip(home_tip)
                 .on_click(move |_, window, cx| on_home(window, cx)),
         )
-        .child(
-            Button::new("breadcrumb-root-chevron")
-                .xsmall()
-                .ghost()
-                .child(
-                    Icon::new(IconName::ChevronRight)
-                        .small()
-                        .rotate(percentage(90. / 360.)),
-                )
-                .tooltip(chevron_tip)
-                .dropdown_menu_with_anchor(Anchor::BottomLeft, root_menu_builder),
-        )
+        .child(render_chevron_menu(
+            "breadcrumb-root-chevron",
+            chevron_tip,
+            root_menu_builder,
+        ))
 }
 
 fn render_ellipsis_item(
     collapsed: Vec<PathBreadcrumb>,
     on_navigate: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
-    _on_navigate_new_tab: Rc<dyn Fn(PathBuf, &mut Window, &mut App)>,
     cx: &App,
 ) -> impl IntoElement {
     let menu_builder = ellipsis_dropdown_menu_builder(collapsed, on_navigate);
@@ -248,18 +274,11 @@ fn render_path_segment(
         });
 
     if show_chevron {
-        segment = segment.child(
-            Button::new(("breadcrumb-segment-chevron", index))
-                .xsmall()
-                .ghost()
-                .child(
-                    Icon::new(IconName::ChevronRight)
-                        .small()
-                        .rotate(percentage(90. / 360.)),
-                )
-                .tooltip(chevron_tip)
-                .dropdown_menu_with_anchor(Anchor::BottomLeft, menu_builder),
-        );
+        segment = segment.child(render_chevron_menu(
+            ("breadcrumb-segment-chevron", index),
+            chevron_tip,
+            menu_builder,
+        ));
     }
 
     if is_dir && !is_last {
@@ -291,6 +310,104 @@ fn render_path_segment(
     segment
 }
 
+fn shell_icon_for_path(path: &Path) -> Icon {
+    Icon::new(shell_icon_name(icon_hint_for_path(path))).small()
+}
+
+fn shell_icon_name(hint: ShellIconHint) -> IconName {
+    match hint {
+        ShellIconHint::Folder => IconName::Folder,
+        ShellIconHint::Symlink => IconName::ExternalLink,
+        ShellIconHint::Executable => IconName::File,
+        ShellIconHint::Image => IconName::File,
+        ShellIconHint::Archive => IconName::Folder,
+        ShellIconHint::File => IconName::File,
+    }
+}
+
+fn apply_breadcrumb_menu_style(menu: PopupMenu) -> PopupMenu {
+    menu.min_w(BREADCRUMB_DROPDOWN_MIN_WIDTH)
+        .max_w(BREADCRUMB_DROPDOWN_MAX_WIDTH)
+}
+
+fn breadcrumb_menu_label_max_width(has_icon: bool) -> f32 {
+    let row = f32::from(BREADCRUMB_DROPDOWN_ROW_WIDTH);
+    if has_icon {
+        row - BREADCRUMB_MENU_ICON_WIDTH - BREADCRUMB_MENU_ICON_GAP
+    } else {
+        row
+    }
+}
+
+/// Truncate by shaped text width so CJK and Latin share one consistent `…` position.
+fn truncate_breadcrumb_menu_label(label: &str, max_width: f32, window: &mut Window) -> String {
+    let full = SharedString::from(label);
+    if measure_text_width(&full, BREADCRUMB_MENU_FONT_SIZE, window) <= max_width {
+        return label.to_string();
+    }
+    let ellipsis = SharedString::from(BREADCRUMB_MENU_ELLIPSIS);
+    let ellipsis_w = measure_text_width(&ellipsis, BREADCRUMB_MENU_FONT_SIZE, window);
+    let budget = (max_width - ellipsis_w).max(0.);
+    let mut acc = String::new();
+    for ch in label.chars() {
+        acc.push(ch);
+        if measure_text_width(&SharedString::from(&acc), BREADCRUMB_MENU_FONT_SIZE, window)
+            > budget
+        {
+            acc.pop();
+            if acc.is_empty() {
+                return BREADCRUMB_MENU_ELLIPSIS.to_string();
+            }
+            acc.push_str(BREADCRUMB_MENU_ELLIPSIS);
+            return acc;
+        }
+    }
+    label.to_string()
+}
+
+/// One menu row: fixed label budget + pixel-accurate ellipsis (not CSS `truncate`).
+fn breadcrumb_menu_row(label: String, icon: Option<Icon>, window: &mut Window) -> impl IntoElement {
+    let display =
+        truncate_breadcrumb_menu_label(&label, breadcrumb_menu_label_max_width(icon.is_some()), window);
+    h_flex()
+        .w_full()
+        .max_w(BREADCRUMB_DROPDOWN_ROW_WIDTH)
+        .min_w_0()
+        .overflow_hidden()
+        .items_center()
+        .gap_2()
+        .text_sm()
+        .when_some(icon, |row, icon| row.child(icon.flex_none()))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .child(display),
+        )
+}
+
+fn popup_menu_path_item(
+    entry: OmnibarPathSuggestion,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> PopupMenuItem {
+    let path = entry.path.clone();
+    let label = entry.label.clone();
+    PopupMenuItem::element(move |window, _| {
+        breadcrumb_menu_row(label.clone(), Some(shell_icon_for_path(&path)), window)
+    })
+    .on_click(on_click)
+}
+
+fn popup_menu_text_item(
+    label: String,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> PopupMenuItem {
+    PopupMenuItem::element(move |window, _| breadcrumb_menu_row(label.clone(), None, window))
+        .on_click(on_click)
+}
+
 fn segment_dropdown_menu_builder(
     path: PathBuf,
     show_hidden: bool,
@@ -304,21 +421,18 @@ fn segment_dropdown_menu_builder(
         );
         let mut menu = menu.scrollable(true);
         if entries.is_empty() {
-            menu.item(
+            menu = menu.item(
                 PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
-            )
+            );
         } else {
             for entry in entries {
                 let target = entry.path.clone();
-                let entry_label = entry.label.clone();
-                menu = menu.item(
-                    PopupMenuItem::new(entry_label).on_click(move |_, _, cx| {
-                        AppNavigation::navigate_to_path(target.clone(), cx);
-                    }),
-                );
+                menu = menu.item(popup_menu_path_item(entry, move |_, _, cx| {
+                    AppNavigation::navigate_to_path(target.clone(), cx);
+                }));
             }
-            menu
         }
+        apply_breadcrumb_menu_style(menu)
     }
 }
 
@@ -329,9 +443,9 @@ fn root_dropdown_menu_builder(
         let sections = root_menu();
         let mut menu = menu.scrollable(true);
         if sections.is_empty() {
-            return menu.item(
+            return apply_breadcrumb_menu_style(menu.item(
                 PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
-            );
+            ));
         }
         for (section_index, section) in sections.iter().enumerate() {
             if section_index > 0 {
@@ -342,15 +456,12 @@ fn root_dropdown_menu_builder(
             }
             for entry in &section.entries {
                 let target = entry.path.clone();
-                let entry_label = entry.label.clone();
-                menu = menu.item(
-                    PopupMenuItem::new(entry_label).on_click(move |_, _, cx| {
-                        AppNavigation::navigate_to_path(target.clone(), cx);
-                    }),
-                );
+                menu = menu.item(popup_menu_path_item(entry.clone(), move |_, _, cx| {
+                    AppNavigation::navigate_to_path(target.clone(), cx);
+                }));
             }
         }
-        menu
+        apply_breadcrumb_menu_style(menu)
     }
 }
 
@@ -364,10 +475,10 @@ fn ellipsis_dropdown_menu_builder(
             let path = crumb.path.clone();
             let label = crumb.label.clone();
             let navigate = on_navigate.clone();
-            menu = menu.item(PopupMenuItem::new(label).on_click(move |_, window, cx| {
+            menu = menu.item(popup_menu_text_item(label, move |_, window, cx| {
                 navigate(path.clone(), window, cx);
             }));
         }
-        menu
+        apply_breadcrumb_menu_style(menu)
     }
 }

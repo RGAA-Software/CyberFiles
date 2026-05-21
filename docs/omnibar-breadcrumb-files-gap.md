@@ -23,7 +23,7 @@ CyberFiles 实现：`PathBreadcrumbBar` / `OmnibarBreadcrumbHost`（[`crates/ui/
 | 下拉排除当前工作目录 | ✅ `exclude_path` |
 | 尊重「显示隐藏文件」（基础） | ✅ `show_hidden_items` |
 | 拖放到目录段 | ✅ `on_drop` |
-| 拖到非最后段悬停预览进目录 | ✅ `on_drag_move`（立即，见下） |
+| 拖到非最后段悬停预览进目录 | ✅ `on_drag_move` + 350ms debounce（`BREADCRUMB_DRAG_HOVER_OPEN_MS`） |
 | 失焦回 Path 模式 | ✅ |
 | 避免嵌套 `MainPage::update` 崩溃 | ✅ `location_changed` defer |
 
@@ -35,7 +35,7 @@ CyberFiles 实现：`PathBreadcrumbBar` / `OmnibarBreadcrumbHost`（[`crates/ui/
 
 | # | Files | 现状 | 建议实现 |
 |---|--------|------|----------|
-| 1 | 拖放悬停 **1300ms** 后才进入该目录（`HoverToOpenTimespan`），且**最后一段不触发** | 悬停即导航 | `MainPage` 用 generation + `cx.spawn` 延时 1300ms |
+| 1 | 拖放悬停 **1300ms** 后才进入该目录（`HoverToOpenTimespan`），且**最后一段不触发** | **350ms** debounce（可调常量）；最后段仍无 hover | 若需完全对齐 Files，将 `BREADCRUMB_DRAG_HOVER_OPEN_MS` 改为 `1300` |
 | 2 | 无法枚举子目录时显示 **「访问被拒绝」** 占位项 | 空列表或「没有子文件夹」 | `breadcrumb_dropdown_entries` 区分 `read_dir` 失败 vs 空 |
 | 3 | 隐藏项在下拉中 **半透明**；另含 **系统/点文件** 设置 | 仅过滤 hidden，无 dim、无 system/dot | 对齐 `DirectoryReadOptions` / Win32 `FindFirstFile` 逻辑 |
 | 4 | 根快速访问来自 **Shell Quick Access**（非仅 pinned） | 仅 `settings.json` pinned | 平台层 `list_quick_access()`，根菜单合并 |
@@ -45,9 +45,9 @@ CyberFiles 实现：`PathBreadcrumbBar` / `OmnibarBreadcrumbHost`（[`crates/ui/
 
 | # | Files | 现状 | 建议 |
 |---|--------|------|------|
-| 6 | `BreadcrumbBarLayout` **实测**子项宽度折叠 | 字符估算 + 窗口宽度 | `debug_bounds` 或 layout pass 测 host 宽度 |
-| 7 | Chevron **展开旋转 90°**（`ChevronNormalOn/Off`） | 固定向下 `›` | 下拉 open/close 绑 `Icon` 旋转状态 |
-| 8 | 下拉项 **Shell 缩略图** 异步替换占位图标 | 无图标 | 后台读缩略图更新 `PopupMenuItem`（工作量大） |
+| 6 | `BreadcrumbBarLayout` **逐段实测**子项宽度折叠 | host **canvas 实测**可用宽度 + 段标签字符估算 | 逐段 DOM/文本度量（GPUI 无现成 API） |
+| 7 | Chevron **展开旋转 90°**（`ChevronNormalOn/Off`） | ✅ `Popover` + `BreadcrumbChevronTrigger` | — |
+| 8 | 下拉项 **Shell 缩略图** 异步替换占位图标 | 菜单项左侧 **类型图标**（`icon_hint`，与文件列表同类） | 非 Win32 `SHGetFileInfo` 位图；`img(路径)` 对文件夹无效已移除 |
 | 9 | `Tab` 失焦 Omnibar 后 **焦点到面包屑** | 无 | Path 模式下 Tab → `track_focus` 到 breadcrumb |
 | 10 | 根/段 **圆角一体块**（根左侧大圆角） | 简单 `rounded` | 微调样式对齐 XAML |
 

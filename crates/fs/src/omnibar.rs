@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use unicode_width::UnicodeWidthChar;
+
 /// One clickable segment in the omnibar breadcrumb trail.
 #[derive(Debug, Clone)]
 pub struct PathBreadcrumb {
@@ -230,12 +232,22 @@ pub struct BreadcrumbVisibleLayout {
 const ROOT_BLOCK_WIDTH: f32 = 72.0;
 const ELLIPSIS_BLOCK_WIDTH: f32 = 36.0;
 const SEGMENT_PADDING: f32 = 16.0;
-const CHAR_WIDTH: f32 = 7.0;
+/// Matches omnibar segment `Button::xsmall()` / `text_xs()` (~12px): one terminal cell ≈ 7px.
+const SEGMENT_CELL_WIDTH: f32 = 7.0;
 const CHEVRON_WIDTH: f32 = 28.0;
 
+fn segment_text_width_px(label: &str) -> f32 {
+    let units: u32 = label
+        .chars()
+        .map(|c| c.width().unwrap_or(1) as u32)
+        .sum();
+    (units.max(1) as f32) * SEGMENT_CELL_WIDTH
+}
+
 fn segment_width_px(label: &str, has_chevron: bool) -> f32 {
-    let chars = label.chars().count().max(1) as f32;
-    SEGMENT_PADDING + chars * CHAR_WIDTH + if has_chevron { CHEVRON_WIDTH } else { 0.0 }
+    SEGMENT_PADDING
+        + segment_text_width_px(label)
+        + if has_chevron { CHEVRON_WIDTH } else { 0.0 }
 }
 
 /// Files-style collapse: hide the **prefix** when the trail does not fit (keep tail visible).
@@ -316,6 +328,13 @@ mod tests {
         assert_eq!(crumbs[0].path, Path::new(r"C:\"));
         assert_eq!(crumbs[1].path, Path::new(r"C:\Users"));
         assert_eq!(crumbs[2].path, Path::new(r"C:\Users\hy"));
+    }
+
+    #[test]
+    fn segment_width_treats_cjk_wider_than_ascii() {
+        let ascii = segment_width_px("abc", false);
+        let cjk = segment_width_px("中文", false);
+        assert!(cjk > ascii, "CJK labels must reserve more horizontal space");
     }
 
     #[test]
