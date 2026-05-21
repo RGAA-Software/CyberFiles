@@ -422,11 +422,10 @@ impl MainPage {
                                                             if is_last {
                                                                 return;
                                                             }
-                                                            this.omnibar_editing = false;
-                                                            crate::app_state::AppNavigation::navigate_breadcrumb(
-                                                                path_nav.clone(),
-                                                                cx,
+                                                            let target = crate::app_state::breadcrumb_navigation_target(
+                                                                &path_nav,
                                                             );
+                                                            this.navigate_to(target, cx);
                                                         },
                                                     )),
                                             )

@@ -42,7 +42,7 @@ impl AppNavigation {
     }
 }
 
-fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget {
+pub fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget {
     let key = path.to_string_lossy();
     if key.eq_ignore_ascii_case("home") {
         NavigationTarget::Home
