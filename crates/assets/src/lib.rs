@@ -1,10 +1,35 @@
 //! Embedded icon assets from the [Files](https://github.com/files-community/Files) app.
 //!
+//! Toolbar and navigation icons use Files `ThemedIcon` SVGs. Window chrome, theme toggle,
+//! GitHub, and tab-close icons stay on gpui-component (Lucide) artwork.
+//!
 //! Run `python scripts/sync_files_icons.py` after updating `../Files` to refresh SVGs.
 
-use anyhow::anyhow;
 use gpui::{AssetSource, Result, SharedString};
+use gpui_component_assets::Assets as ComponentAssets;
 use std::borrow::Cow;
+use std::sync::OnceLock;
+
+/// GPUI icon paths that must use bundled Lucide SVGs, not Files ThemedIcon replacements.
+const LUCIDE_ICON_PATHS: &[&str] = &[
+    "icons/window-close.svg",
+    "icons/window-minimize.svg",
+    "icons/window-maximize.svg",
+    "icons/window-restore.svg",
+    "icons/github.svg",
+    "icons/moon.svg",
+    "icons/sun.svg",
+    "icons/close.svg",
+];
+
+fn component_assets() -> &'static ComponentAssets {
+    static ASSETS: OnceLock<ComponentAssets> = OnceLock::new();
+    ASSETS.get_or_init(|| ComponentAssets::new(""))
+}
+
+fn use_lucide_icon(path: &str) -> bool {
+    LUCIDE_ICON_PATHS.contains(&path)
+}
 
 /// GPUI icon paths used in CyberFiles mapped to Files `App.ThemedIcons.*` keys.
 pub const ICON_MAP: &[(&str, &str)] = &[
@@ -20,7 +45,6 @@ pub const ICON_MAP: &[(&str, &str)] = &[
     ("layout-dashboard", "Settings.General.Widgets"),
     ("star", "Favorite"),
     ("plus", "New.Item"),
-    ("close", "Delete"),
     ("folder", "Folder"),
     ("file", "File"),
     ("gallery-vertical-end", "FavoritePin"),
@@ -31,9 +55,6 @@ pub const ICON_MAP: &[(&str, &str)] = &[
     ("settings-2", "Settings"),
     ("inbox", "Tag"),
     ("info", "Info"),
-    ("moon", "Settings.Appearance"),
-    ("sun", "Settings.General.Theme"),
-    ("github", "Settings.General.GitHub"),
     ("bell", "StatusCenter"),
     ("hard-drive", "Actions.Eject"),
     ("globe", "Settings.General.Connections"),
@@ -58,14 +79,39 @@ impl AssetSource for Assets {
             return Ok(None);
         }
 
-        Self::get(path)
-            .map(|f| Some(f.data))
-            .ok_or_else(|| anyhow!("could not find asset at path \"{path}\""))
+        if use_lucide_icon(path) {
+            return component_assets().load(path);
+        }
+
+        if let Some(file) = Self::get(path) {
+            return Ok(Some(file.data));
+        }
+
+        component_assets().load(path)
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        Ok(Self::iter()
+        let mut names: Vec<SharedString> = Self::iter()
             .filter_map(|p| p.starts_with(path).then(|| p.into()))
-            .collect())
+            .collect();
+        let mut from_component = component_assets().list(path)?;
+        names.append(&mut from_component);
+        names.sort();
+        names.dedup();
+        Ok(names)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lucide_window_and_chrome_icons_load() {
+        let assets = Assets;
+        for path in LUCIDE_ICON_PATHS {
+            let data = assets.load(path).expect("load");
+            assert!(data.is_some(), "missing {path}");
+        }
     }
 }

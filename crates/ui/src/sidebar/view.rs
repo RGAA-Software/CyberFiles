@@ -1,7 +1,7 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use cyberfiles_core::{load_config, sidebar_is_compact, sidebar_is_offcanvas};
-use cyberfiles_platform_windows::{open_item_properties, recycle_bin_folder};
+use cyberfiles_platform_windows::{open_item_properties, SHELL_RECYCLE_BIN_PATH};
 use gpui::{prelude::*, ClickEvent, *};
 use gpui_component::{
     menu::{PopupMenu, PopupMenuItem},
@@ -138,7 +138,8 @@ fn shell_path_for_target(target: &NavigationTarget) -> Option<std::path::PathBuf
     match target {
         NavigationTarget::Path(path) => Some(path.clone()),
         NavigationTarget::Home => std::env::var_os("USERPROFILE").map(std::path::PathBuf::from),
-        NavigationTarget::RecycleBin => recycle_bin_folder(),
+        // Files uses `Shell:RecycleBinFolder` for the colorful recycle bin icon, not the FS path.
+        NavigationTarget::RecycleBin => Some(PathBuf::from(SHELL_RECYCLE_BIN_PATH)),
         _ => None,
     }
 }

@@ -18,6 +18,22 @@ OUT_ICONS = REPO_ROOT / "crates" / "assets" / "assets" / "icons"
 OUT_FILES = OUT_ICONS / "files"
 OUT_APP_ASSETS = REPO_ROOT / "crates" / "assets" / "assets" / "files-app"
 
+# Lucide icons kept from gpui-component (title bar, theme, GitHub, tab close) — not synced from Files.
+LUCIDE_PRESERVE: tuple[str, ...] = (
+    "window-close",
+    "window-minimize",
+    "window-maximize",
+    "window-restore",
+    "github",
+    "moon",
+    "sun",
+    "close",
+)
+
+GPUI_COMPONENT_ICONS = (
+    REPO_ROOT.parent / "gpui-component" / "crates" / "assets" / "assets" / "icons"
+)
+
 # CyberFiles gpui IconName (kebab-case file) -> Files App.ThemedIcons key suffix
 ICON_MAP: dict[str, str] = {
     "arrow-left": "NavBack",
@@ -32,7 +48,6 @@ ICON_MAP: dict[str, str] = {
     "layout-dashboard": "Settings.General.Widgets",
     "star": "Favorite",
     "plus": "New.Item",
-    "close": "Delete",
     "folder": "Folder",
     "file": "File",
     "gallery-vertical-end": "FavoritePin",
@@ -43,9 +58,6 @@ ICON_MAP: dict[str, str] = {
     "settings-2": "Settings",
     "inbox": "Tag",
     "info": "Info",
-    "moon": "Settings.Appearance",
-    "sun": "Settings.General.Theme",
-    "github": "Settings.General.GitHub",
     "bell": "StatusCenter",
     "hard-drive": "Actions.Eject",
     "globe": "Settings.General.Connections",
@@ -159,6 +171,15 @@ def main() -> None:
     print(f"Mapped {len(list(OUT_ICONS.glob('*.svg')))} gpui icon files -> {OUT_ICONS}")
     if OUT_APP_ASSETS.exists():
         print(f"Copied Files.App assets -> {OUT_APP_ASSETS}")
+
+    if GPUI_COMPONENT_ICONS.is_dir():
+        for name in LUCIDE_PRESERVE:
+            src = GPUI_COMPONENT_ICONS / f"{name}.svg"
+            if src.is_file():
+                shutil.copy2(src, OUT_ICONS / f"{name}.svg")
+        print(f"Preserved {len(LUCIDE_PRESERVE)} Lucide chrome icons from {GPUI_COMPONENT_ICONS}")
+    else:
+        print(f"Warning: gpui-component icons not found at {GPUI_COMPONENT_ICONS}")
 
 
 if __name__ == "__main__":

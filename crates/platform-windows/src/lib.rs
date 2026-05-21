@@ -30,7 +30,7 @@ pub use icons::{icon_hint_for_path, ShellIconHint};
 #[cfg(windows)]
 pub use shell_icon::{shell_icon_pixel_size, shell_icon_png, shell_icon_png_scaled};
 #[cfg(windows)]
-pub use paths::{is_recycle_bin_path, recycle_bin_folder};
+pub use paths::{is_recycle_bin_path, recycle_bin_folder, SHELL_RECYCLE_BIN_PATH};
 #[cfg(windows)]
 pub use quick_access::{list_shell_quick_access_folders, ShellQuickAccessEntry};
 #[cfg(windows)]

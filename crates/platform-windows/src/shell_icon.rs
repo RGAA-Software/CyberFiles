@@ -17,6 +17,7 @@ use windows::Win32::UI::Shell::{
 };
 
 use crate::com::ensure_com_apartment;
+use crate::paths::{is_recycle_bin_path, SHELL_RECYCLE_BIN_PATH};
 
 /// Maximum Shell icon dimension we request (matches Files `ShellIconSizes.Jumbo`).
 const MAX_ICON_SIZE: u32 = 256;
@@ -64,8 +65,22 @@ fn shell_icon_png_uncached(path: &Path, size: u32) -> anyhow::Result<Vec<u8>> {
     unsafe { shell_icon_png_inner(path, size) }
 }
 
+/// Path string passed to `SHCreateItemFromParsingName` (Files uses `Shell:RecycleBinFolder` for the bin icon).
+fn shell_icon_parsing_path(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s.eq_ignore_ascii_case(SHELL_RECYCLE_BIN_PATH)
+        || s.eq_ignore_ascii_case("recycle")
+        || is_recycle_bin_path(path)
+    {
+        PathBuf::from(SHELL_RECYCLE_BIN_PATH)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 unsafe fn shell_icon_png_inner(path: &Path, size: u32) -> anyhow::Result<Vec<u8>> {
-    let wide = path_to_wide(path);
+    let parsing = shell_icon_parsing_path(path);
+    let wide = path_to_wide(&parsing);
     let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)?;
     let factory: IShellItemImageFactory = item.cast()?;
     let hbitmap = factory.GetImage(

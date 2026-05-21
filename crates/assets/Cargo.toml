@@ -8,4 +8,5 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 gpui.workspace = true
+gpui-component-assets.workspace = true
 rust-embed = "8"
