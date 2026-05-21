@@ -6,10 +6,11 @@ use gpui::{prelude::*, ClickEvent, *};
 use gpui_component::{
     menu::{PopupMenu, PopupMenuItem},
     sidebar::{
-        Sidebar, SidebarCollapsible, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu,
-        SidebarMenuItem, SidebarToggleButton,
+        Sidebar, SidebarCollapsible, SidebarGroup, SidebarItem, SidebarMenu, SidebarMenuItem,
+        SidebarToggleButton,
     },
-    h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+    Collapsible,
+    h_flex, ActiveTheme as _, Icon, IconName,
 };
 use rust_i18n::t;
 
@@ -18,7 +19,7 @@ use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;
 
 use super::menu_with_drop::SidebarMenuWithDrop;
-use super::model::{SidebarEntry, SidebarSection};
+use super::model::{SidebarEntry, SidebarSection, SidebarSectionKind};
 
 pub fn render_sidebar(
     page: Entity<MainPage>,
@@ -75,7 +76,6 @@ pub fn render_sidebar(
         .w_full()
         .min_w_0()
         .border_0()
-        .header(render_sidebar_header(cx))
         .footer(footer);
 
     for section in sections {
@@ -83,39 +83,62 @@ pub fn render_sidebar(
         for entry in &section.entries {
             append_sidebar_entry(&mut menu, &page, entry, &active, collapsed);
         }
-        sidebar = sidebar.child(SidebarGroup::new(section.title.clone()).child(menu));
+        let block = if section.kind == SidebarSectionKind::Home {
+            SidebarSectionBlock::flat(menu)
+        } else {
+            SidebarSectionBlock::group(SidebarGroup::new(section.title.clone()).child(menu))
+        };
+        sidebar = sidebar.child(block);
     }
 
     sidebar
 }
 
-fn render_sidebar_header(cx: &App) -> SidebarHeader {
-    SidebarHeader::new().child(
-        h_flex()
-            .gap_2()
-            .items_center()
-            .child(
-                div()
-                    .rounded(cx.theme().radius_lg)
-                    .bg(cx.theme().primary)
-                    .text_color(cx.theme().primary_foreground)
-                    .size_8()
-                    .flex_shrink_0()
-                    .child(Icon::new(IconName::GalleryVerticalEnd)),
-            )
-            .child(
-                v_flex()
-                    .gap_0()
-                    .text_sm()
-                    .child(cyberfiles_core::APP_NAME)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(t!("sidebar.workspace")),
-                    ),
-            ),
-    )
+/// Top sidebar entries (home, recycle bin) without a section heading.
+#[derive(Clone)]
+enum SidebarSectionBlock {
+    Flat(SidebarMenuWithDrop),
+    Group(SidebarGroup<SidebarMenuWithDrop>),
+}
+
+impl SidebarSectionBlock {
+    fn flat(menu: SidebarMenuWithDrop) -> Self {
+        Self::Flat(menu)
+    }
+
+    fn group(group: SidebarGroup<SidebarMenuWithDrop>) -> Self {
+        Self::Group(group)
+    }
+}
+
+impl gpui_component::Collapsible for SidebarSectionBlock {
+    fn is_collapsed(&self) -> bool {
+        match self {
+            Self::Flat(menu) => menu.is_collapsed(),
+            Self::Group(group) => group.is_collapsed(),
+        }
+    }
+
+    fn collapsed(mut self, collapsed: bool) -> Self {
+        match self {
+            Self::Flat(menu) => Self::Flat(menu.collapsed(collapsed)),
+            Self::Group(group) => Self::Group(group.collapsed(collapsed)),
+        }
+    }
+}
+
+impl SidebarItem for SidebarSectionBlock {
+    fn render(
+        self,
+        id: impl Into<ElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> impl IntoElement {
+        match self {
+            Self::Flat(menu) => menu.render(id, window, cx).into_any_element(),
+            Self::Group(group) => group.render(id, window, cx).into_any_element(),
+        }
+    }
 }
 
 fn append_sidebar_entry(

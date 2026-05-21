@@ -18,24 +18,21 @@ pub fn build_sidebar_sections(config: &AppConfig) -> Vec<SidebarSection> {
 
     sections.push(SidebarSection {
         kind: SidebarSectionKind::Home,
-        title: rust_i18n::t!("sidebar.section.home").to_string(),
-        entries: vec![SidebarEntry {
-            id: "home".into(),
-            label: rust_i18n::t!("nav.home").to_string(),
-            target: NavigationTarget::Home,
-            pinned_in_settings: false,
-        }],
-    });
-
-    sections.push(SidebarSection {
-        kind: SidebarSectionKind::Places,
-        title: rust_i18n::t!("sidebar.section.places").to_string(),
-        entries: vec![SidebarEntry {
-            id: "recycle".into(),
-            label: rust_i18n::t!("nav.recycle_bin").to_string(),
-            target: NavigationTarget::RecycleBin,
-            pinned_in_settings: false,
-        }],
+        title: String::new(),
+        entries: vec![
+            SidebarEntry {
+                id: "home".into(),
+                label: rust_i18n::t!("nav.home").to_string(),
+                target: NavigationTarget::Home,
+                pinned_in_settings: false,
+            },
+            SidebarEntry {
+                id: "recycle".into(),
+                label: rust_i18n::t!("nav.recycle_bin").to_string(),
+                target: NavigationTarget::RecycleBin,
+                pinned_in_settings: false,
+            },
+        ],
     });
 
     if config.show_sidebar_section_pinned {
