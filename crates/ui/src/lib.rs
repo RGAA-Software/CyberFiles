@@ -4,6 +4,7 @@ mod home;
 mod i18n;
 mod info_pane;
 mod main_page;
+mod omnibar;
 mod settings_view;
 mod shell;
 
@@ -32,6 +33,7 @@ pub fn init(cx: &mut App) {
     }
 
     cx.on_action(|_: &shell::Quit, cx| {
+        shell::preferences::persist_window_bounds(cx);
         cx.quit();
     });
 

@@ -6,10 +6,32 @@ use gpui_component::{
 
 use crate::i18n;
 
-fn persist_preferences(cx: &App) {
-    let (window_width, window_height) = cyberfiles_core::load_config()
-        .map(|c| (c.window_width, c.window_height))
-        .unwrap_or((WINDOW_WIDTH, WINDOW_HEIGHT));
+fn persist_preferences(cx: &mut App) {
+    let (window_width, window_height) =
+        window_size_from_active(cx).unwrap_or_else(|| {
+            cyberfiles_core::load_config()
+                .map(|c| (c.window_width, c.window_height))
+                .unwrap_or((WINDOW_WIDTH, WINDOW_HEIGHT))
+        });
+    let _ = save_config(&capture_config(cx, window_width, window_height));
+}
+
+/// Reads the active window size in pixels (for persistence).
+pub fn window_size_from_active(cx: &mut App) -> Option<(f32, f32)> {
+    let window = cx.active_window()?;
+    let mut size = None;
+    let _ = window.update(cx, |_, window, _| {
+        let bounds = window.window_bounds().get_bounds();
+        size = Some((bounds.size.width.as_f32(), bounds.size.height.as_f32()));
+    });
+    size
+}
+
+/// Saves current window bounds into `settings.json` (theme fields unchanged).
+pub fn persist_window_bounds(cx: &mut App) {
+    let Some((window_width, window_height)) = window_size_from_active(cx) else {
+        return;
+    };
     let _ = save_config(&capture_config(cx, window_width, window_height));
 }
 
@@ -133,5 +155,6 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         file_sort_option: prior.file_sort_option,
         file_sort_direction: prior.file_sort_direction,
         file_show_hidden: prior.file_show_hidden,
+        path_history: prior.path_history,
     }
 }

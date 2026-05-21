@@ -21,11 +21,11 @@ actions!(
         NavigatePrevious,
         NavigateNext,
         FocusSearch,
+        FocusOmnibar,
         ViewDetails,
         ViewGrid,
         ViewColumns,
         ShellProperties,
-        ShellContextMenu,
     ]
 );
 
@@ -47,6 +47,9 @@ pub fn file_browser_key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("ctrl-shift-n", NewFolder, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-shift-m", NewFile, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-f", FocusSearch, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-l", FocusOmnibar, None),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-l", FocusOmnibar, None),
         KeyBinding::new("ctrl-1", ViewDetails, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-2", ViewGrid, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-3", ViewColumns, Some(FILE_BROWSER)),

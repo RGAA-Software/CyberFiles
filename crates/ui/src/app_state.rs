@@ -28,6 +28,31 @@ impl AppNavigation {
         let page = cx.borrow_mut().global::<Self>().0.clone();
         page.update(cx, |page, cx| page.focus_search_input(window, cx));
     }
+
+    /// Notify the shell so Omnibar breadcrumbs/path stay in sync with the active file browser.
+    pub fn location_changed(cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |_, cx| cx.notify());
+    }
+
+    pub fn navigate_breadcrumb(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let target = breadcrumb_navigation_target(&path);
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| page.navigate_to(target, cx));
+    }
+}
+
+fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget {
+    let key = path.to_string_lossy();
+    if key.eq_ignore_ascii_case("home") {
+        NavigationTarget::Home
+    } else if key.eq_ignore_ascii_case("settings") {
+        NavigationTarget::Settings
+    } else if key.eq_ignore_ascii_case("recycle") {
+        NavigationTarget::RecycleBin
+    } else {
+        NavigationTarget::Path(path.to_path_buf())
+    }
 }
 
 /// In-app file clipboard for copy/cut/paste between folders.

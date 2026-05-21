@@ -9,8 +9,8 @@ use chrono::{DateTime, Local};
 use cyberfiles_commands::{
     CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch, NavigateBack,
     NavigateForward, NavigateNext, NavigatePrevious, NavigateUp, NewFile, NewFolder, OpenItem,
-    PasteItems, RefreshDirectory, RenameItem, SelectAll, ShellContextMenu, ShellProperties,
-    ViewColumns, ViewDetails, ViewGrid, FILE_BROWSER,
+    PasteItems, RefreshDirectory, RenameItem, SelectAll, ShellProperties, ViewColumns, ViewDetails,
+    ViewGrid, FILE_BROWSER,
 };
 use cyberfiles_core::{
     file_sort_prefs_from_config, file_view_mode_from_config, save_file_browser_prefs, VIEW_COLUMNS,
@@ -24,7 +24,7 @@ use cyberfiles_fs::{
     SortOption, SortPreferences,
 };
 use crate::app_state::AppNavigation;
-use cyberfiles_platform_windows::{self as platform, ShellIconHint};
+use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry, ShellIconHint};
 use crate::app_state::AppFileClipboard;
 use gpui::{
     actions, prelude::*, ClipboardItem, ClickEvent, Entity, FocusHandle,
@@ -35,7 +35,8 @@ use gpui_component::{
     dialog::DialogButtonProps,
     h_flex,
     input::{Input, InputState},
-    menu::{ContextMenuExt, PopupMenu},
+    menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
+    notification::Notification,
     scroll::{ScrollableElement as _, ScrollbarAxis},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     VirtualListScrollHandle, WindowExt as _,
@@ -110,6 +111,12 @@ struct RenameState {
     input: Entity<InputState>,
 }
 
+#[derive(Clone, Debug)]
+struct ShellMenuCache {
+    paths: Vec<PathBuf>,
+    entries: Vec<ShellContextMenuEntry>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BrowseLocation {
     Directory,
@@ -141,6 +148,8 @@ pub struct FileBrowser {
     _directory_watcher: Option<DirectoryWatcher>,
     _watcher_task: Option<Task<()>>,
     watched_dir: Option<PathBuf>,
+    shell_menu_cache: Option<ShellMenuCache>,
+    _shell_menu_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -204,6 +213,8 @@ impl FileBrowser {
             _directory_watcher: None,
             _watcher_task: None,
             watched_dir: None,
+            shell_menu_cache: None,
+            _shell_menu_task: None,
             _subscriptions: Vec::new(),
         }
     }
@@ -262,6 +273,56 @@ impl FileBrowser {
         );
     }
 
+    /// Prefetch Shell context menu entries off the UI thread (Files-style flyout merge).
+    fn request_shell_menu_fetch(&mut self, cx: &mut Context<Self>) {
+        if self.browse_location != BrowseLocation::Directory {
+            return;
+        }
+
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
+            return;
+        }
+
+        if self
+            .shell_menu_cache
+            .as_ref()
+            .is_some_and(|cache| cache.paths == paths)
+        {
+            return;
+        }
+
+        self._shell_menu_task.take();
+        self._shell_menu_task = Some(cx.spawn(async move |browser, cx| {
+            let paths_for_query = paths.clone();
+            let entries = cx.background_spawn(async move {
+                platform::query_shell_context_menu_items(&paths_for_query, false)
+                    .unwrap_or_default()
+            }).await;
+
+            let _ = browser.update(cx, |browser, cx| {
+                browser.shell_menu_cache = Some(ShellMenuCache {
+                    paths,
+                    entries,
+                });
+                cx.notify();
+            });
+        }));
+    }
+
+    fn prepare_context_menu_target(&mut self, index: usize) {
+        let Some(item) = self.display_items.get(index) else {
+            return;
+        };
+        let path = item.path.clone();
+        if !self.selected_paths.contains(&path) {
+            self.selected_paths.clear();
+            self.selected_paths.insert(path);
+            self.anchor_index = Some(index);
+            self.focused_index = Some(index);
+        }
+    }
+
     fn restart_directory_watcher(&mut self, cx: &mut Context<Self>) {
         self._watcher_task.take();
         self._directory_watcher.take();
@@ -313,24 +374,24 @@ impl FileBrowser {
         self.current_dir.parent().is_some()
     }
 
-    pub fn go_back(&mut self) {
-        self.navigate_back();
+    pub fn go_back(&mut self, cx: &mut Context<Self>) {
+        self.navigate_back(cx);
     }
 
-    pub fn go_forward(&mut self) {
-        self.navigate_forward();
+    pub fn go_forward(&mut self, cx: &mut Context<Self>) {
+        self.navigate_forward(cx);
     }
 
-    pub fn go_up(&mut self) {
-        self.navigate_parent();
+    pub fn go_up(&mut self, cx: &mut Context<Self>) {
+        self.navigate_parent(cx);
     }
 
     pub fn reload(&mut self) {
         self.refresh();
     }
 
-    pub fn open_directory(&mut self, path: PathBuf) {
-        self.navigate_to(path);
+    pub fn open_directory(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.navigate_to(path, cx);
     }
 
     pub fn open_directory_reset_history(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -341,9 +402,11 @@ impl FileBrowser {
         self.clear_selection();
         self.refresh();
         self.restart_directory_watcher(cx);
+        cx.notify();
     }
 
     pub fn open_recycle_bin(&mut self, cx: &mut Context<Self>) {
+        self.clear_shell_menu_cache();
         self.browse_location = BrowseLocation::RecycleBin;
         self.back_stack.clear();
         self.forward_stack.clear();
@@ -354,6 +417,11 @@ impl FileBrowser {
         self.watched_dir = None;
         self.refresh();
         cx.notify();
+    }
+
+    fn emit_location_changed(cx: &mut Context<Self>) {
+        cx.notify();
+        crate::app_state::AppNavigation::location_changed(cx);
     }
 
     fn refresh(&mut self) {
@@ -401,7 +469,7 @@ impl FileBrowser {
             }
             Err(error) => {
                 window.push_notification(
-                    SharedString::from(format!("{}: {error}", t!("files.drop.error"))),
+                    Notification::error(format!("{}: {error}", t!("files.drop.error"))),
                     cx,
                 );
             }
@@ -415,7 +483,7 @@ impl FileBrowser {
         vec![path.to_path_buf()]
     }
 
-    fn select_column_item(&mut self, col_index: usize, item: &FileItem) {
+    fn select_column_item(&mut self, col_index: usize, item: &FileItem, cx: &mut Context<Self>) {
         match item.kind {
             FileItemKind::Folder => {
                 if self.current_dir != item.path {
@@ -427,9 +495,10 @@ impl FileBrowser {
                 self.column_trail.push(item.path.clone());
                 self.clear_selection();
                 self.refresh();
+                Self::emit_location_changed(cx);
             }
             FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
-                self.open_item(item.path.clone(), item.kind);
+                self.open_item(item.path.clone(), item.kind, cx);
             }
         }
     }
@@ -439,7 +508,12 @@ impl FileBrowser {
         next.file_name().map(|n| n.to_string_lossy().to_string())
     }
 
-    fn navigate_to(&mut self, path: PathBuf) {
+    fn clear_shell_menu_cache(&mut self) {
+        self.shell_menu_cache = None;
+        self._shell_menu_task.take();
+    }
+
+    fn navigate_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if self.browse_location == BrowseLocation::RecycleBin {
             self.browse_location = BrowseLocation::Directory;
         }
@@ -447,14 +521,16 @@ impl FileBrowser {
             return;
         }
 
+        self.clear_shell_menu_cache();
         self.back_stack.push(self.current_dir.clone());
         self.forward_stack.clear();
         self.current_dir = path;
         self.clear_selection();
         self.refresh();
+        Self::emit_location_changed(cx);
     }
 
-    fn navigate_back(&mut self) {
+    fn navigate_back(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.back_stack.pop() else {
             return;
         };
@@ -463,9 +539,10 @@ impl FileBrowser {
         self.current_dir = path;
         self.clear_selection();
         self.refresh();
+        Self::emit_location_changed(cx);
     }
 
-    fn navigate_forward(&mut self) {
+    fn navigate_forward(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.forward_stack.pop() else {
             return;
         };
@@ -474,11 +551,12 @@ impl FileBrowser {
         self.current_dir = path;
         self.clear_selection();
         self.refresh();
+        Self::emit_location_changed(cx);
     }
 
-    fn navigate_parent(&mut self) {
+    fn navigate_parent(&mut self, cx: &mut Context<Self>) {
         if let Some(parent) = self.current_dir.parent() {
-            self.navigate_to(parent.to_path_buf());
+            self.navigate_to(parent.to_path_buf(), cx);
         }
     }
 
@@ -524,9 +602,9 @@ impl FileBrowser {
         self.focused_index = Some(index);
     }
 
-    fn open_item(&mut self, path: PathBuf, kind: FileItemKind) {
+    fn open_item(&mut self, path: PathBuf, kind: FileItemKind, cx: &mut Context<Self>) {
         match kind {
-            FileItemKind::Folder => self.navigate_to(path),
+            FileItemKind::Folder => self.navigate_to(path, cx),
             FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
                 if let Err(error) = open_with_system(&path) {
                     self.error = Some(error.to_string());
@@ -535,14 +613,14 @@ impl FileBrowser {
         }
     }
 
-    fn open_focused(&mut self) {
+    fn open_focused(&mut self, cx: &mut Context<Self>) {
         let Some(index) = self.focused_index else {
             return;
         };
         let Some(item) = self.display_items.get(index) else {
             return;
         };
-        self.open_item(item.path.clone(), item.kind);
+        self.open_item(item.path.clone(), item.kind, cx);
     }
 
     fn reconcile_selection(&mut self) {
@@ -657,7 +735,7 @@ impl FileBrowser {
                     self.selected_paths.insert(target);
                 }
                 self.refresh();
-                window.push_notification(SharedString::from(t!("files.rename.success")), cx);
+                window.push_notification(Notification::success(t!("files.rename.success")), cx);
             }
             Err(error) => {
                 self.error = Some(error.to_string());
@@ -683,10 +761,7 @@ impl FileBrowser {
                     self.anchor_index = self.focused_index;
                     self.begin_rename(window, cx);
                 } else {
-                    window.push_notification(
-                        SharedString::from(t!("files.new_folder.success")),
-                        cx,
-                    );
+                    window.push_notification(Notification::success(t!("files.new_folder.success")), cx);
                 }
             }
             Err(error) => self.error = Some(error.to_string()),
@@ -706,7 +781,7 @@ impl FileBrowser {
                     self.anchor_index = self.focused_index;
                     self.begin_rename(window, cx);
                 } else {
-                    window.push_notification(SharedString::from(t!("files.new_file.success")), cx);
+                    window.push_notification(Notification::success(t!("files.new_file.success")), cx);
                 }
             }
             Err(error) => self.error = Some(error.to_string()),
@@ -766,12 +841,12 @@ impl FileBrowser {
                     AppFileClipboard::store(clipboard.operation, clipboard.paths, cx);
                 }
                 self.refresh();
-                window.push_notification(SharedString::from(t!("files.paste.success")), cx);
+                window.push_notification(Notification::success(t!("files.paste.success")), cx);
             }
             Err(error) => {
                 AppFileClipboard::set(clipboard, cx);
                 window.push_notification(
-                    SharedString::from(format!("{}: {error}", t!("files.paste.error"))),
+                    Notification::error(format!("{}: {error}", t!("files.paste.error"))),
                     cx,
                 );
             }
@@ -852,12 +927,12 @@ impl FileBrowser {
                                 browser.refresh();
                                 cx.notify();
                             });
-                            window.push_notification(success, cx);
+                            window.push_notification(Notification::success(success), cx);
                             true
                         }
                         Err(error) => {
                             window.push_notification(
-                                SharedString::from(format!(
+                                Notification::error(format!(
                                     "{}: {error}",
                                     t!("files.delete.error")
                                 )),
@@ -1000,11 +1075,12 @@ impl FileBrowser {
             })
             .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                 if kind == FileItemKind::Folder {
-                    this.select_column_item(col_index, &item_click);
+                    this.select_column_item(col_index, &item_click, cx);
                 } else if event.click_count() == 2 {
-                    this.open_item(item_click.path.clone(), kind);
+                    this.open_item(item_click.path.clone(), kind, cx);
+                } else {
+                    cx.notify();
                 }
-                cx.notify();
             }))
             .on_drag(DraggedFilePaths(drag_paths), |paths, _offset, _window, cx| {
                 let label = if paths.0.len() == 1 {
@@ -1167,12 +1243,20 @@ impl FileBrowser {
             })
             .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                 if event.click_count() == 2 {
-                    this.open_item(double_click_path.clone(), kind);
+                    this.open_item(double_click_path.clone(), kind, cx);
                 } else {
                     this.handle_row_click(index, event);
+                    cx.notify();
                 }
-                cx.notify();
             }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.prepare_context_menu_target(index);
+                    this.request_shell_menu_fetch(cx);
+                    cx.notify();
+                }),
+            )
             .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
                 cx.new(|_| DragPathPreview {
                     label: drag_preview_label(&paths.0).into(),
@@ -1226,8 +1310,7 @@ impl FileBrowser {
                             }
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            this.open_item(open_path.clone(), kind);
-                            cx.notify();
+                            this.open_item(open_path.clone(), kind, cx);
                         })),
                 ),
             )
@@ -1264,12 +1347,20 @@ impl FileBrowser {
             })
             .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                 if event.click_count() == 2 {
-                    this.open_item(double_click_path.clone(), kind);
+                    this.open_item(double_click_path.clone(), kind, cx);
                 } else {
                     this.handle_row_click(index, event);
+                    cx.notify();
                 }
-                cx.notify();
             }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.prepare_context_menu_target(index);
+                    this.request_shell_menu_fetch(cx);
+                    cx.notify();
+                }),
+            )
             .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
                 cx.new(|_| DragPathPreview {
                     label: drag_preview_label(&paths.0).into(),
@@ -1291,8 +1382,7 @@ impl FileBrowser {
                     .ghost()
                     .icon(IconName::ExternalLink)
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.open_item(open_path.clone(), kind);
-                        cx.notify();
+                        this.open_item(open_path.clone(), kind, cx);
                     })),
             )
             .into_any_element()
@@ -1344,18 +1434,15 @@ impl Focusable for FileBrowser {
 
 impl FileBrowser {
     fn on_navigate_back(&mut self, _: &NavigateBack, _: &mut Window, cx: &mut Context<Self>) {
-        self.navigate_back();
-        cx.notify();
+        self.navigate_back(cx);
     }
 
     fn on_navigate_forward(&mut self, _: &NavigateForward, _: &mut Window, cx: &mut Context<Self>) {
-        self.navigate_forward();
-        cx.notify();
+        self.navigate_forward(cx);
     }
 
     fn on_navigate_up(&mut self, _: &NavigateUp, _: &mut Window, cx: &mut Context<Self>) {
-        self.navigate_parent();
-        cx.notify();
+        self.navigate_parent(cx);
     }
 
     fn on_refresh(&mut self, _: &RefreshDirectory, _: &mut Window, cx: &mut Context<Self>) {
@@ -1364,8 +1451,7 @@ impl FileBrowser {
     }
 
     fn on_open_item(&mut self, _: &OpenItem, _: &mut Window, cx: &mut Context<Self>) {
-        self.open_focused();
-        cx.notify();
+        self.open_focused(cx);
     }
 
     fn on_select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
@@ -1506,16 +1592,16 @@ impl FileBrowser {
         };
         if let Err(error) = platform::open_item_properties(&path) {
             window.push_notification(
-                SharedString::from(format!("{}: {error}", t!("files.properties.error"))),
+                Notification::error(format!("{}: {error}", t!("files.properties.error"))),
                 cx,
             );
         }
     }
 
-    /// Files-style item context flyout. Shell COM work must not run on the UI thread
-    /// (see `files-context-menu-parity.md`); extension merge is a follow-up.
-    fn item_context_menu(&self, menu: PopupMenu) -> PopupMenu {
-        menu.menu(t!("files.menu.open"), Box::new(OpenItem))
+    /// Files-style item context flyout: app commands first, then cached Shell extensions.
+    fn build_item_context_menu(&self, menu: PopupMenu, browser: Entity<Self>) -> PopupMenu {
+        let mut menu = menu
+            .menu(t!("files.menu.open"), Box::new(OpenItem))
             .menu(t!("files.menu.rename"), Box::new(RenameItem))
             .separator()
             .menu(t!("files.menu.copy"), Box::new(CopyItems))
@@ -1523,26 +1609,60 @@ impl FileBrowser {
             .menu(t!("files.menu.paste"), Box::new(PasteItems))
             .separator()
             .menu(t!("files.menu.delete"), Box::new(DeleteItems))
-            .menu(t!("files.menu.properties"), Box::new(ShellProperties))
-    }
+            .menu(t!("files.menu.properties"), Box::new(ShellProperties));
 
-    fn on_shell_context_menu(
-        &mut self,
-        _: &ShellContextMenu,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+        if self.browse_location != BrowseLocation::Directory {
+            return menu;
+        }
+
         let paths = self.selected_paths_vec();
         if paths.is_empty() {
-            return;
+            return menu;
         }
-        if let Err(error) = platform::show_shell_context_menu(&paths) {
-            window.push_notification(
-                SharedString::from(format!("{}: {error}", t!("files.context_menu.error"))),
-                cx,
-            );
+
+        let Some(cache) = &self.shell_menu_cache else {
+            return menu;
+        };
+        if cache.paths != paths || cache.entries.is_empty() {
+            return menu;
         }
-        let _ = cx;
+
+        menu = menu.separator();
+        for entry in &cache.entries {
+            match entry {
+                ShellContextMenuEntry::Separator => {
+                    menu = menu.separator();
+                }
+                ShellContextMenuEntry::Item {
+                    label,
+                    command_offset,
+                    ..
+                } => {
+                    let browser = browser.clone();
+                    let paths = paths.clone();
+                    let offset = *command_offset;
+                    let label = label.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(label).on_click(move |_, window, cx| {
+                            if let Err(error) =
+                                platform::invoke_shell_context_menu_item(&paths, offset)
+                            {
+                                window.push_notification(
+                                    Notification::error(format!(
+                                        "{}: {error}",
+                                        t!("files.context_menu.error")
+                                    )),
+                                    cx,
+                                );
+                            }
+                            let _ = browser;
+                        }),
+                    );
+                }
+            }
+        }
+
+        menu
     }
 }
 
@@ -1591,7 +1711,6 @@ impl Render for FileBrowser {
             .on_drop(cx.listener(|this, paths: &DraggedFilePaths, window, cx| {
                 this.handle_drop(paths.0.clone(), window, cx);
             }))
-            .on_action(cx.listener(Self::on_shell_context_menu))
             .on_action(cx.listener(Self::on_copy_path))
             .on_action(cx.listener(Self::on_copy_items))
             .on_action(cx.listener(Self::on_cut_items))
@@ -1617,8 +1736,7 @@ impl Render for FileBrowser {
                             .icon(IconName::ArrowLeft)
                             .disabled(!can_go_back)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.navigate_back();
-                                cx.notify();
+                                this.navigate_back(cx);
                             })),
                     )
                     .child(
@@ -1628,8 +1746,7 @@ impl Render for FileBrowser {
                             .icon(IconName::ArrowRight)
                             .disabled(!can_go_forward)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.navigate_forward();
-                                cx.notify();
+                                this.navigate_forward(cx);
                             })),
                     )
                     .child(
@@ -1639,8 +1756,7 @@ impl Render for FileBrowser {
                             .icon(IconName::ArrowUp)
                             .disabled(!can_go_up)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.navigate_parent();
-                                cx.notify();
+                                this.navigate_parent(cx);
                             })),
                     )
                     .child(
@@ -1787,7 +1903,12 @@ impl Render for FileBrowser {
                     .child(self.file_list(cx)),
             )
             .context_menu(move |menu, _window, menu_cx| {
-                browser.read(menu_cx).item_context_menu(menu)
+                browser.update(menu_cx, |browser, cx| {
+                    browser.request_shell_menu_fetch(cx);
+                });
+                browser
+                    .read(menu_cx)
+                    .build_item_context_menu(menu, browser.clone())
             })
     }
 }

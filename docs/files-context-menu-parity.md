@@ -29,8 +29,9 @@
 
 1. 文件列表右键 → **GPUI `ContextMenu`**（`ContextMenuExt`）
 2. 菜单结构对齐 Files **首轮**：打开、重命名、复制、剪切、粘贴、删除、属性
-3. **禁止**在 UI 线程 / `browser.update` 内同步调用 `query_shell_context_menu_items`（会卡死；Files 用带消息泵的专用线程）
-4. `platform-windows` 保留 `query_*` / `invoke_*` 供后台线程合并；菜单构建只用 `browser.read` + `item_context_menu`
+3. **禁止**在 UI 线程同步调用 `query_shell_context_menu_items`；通过 `cx.background_spawn` 预取后并入菜单
+4. 回收站虚拟页不合并 Shell（同 Files）
+5. 已移除默认 `TrackPopupMenu` 路径（`ShellContextMenu` 动作）
 
 ### 阶段 B
 

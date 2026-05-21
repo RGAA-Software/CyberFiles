@@ -37,6 +37,9 @@ pub struct AppConfig {
     pub file_sort_direction: Option<String>,
     #[serde(default)]
     pub file_show_hidden: Option<bool>,
+    /// Recently navigated paths from the omnibar (Files `PathHistoryList`).
+    #[serde(default)]
+    pub path_history: Vec<String>,
 }
 
 fn default_show_info_pane() -> bool {
@@ -65,6 +68,7 @@ impl Default for AppConfig {
             file_sort_option: None,
             file_sort_direction: None,
             file_show_hidden: None,
+            path_history: Vec::new(),
         }
     }
 }

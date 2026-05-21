@@ -6,6 +6,7 @@ This document is the working plan for **一比一复刻** the neighboring `../Fi
 
 - **Product reference is Files, not Explorer.** UI, commands, and workflows should match `../Files` behavior and settings semantics before matching generic Windows shell defaults.
 - **Stack:** Rust + **GPUI** + **gpui-component** for all in-app UI (tabs, toolbar, layouts, context flyouts, settings). Win32/COM lives only in `platform-windows` and is consumed as services (enumerate / invoke), not as replacement UI unless Files does so explicitly.
+- **UI 执行规范（硬性）：** 所有组件必须使用 gpui-component；库中无对应能力时须提示维护者，见 [`execution-guidelines.md`](execution-guidelines.md)。
 - **Context menus:** Files uses in-app `CommandBarFlyout` plus parsed `IContextMenu` items — see [`files-context-menu-parity.md`](files-context-menu-parity.md). Do **not** use `TrackPopupMenu` as the default right-click experience.
 
 ## Goals
