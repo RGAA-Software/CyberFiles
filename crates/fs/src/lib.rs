@@ -1,6 +1,7 @@
 mod clipboard;
 mod columns;
 mod drives;
+mod file_tag;
 mod item;
 mod local;
 mod omnibar;
@@ -15,6 +16,7 @@ mod watcher;
 pub use clipboard::{copy_items, move_items, ClipboardOperation, FileClipboard};
 pub use columns::column_trail_for;
 pub use drives::{default_user_profile, home_navigation_path, list_drives, DriveInfo};
+pub use file_tag::file_items_for_tag_paths;
 pub use item::{DirectoryReadOptions, FileItem, FileItemKind};
 pub use local::read_directory;
 pub use omnibar::{

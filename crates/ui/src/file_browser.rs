@@ -13,12 +13,13 @@ use cyberfiles_commands::{
     ViewGrid, FILE_BROWSER,
 };
 use cyberfiles_core::{
-    file_sort_prefs_from_config, file_view_mode_from_config, save_file_browser_prefs, VIEW_COLUMNS,
-    VIEW_DETAILS, VIEW_GRID,
+    file_sort_prefs_from_config, file_view_mode_from_config, load_config, save_file_browser_prefs,
+    VIEW_COLUMNS, VIEW_DETAILS, VIEW_GRID,
 };
 use cyberfiles_fs::{
     column_trail_for, copy_items, create_directory, create_file, delete_paths,
-    filter_items_by_query, home_navigation_path, move_items, read_directory, read_recycle_bin,
+    file_items_for_tag_paths, filter_items_by_query, home_navigation_path, move_items,
+    read_directory, read_recycle_bin,
     recycle_paths, rename_path, unique_new_file_name, unique_new_folder_name, ClipboardOperation,
     DirectoryReadOptions, DirectoryWatcher, FileClipboard, FileItem, FileItemKind, SortDirection,
     SortOption, SortPreferences,
@@ -116,10 +117,11 @@ struct ShellMenuCache {
     entries: Vec<ShellContextMenuEntry>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum BrowseLocation {
     Directory,
     RecycleBin,
+    FileTag { tag_name: String },
 }
 
 pub struct FileBrowser {
@@ -413,6 +415,23 @@ impl FileBrowser {
         cx.notify();
     }
 
+    pub fn open_file_tag(&mut self, tag_name: String, cx: &mut Context<Self>) {
+        self.clear_shell_menu_cache();
+        self.browse_location = BrowseLocation::FileTag {
+            tag_name: tag_name.clone(),
+        };
+        self.back_stack.clear();
+        self.forward_stack.clear();
+        self.current_dir = home_navigation_path();
+        self.clear_selection();
+        self._watcher_task.take();
+        self._directory_watcher.take();
+        self.watched_dir = None;
+        self.refresh();
+        Self::emit_location_changed(cx);
+        cx.notify();
+    }
+
     pub fn open_recycle_bin(&mut self, cx: &mut Context<Self>) {
         self.clear_shell_menu_cache();
         self.browse_location = BrowseLocation::RecycleBin;
@@ -433,7 +452,7 @@ impl FileBrowser {
     }
 
     fn refresh(&mut self) {
-        let (items, error) = match self.browse_location {
+        let (items, error) = match &self.browse_location {
             BrowseLocation::Directory => {
                 load_files_dir(&self.current_dir, self.read_options, self.sort_preferences)
             }
@@ -444,6 +463,24 @@ impl FileBrowser {
                 Ok(items) => (items, None),
                 Err(error) => (Vec::new(), Some(error.to_string())),
             },
+            BrowseLocation::FileTag { tag_name } => {
+                let paths = paths_for_file_tag(tag_name);
+                if paths.is_empty() {
+                    (
+                        Vec::new(),
+                        Some(t!("file_tag.empty").to_string()),
+                    )
+                } else {
+                    (
+                        file_items_for_tag_paths(
+                            &paths,
+                            self.read_options,
+                            self.sort_preferences,
+                        ),
+                        None,
+                    )
+                }
+            }
         };
         self.items = items;
         self.error = error;
@@ -522,7 +559,7 @@ impl FileBrowser {
     }
 
     fn navigate_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        if self.browse_location == BrowseLocation::RecycleBin {
+        if !matches!(self.browse_location, BrowseLocation::Directory) {
             self.browse_location = BrowseLocation::Directory;
         }
         if path == self.current_dir {
@@ -612,7 +649,13 @@ impl FileBrowser {
 
     fn open_item(&mut self, path: PathBuf, kind: FileItemKind, cx: &mut Context<Self>) {
         match kind {
-            FileItemKind::Folder => self.navigate_to(path, cx),
+            FileItemKind::Folder => {
+                if matches!(self.browse_location, BrowseLocation::FileTag { .. }) {
+                    AppNavigation::navigate_to_path(path, cx);
+                    return;
+                }
+                self.navigate_to(path, cx);
+            }
             FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
                 if let Err(error) = open_with_system(&path) {
                     self.error = Some(error.to_string());
@@ -2026,6 +2069,22 @@ impl Render for FileBrowser {
                     .build_context_menu(menu, browser.clone())
             })
     }
+}
+
+fn paths_for_file_tag(tag_name: &str) -> Vec<PathBuf> {
+    let config = load_config().unwrap_or_default();
+    config
+        .file_tags
+        .iter()
+        .find(|tag| tag.name == tag_name)
+        .map(|tag| {
+            tag.paths
+                .iter()
+                .map(PathBuf::from)
+                .filter(|p| p.exists())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn load_files_dir(

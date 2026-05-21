@@ -9,6 +9,8 @@ pub enum NavigationTarget {
     Path(PathBuf),
     RecycleBin,
     Settings,
+    /// Files sidebar file tag: flat list of paths tagged with this name.
+    FileTag(String),
 }
 
 impl NavigationTarget {
@@ -17,6 +19,7 @@ impl NavigationTarget {
             NavigationTarget::Home => SharedString::from("Home"),
             NavigationTarget::RecycleBin => SharedString::from("Recycle Bin"),
             NavigationTarget::Settings => SharedString::from("Settings"),
+            NavigationTarget::FileTag(name) => SharedString::from(format!("Tag: {name}")),
             NavigationTarget::Path(path) => {
                 SharedString::from(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(
                     || path.to_string_lossy().to_string(),
@@ -30,6 +33,7 @@ impl NavigationTarget {
             NavigationTarget::Home => "Home".to_string(),
             NavigationTarget::RecycleBin => "Recycle Bin".to_string(),
             NavigationTarget::Settings => "Settings".to_string(),
+            NavigationTarget::FileTag(name) => name.clone(),
             NavigationTarget::Path(path) => path.to_string_lossy().to_string(),
         }
     }

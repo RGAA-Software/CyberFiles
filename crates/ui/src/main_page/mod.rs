@@ -497,6 +497,10 @@ impl MainPage {
                 label: t!("nav.recycle_bin").to_string(),
                 path: PathBuf::from("recycle"),
             }],
+            NavigationTarget::FileTag(name) => vec![PathBreadcrumb {
+                label: name.clone(),
+                path: PathBuf::from(format!("tag:{name}")),
+            }],
         }
     }
 
@@ -817,7 +821,9 @@ impl MainPage {
         };
         let show_file_search = matches!(
             target,
-            NavigationTarget::Path(_) | NavigationTarget::RecycleBin
+            NavigationTarget::Path(_)
+                | NavigationTarget::RecycleBin
+                | NavigationTarget::FileTag(_)
         );
 
         let page = cx.entity();
@@ -990,12 +996,12 @@ impl MainPage {
         let target = pane.read(cx).target().clone();
 
         let (items, selected, hint) = match target {
-            NavigationTarget::Path(_) | NavigationTarget::RecycleBin => {
+            NavigationTarget::Path(_) | NavigationTarget::RecycleBin | NavigationTarget::FileTag(_) => {
                 let b = pane.read(cx).file_browser().read(cx);
-                let hint = if matches!(target, NavigationTarget::RecycleBin) {
-                    t!("main.status.recycle_bin").to_string()
-                } else {
-                    t!("files.status.local").to_string()
+                let hint = match target {
+                    NavigationTarget::RecycleBin => t!("main.status.recycle_bin").to_string(),
+                    NavigationTarget::FileTag(_) => t!("main.status.file_tag").to_string(),
+                    _ => t!("files.status.local").to_string(),
                 };
                 (b.item_count(), b.selected_count(), hint)
             }

@@ -18,21 +18,24 @@ pub fn build_sidebar_sections(config: &AppConfig) -> Vec<SidebarSection> {
 
     sections.push(SidebarSection {
         kind: SidebarSectionKind::Home,
-        title: rust_i18n::t!("sidebar.section.main").to_string(),
-        entries: vec![
-            SidebarEntry {
-                id: "home".into(),
-                label: rust_i18n::t!("nav.home").to_string(),
-                target: NavigationTarget::Home,
-                pinned_in_settings: false,
-            },
-            SidebarEntry {
-                id: "recycle".into(),
-                label: rust_i18n::t!("nav.recycle_bin").to_string(),
-                target: NavigationTarget::RecycleBin,
-                pinned_in_settings: false,
-            },
-        ],
+        title: rust_i18n::t!("sidebar.section.home").to_string(),
+        entries: vec![SidebarEntry {
+            id: "home".into(),
+            label: rust_i18n::t!("nav.home").to_string(),
+            target: NavigationTarget::Home,
+            pinned_in_settings: false,
+        }],
+    });
+
+    sections.push(SidebarSection {
+        kind: SidebarSectionKind::Places,
+        title: rust_i18n::t!("sidebar.section.places").to_string(),
+        entries: vec![SidebarEntry {
+            id: "recycle".into(),
+            label: rust_i18n::t!("nav.recycle_bin").to_string(),
+            target: NavigationTarget::RecycleBin,
+            pinned_in_settings: false,
+        }],
     });
 
     if config.show_sidebar_section_pinned {
@@ -248,25 +251,13 @@ fn load_file_tag_entries(tags: &[FileTagConfig]) -> Vec<SidebarEntry> {
     tags.iter()
         .enumerate()
         .filter(|(_, t)| !t.name.is_empty())
-        .map(|(i, tag)| {
-            let path = tag
-                .paths
-                .first()
-                .map(PathBuf::from)
-                .filter(|p| p.exists())
-                .unwrap_or_else(home_fallback);
-            SidebarEntry {
-                id: format!("tag-{i}"),
-                label: tag.name.clone(),
-                target: NavigationTarget::Path(path),
-                pinned_in_settings: false,
-            }
+        .map(|(i, tag)| SidebarEntry {
+            id: format!("tag-{i}"),
+            label: tag.name.clone(),
+            target: NavigationTarget::FileTag(tag.name.clone()),
+            pinned_in_settings: false,
         })
         .collect()
-}
-
-fn home_fallback() -> PathBuf {
-    cyberfiles_fs::home_navigation_path()
 }
 
 fn path_key(path: &Path) -> String {

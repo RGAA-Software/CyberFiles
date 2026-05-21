@@ -288,6 +288,7 @@ fn icon_for_target(target: &NavigationTarget) -> Icon {
         NavigationTarget::Home => Icon::new(IconName::LayoutDashboard),
         NavigationTarget::RecycleBin => Icon::new(IconName::Delete),
         NavigationTarget::Settings => Icon::new(IconName::Settings2),
+        NavigationTarget::FileTag(_) => Icon::new(IconName::Inbox),
         NavigationTarget::Path(path) => {
             let name = match icon_hint_for_path(path) {
                 ShellIconHint::Folder => IconName::Folder,
@@ -307,6 +308,7 @@ pub fn navigation_matches(active: &NavigationTarget, entry: &NavigationTarget) -
         (NavigationTarget::Home, NavigationTarget::Home) => true,
         (NavigationTarget::RecycleBin, NavigationTarget::RecycleBin) => true,
         (NavigationTarget::Settings, NavigationTarget::Settings) => true,
+        (NavigationTarget::FileTag(active), NavigationTarget::FileTag(entry)) => active == entry,
         (NavigationTarget::Path(current), NavigationTarget::Path(sidebar)) => {
             paths_match(sidebar, current)
         }

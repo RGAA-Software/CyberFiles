@@ -79,6 +79,10 @@ sidebar.section.main:
   en: Main
   zh-CN: 主区域
   zh-HK: 主區域
+sidebar.section.home:
+  en: Home
+  zh-CN: 主页
+  zh-HK: 主頁
 sidebar.section.pinned:
   en: Pinned
   zh-CN: 固定
@@ -223,6 +227,10 @@ home.widget.network.placeholder:
   en: Network computers and shares (coming soon).
   zh-CN: 网络计算机与共享（即将推出）。
   zh-HK: 網路電腦與共用（即將推出）。
+home.widget.network.empty:
+  en: No network locations found.
+  zh-CN: 未找到网络位置。
+  zh-HK: 找不到網路位置。
 home.widget.tags:
   en: File tags
   zh-CN: 文件标签
@@ -231,6 +239,14 @@ home.widget.tags.placeholder:
   en: Tagged files widget (coming soon).
   zh-CN: 标签文件小部件（即将推出）。
   zh-HK: 標籤檔案小工具（即將推出）。
+home.widget.tags.empty:
+  en: No file tags configured. Add tags in Settings.
+  zh-CN: 未配置文件标签。请在设置中添加。
+  zh-HK: 未設定檔案標籤。請在設定中新增。
+file_tag.empty:
+  en: This tag has no existing paths.
+  zh-CN: 此标签没有有效路径。
+  zh-HK: 此標籤沒有有效路徑。
 home.widget.recent:
   en: Recent files
   zh-CN: 最近文件
@@ -259,6 +275,10 @@ main.status.recycle_bin:
   en: Recycle Bin
   zh-CN: 回收站
   zh-HK: 資源回收筒
+main.status.file_tag:
+  en: File tag
+  zh-CN: 文件标签
+  zh-HK: 檔案標籤
 search.placeholder:
   en: Filter folder...
   zh-CN: 搜索...

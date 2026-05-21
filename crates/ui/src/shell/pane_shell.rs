@@ -42,6 +42,9 @@ impl PaneShell {
                     browser.open_directory_reset_history(path.clone(), cx);
                 }
                 NavigationTarget::RecycleBin => browser.open_recycle_bin(cx),
+                NavigationTarget::FileTag(name) => {
+                    browser.open_file_tag(name.clone(), cx);
+                }
                 _ => {}
             }
             cx.notify();
@@ -67,8 +70,8 @@ impl Render for PaneShell {
                 .min_h_0()
                 .child(self.file_browser.clone())
                 .into_any_element(),
-            NavigationTarget::RecycleBin => div()
-                .id("pane-file-browser-recycle")
+            NavigationTarget::RecycleBin | NavigationTarget::FileTag(_) => div()
+                .id("pane-file-browser-special")
                 .size_full()
                 .min_h_0()
                 .child(self.file_browser.clone())

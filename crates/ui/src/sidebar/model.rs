@@ -5,6 +5,7 @@ use crate::shell::navigation::NavigationTarget;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidebarSectionKind {
     Home,
+    Places,
     Pinned,
     Library,
     Drives,

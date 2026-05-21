@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
-use cyberfiles_core::pinned_folder_paths;
+use cyberfiles_core::{load_config, pinned_folder_paths, FileTagConfig};
 use cyberfiles_fs::{list_drives, list_recent_files, DriveInfo, RecentItem};
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -14,6 +15,10 @@ use gpui_component::{
 use rust_i18n::t;
 
 use crate::app_state::AppNavigation;
+#[cfg(windows)]
+use cyberfiles_platform_windows::{
+    list_known_folder_folders, list_shell_quick_access_folders, FOLDERID_NETWORK,
+};
 
 pub struct HomePage;
 
@@ -26,7 +31,11 @@ impl HomePage {
 impl Render for HomePage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let drives = list_drives();
-        let pinned = pinned_folder_paths();
+        let quick_access = quick_access_entries();
+        let network = network_entries();
+        let tags = load_config()
+            .map(|c| c.file_tags)
+            .unwrap_or_default();
         let recent = list_recent_files();
 
         v_flex()
@@ -36,22 +45,73 @@ impl Render for HomePage {
             .overflow_y_scroll()
             .p_4()
             .gap_4()
-            .child(widget_pinned(cx, &pinned))
+            .child(widget_quick_access(cx, &quick_access))
             .child(widget_section_drives(cx, &drives))
-            .child(widget_section(
-                "home-network",
-                t!("home.widget.network"),
-                t!("home.widget.network.placeholder"),
-                IconName::Globe,
-            ))
-            .child(widget_section(
-                "home-tags",
-                t!("home.widget.tags"),
-                t!("home.widget.tags.placeholder"),
-                IconName::Inbox,
-            ))
+            .child(widget_network(cx, &network))
+            .child(widget_file_tags(cx, &tags))
             .child(widget_recent(cx, &recent))
     }
+}
+
+struct QuickAccessEntry {
+    label: String,
+    path: PathBuf,
+}
+
+fn quick_access_entries() -> Vec<QuickAccessEntry> {
+    let mut seen = HashSet::new();
+    let mut entries = Vec::new();
+
+    #[cfg(windows)]
+    if let Ok(shell) = list_shell_quick_access_folders() {
+        for item in shell {
+            if item.path.exists() && seen.insert(path_key(&item.path)) {
+                entries.push(QuickAccessEntry {
+                    label: item.display_name,
+                    path: item.path,
+                });
+            }
+        }
+    }
+
+    for path in pinned_folder_paths() {
+        if !path.exists() || !seen.insert(path_key(&path)) {
+            continue;
+        }
+        let label = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| path.to_string_lossy().to_string());
+        entries.push(QuickAccessEntry { label, path });
+    }
+
+    entries
+}
+
+#[cfg(windows)]
+fn network_entries() -> Vec<QuickAccessEntry> {
+    list_known_folder_folders(&FOLDERID_NETWORK)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| !e.path.as_os_str().is_empty())
+        .map(|e| QuickAccessEntry {
+            label: e.display_name,
+            path: e.path,
+        })
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn network_entries() -> Vec<QuickAccessEntry> {
+    Vec::new()
+}
+
+fn path_key(path: &std::path::Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_ascii_lowercase()
 }
 
 fn group_title(icon: IconName, title: impl Into<SharedString>) -> impl IntoElement {
@@ -62,9 +122,9 @@ fn group_title(icon: IconName, title: impl Into<SharedString>) -> impl IntoEleme
         .child(Label::new(title).text_sm())
 }
 
-fn widget_pinned(cx: &mut Context<HomePage>, pinned: &[PathBuf]) -> impl IntoElement {
+fn widget_quick_access(cx: &mut Context<HomePage>, entries: &[QuickAccessEntry]) -> impl IntoElement {
     GroupBox::new()
-        .id("home-pinned")
+        .id("home-quick-access")
         .outline()
         .w_full()
         .title(group_title(IconName::Star, t!("home.widget.quick_access")))
@@ -72,24 +132,21 @@ fn widget_pinned(cx: &mut Context<HomePage>, pinned: &[PathBuf]) -> impl IntoEle
             v_flex()
                 .w_full()
                 .gap_1()
-                .when(pinned.is_empty(), |body| {
+                .when(entries.is_empty(), |body| {
                     body.child(Alert::info(
-                        "home-pinned-empty",
+                        "home-quick-access-empty",
                         t!("home.widget.quick_access.empty").to_string(),
                     ))
                 })
-                .when(!pinned.is_empty(), |body| {
-                    body.children(pinned.iter().enumerate().map(|(index, path)| {
-                        let label = path
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_else(|| path.to_string_lossy().to_string());
-                        let path = path.clone();
+                .when(!entries.is_empty(), |body| {
+                    body.children(entries.iter().enumerate().map(|(index, entry)| {
+                        let path = entry.path.clone();
+                        let label = entry.label.clone();
                         h_flex()
-                            .id(("home-pinned", index))
+                            .id(("home-quick-access", index))
                             .w_full()
                             .child(
-                                Button::new(("home-pinned-btn", index))
+                                Button::new(("home-quick-access-btn", index))
                                     .ghost()
                                     .small()
                                     .icon(IconName::Folder)
@@ -103,21 +160,79 @@ fn widget_pinned(cx: &mut Context<HomePage>, pinned: &[PathBuf]) -> impl IntoEle
         )
 }
 
-fn widget_section(
-    id: &'static str,
-    title: impl Into<SharedString>,
-    description: impl Into<SharedString>,
-    icon: IconName,
-) -> impl IntoElement {
+fn widget_network(cx: &mut Context<HomePage>, entries: &[QuickAccessEntry]) -> impl IntoElement {
     GroupBox::new()
-        .id(id)
+        .id("home-network")
         .outline()
         .w_full()
-        .title(group_title(icon, title))
-        .child(Alert::info(
-            format!("{id}-placeholder"),
-            description.into().to_string(),
-        ))
+        .title(group_title(IconName::Globe, t!("home.widget.network")))
+        .child(
+            v_flex()
+                .w_full()
+                .gap_1()
+                .when(entries.is_empty(), |body| {
+                    body.child(Alert::info(
+                        "home-network-empty",
+                        t!("home.widget.network.empty").to_string(),
+                    ))
+                })
+                .when(!entries.is_empty(), |body| {
+                    body.children(entries.iter().enumerate().map(|(index, entry)| {
+                        let path = entry.path.clone();
+                        let label = entry.label.clone();
+                        h_flex()
+                            .id(("home-network", index))
+                            .w_full()
+                            .child(
+                                Button::new(("home-network-btn", index))
+                                    .ghost()
+                                    .small()
+                                    .icon(IconName::Globe)
+                                    .label(label)
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        AppNavigation::navigate_to_path(path.clone(), cx);
+                                    })),
+                            )
+                    }))
+                }),
+        )
+}
+
+fn widget_file_tags(cx: &mut Context<HomePage>, tags: &[FileTagConfig]) -> impl IntoElement {
+    GroupBox::new()
+        .id("home-tags")
+        .outline()
+        .w_full()
+        .title(group_title(IconName::Inbox, t!("home.widget.tags")))
+        .child(
+            v_flex()
+                .w_full()
+                .gap_1()
+                .when(tags.is_empty(), |body| {
+                    body.child(Alert::info(
+                        "home-tags-empty",
+                        t!("home.widget.tags.empty").to_string(),
+                    ))
+                })
+                .when(!tags.is_empty(), |body| {
+                    body.children(tags.iter().enumerate().map(|(index, tag)| {
+                        let name = tag.name.clone();
+                        h_flex()
+                            .id(("home-tag", index))
+                            .w_full()
+                            .child(
+                                Button::new(("home-tag-btn", index))
+                                    .ghost()
+                                    .small()
+                                    .icon(IconName::Inbox)
+                                    .label(tag.name.clone())
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        AppNavigation::navigate_to_file_tag(name.clone(), cx);
+                                    })),
+                            )
+                    }))
+                }),
+        )
 }
 
 fn widget_recent(cx: &mut Context<HomePage>, recent: &[RecentItem]) -> impl IntoElement {

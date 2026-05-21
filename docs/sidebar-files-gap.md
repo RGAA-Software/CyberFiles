@@ -53,14 +53,14 @@ Header（应用名）
 | 右键：打开 / 新标签 | 是 | 是 | ✅ |
 | 右键：Pin / Unpin / 上下移 | 是（含对话框） | 仅 settings pinned 上下移 | 🟡 |
 | 右键：属性 | Shell | `open_item_properties` | 🟡 |
-| Home 页内容 | Home 小组件 | `NavigationTarget::Home` 占位 | 🟡 |
+| Home 页内容 | Home 小组件 | Quick Access / Drives / Network / Tags / Recent | 🟡 |
 | Pinned ↔ Explorer | `pintohome` 双向 | 只读 QA + 本地 pinned | 🟡 |
 | Library | `LibraryManager` | Known Folder 枚举 | 🟡 |
 | Drives | 图标 + Eject + 空驱策略 | 枚举 + 属性；无 Eject | 🟡 |
 | Cloud | `CloudDrivesManager` | 用户目录名探测 | 🟡 |
 | Network | `INetworkService` 枚举 | Network Known Folder | 🟡 |
 | WSL | `WSLDistroManager` | UNC 根目录 | 🟡 |
-| File tags | **点击过滤列表** | 导航到路径占位 | ⬜ |
+| File tags | **点击过滤列表** | `NavigationTarget::FileTag` 扁平列表 + 搜索过滤 | ✅ |
 | Shell 位图图标 | 异步 Shell 图标 | Lucide 分类图标 | 🟡 |
 | 与 Explorer 固定同步 | `UpdateItemsWithExplorerAsync` | 无 | ⬜ |
 | 驱动器弹出 (Eject) | 有 | 无 | ⬜ |

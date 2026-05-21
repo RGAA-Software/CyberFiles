@@ -28,6 +28,13 @@ impl AppNavigation {
         });
     }
 
+    pub fn navigate_to_file_tag(tag_name: String, cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| {
+            page.navigate_to(NavigationTarget::FileTag(tag_name), cx);
+        });
+    }
+
     pub fn open_path_in_new_tab(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {
         let page = cx.borrow_mut().global::<Self>().0.clone();
         page.update(cx, |page, cx| {
@@ -84,6 +91,8 @@ pub fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget 
         NavigationTarget::Settings
     } else if key.eq_ignore_ascii_case("recycle") {
         NavigationTarget::RecycleBin
+    } else if let Some(name) = key.strip_prefix("tag:") {
+        NavigationTarget::FileTag(name.to_string())
     } else {
         NavigationTarget::Path(path.to_path_buf())
     }
