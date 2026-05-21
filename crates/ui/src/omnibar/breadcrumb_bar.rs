@@ -161,6 +161,15 @@ fn render_chevron_menu(
     )
 }
 
+fn render_segment_chevron_menu(
+    button_id: impl Into<ElementId>,
+    path: PathBuf,
+    read_options: DirectoryReadOptions,
+    working_directory: Option<PathBuf>,
+) -> BreadcrumbFlyout {
+    segment_dropdown_menu_builder(button_id.into(), path, read_options, working_directory)
+}
+
 fn render_root_item(
     on_home: Rc<dyn Fn(&mut Window, &mut App)>,
     root_menu: Rc<dyn Fn() -> Vec<BreadcrumbMenuSection>>,
@@ -231,15 +240,13 @@ fn render_path_segment(
     let path_menu = crumb.path.clone();
     let label = crumb.label.clone();
     let tooltip = crumb.path.display().to_string();
-    let menu_builder =
-        segment_dropdown_menu_builder(path_menu, read_options, working_directory.map(Path::to_path_buf));
+    let working = working_directory.map(Path::to_path_buf);
     let navigate = on_navigate.clone();
     let new_tab = on_navigate_new_tab.clone();
     let drop_target = path_nav.clone();
     let hover_target = path_nav.clone();
     let drop = on_drop_paths.clone();
     let hover = on_drag_hover.clone();
-    let chevron_tip = t!("omnibar.breadcrumb.chevron_tooltip").to_string();
     let is_dir = path_nav.is_dir();
 
     let mut segment = h_flex()
@@ -274,10 +281,11 @@ fn render_path_segment(
         });
 
     if show_chevron {
-        segment = segment.child(render_chevron_menu(
+        segment = segment.child(render_segment_chevron_menu(
             ("breadcrumb-segment-chevron", index),
-            chevron_tip,
-            menu_builder,
+            path_menu,
+            read_options,
+            working,
         ));
     }
 
@@ -420,41 +428,61 @@ fn popup_menu_text_item(
         .on_click(on_click)
 }
 
+fn segment_dropdown_loading_menu(menu: PopupMenu) -> PopupMenu {
+    apply_breadcrumb_menu_style(
+        menu.scrollable(true).item(
+            PopupMenuItem::new(t!("omnibar.breadcrumb.loading").to_string()).disabled(true),
+        ),
+    )
+}
+
+/// Replaces flyout items after async `read_dir` (UI thread).
+pub(crate) fn refill_segment_dropdown_menu(
+    menu: &mut PopupMenu,
+    result: BreadcrumbDropdownResult,
+    _: &mut Context<PopupMenu>,
+) {
+    menu.clear_items();
+    match result {
+        BreadcrumbDropdownResult::AccessDenied => {
+            menu.push_item(
+                PopupMenuItem::new(t!("omnibar.breadcrumb.access_denied").to_string()).disabled(true),
+            );
+        }
+        BreadcrumbDropdownResult::Empty => {
+            menu.push_item(
+                PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
+            );
+        }
+        BreadcrumbDropdownResult::Entries(entries) => {
+            for entry in entries {
+                let target = entry.path.clone();
+                menu.push_item(popup_menu_path_item(entry, move |_, _, cx| {
+                    AppNavigation::navigate_to_path(target.clone(), cx);
+                }));
+            }
+        }
+    }
+}
+
 fn segment_dropdown_menu_builder(
+    button_id: ElementId,
     path: PathBuf,
     read_options: DirectoryReadOptions,
     working_directory: Option<PathBuf>,
-) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static {
-    move |menu, _, _| {
-        let result = breadcrumb_dropdown_entries(
-            &path,
-            read_options,
-            working_directory.as_deref(),
-        );
-        let mut menu = menu.scrollable(true);
-        match result {
-            BreadcrumbDropdownResult::AccessDenied => {
-                menu = menu.item(
-                    PopupMenuItem::new(t!("omnibar.breadcrumb.access_denied").to_string())
-                        .disabled(true),
-                );
-            }
-            BreadcrumbDropdownResult::Empty => {
-                menu = menu.item(
-                    PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
-                );
-            }
-            BreadcrumbDropdownResult::Entries(entries) => {
-                for entry in entries {
-                    let target = entry.path.clone();
-                    menu = menu.item(popup_menu_path_item(entry, move |_, _, cx| {
-                        AppNavigation::navigate_to_path(target.clone(), cx);
-                    }));
-                }
-            }
-        }
-        apply_breadcrumb_menu_style(menu)
-    }
+) -> BreadcrumbFlyout {
+    let fill_path = path.clone();
+    let fill_options = read_options;
+    let fill_working = working_directory.clone();
+    BreadcrumbFlyout::new_async(
+        SharedString::from(format!("breadcrumb-flyout-{button_id:?}")),
+        button_id,
+        t!("omnibar.breadcrumb.chevron_tooltip").to_string(),
+        |menu, _, _| segment_dropdown_loading_menu(menu),
+        move || {
+            breadcrumb_dropdown_entries(&fill_path, fill_options, fill_working.as_deref())
+        },
+    )
 }
 
 fn root_dropdown_menu_builder(

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use gpui::{
     prelude::FluentBuilder, AnyView, App, AppContext, Context, Entity, FocusHandle, Focusable,
     InteractiveElement, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled,
@@ -6,13 +8,18 @@ use gpui::{
 use gpui_component::{Root, v_flex};
 
 use crate::app_state::AppNavigation;
+use super::preferences::{persist_window_bounds, window_size_from_active};
 use super::title_bar::AppTitleBar;
+
+const WINDOW_BOUNDS_DEBOUNCE_MS: u64 = 400;
 
 /// Window chrome: custom title bar + main content + overlay layers.
 pub struct AppShell {
     focus_handle: FocusHandle,
     title_bar: Entity<AppTitleBar>,
     view: AnyView,
+    last_seen_window_size: Option<(f32, f32)>,
+    bounds_persist_generation: u64,
 }
 
 impl AppShell {
@@ -27,7 +34,34 @@ impl AppShell {
             focus_handle: cx.focus_handle(),
             title_bar,
             view: view.into(),
+            last_seen_window_size: None,
+            bounds_persist_generation: 0,
         }
+    }
+
+    fn schedule_bounds_persist_if_changed(&mut self, cx: &mut Context<Self>) {
+        let Some(size) = window_size_from_active(cx) else {
+            return;
+        };
+        if self.last_seen_window_size == Some(size) {
+            return;
+        }
+        self.last_seen_window_size = Some(size);
+        self.bounds_persist_generation = self.bounds_persist_generation.wrapping_add(1);
+        let generation = self.bounds_persist_generation;
+        cx.spawn(async move |shell, cx| {
+            cx.background_spawn(async move {
+                std::thread::sleep(Duration::from_millis(WINDOW_BOUNDS_DEBOUNCE_MS));
+            })
+            .await;
+            let _ = shell.update(cx, |shell, cx| {
+                if shell.bounds_persist_generation != generation {
+                    return;
+                }
+                persist_window_bounds(cx);
+            });
+        })
+        .detach();
     }
 }
 
@@ -39,6 +73,7 @@ impl Focusable for AppShell {
 
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.schedule_bounds_persist_if_changed(cx);
         let sheet_layer = Root::render_sheet_layer(window, cx);
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);

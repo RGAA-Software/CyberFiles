@@ -39,6 +39,10 @@ omnibar.breadcrumb.access_denied:
   en: Access denied
   zh-CN: 访问被拒绝
   zh-HK: 存取被拒
+omnibar.breadcrumb.loading:
+  en: Loading…
+  zh-CN: 加载中…
+  zh-HK: 載入中…
 omnibar.breadcrumb.quick_access:
   en: Quick access
   zh-CN: 快速访问

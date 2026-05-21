@@ -4,11 +4,12 @@
 //! coordinates and snap menus to y=0. This mirrors [`ContextMenu`] deferred anchoring at
 //! [`MouseDownEvent::position`] in window space.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use gpui::{
     anchored, deferred, div, percentage, point, prelude::FluentBuilder, px, Anchor, AnyElement,
-    App, Context, DismissEvent, Element, ElementId, Entity, Focusable, GlobalElementId, Hitbox,
+    App, AppContext, Context, DismissEvent, Element, ElementId, Entity, Focusable, GlobalElementId,
+    Hitbox,
     HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, ParentElement, Pixels, Point, RenderOnce, SharedString, StyleRefinement,
     Styled, Subscription, Window,
@@ -48,6 +49,8 @@ pub(crate) struct BreadcrumbFlyout {
     button_id: ElementId,
     tooltip: SharedString,
     menu: Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>,
+    /// When set, menu opens with a placeholder, then refills after `read_dir` on a worker thread.
+    async_fill: Option<Arc<dyn Fn() -> cyberfiles_fs::BreadcrumbDropdownResult + Send + Sync>>,
     _ignore_style: StyleRefinement,
     anchor: Anchor,
 }
@@ -64,6 +67,25 @@ impl BreadcrumbFlyout {
             button_id: button_id.into(),
             tooltip: tooltip.into(),
             menu: Rc::new(menu),
+            async_fill: None,
+            _ignore_style: StyleRefinement::default(),
+            anchor: Anchor::TopLeft,
+        }
+    }
+
+    pub fn new_async(
+        id: impl Into<ElementId>,
+        button_id: impl Into<ElementId>,
+        tooltip: impl Into<SharedString>,
+        initial_menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+        async_fill: impl Fn() -> cyberfiles_fs::BreadcrumbDropdownResult + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            button_id: button_id.into(),
+            tooltip: tooltip.into(),
+            menu: Rc::new(initial_menu),
+            async_fill: Some(Arc::new(async_fill)),
             _ignore_style: StyleRefinement::default(),
             anchor: Anchor::TopLeft,
         }
@@ -249,6 +271,7 @@ impl Element for BreadcrumbFlyout {
         }
 
         let builder = self.menu.clone();
+        let async_fill = self.async_fill.clone();
 
         self.with_element_state(id.unwrap(), window, cx, |_, state, window, _| {
             let shared_state = state.shared_state.clone();
@@ -283,6 +306,7 @@ impl Element for BreadcrumbFlyout {
                     window.defer(cx, {
                         let shared_state = shared_state.clone();
                         let builder = builder.clone();
+                        let async_fill = async_fill.clone();
                         move |window, cx| {
                             let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
                                 builder(menu, window, cx)
@@ -291,7 +315,10 @@ impl Element for BreadcrumbFlyout {
                             let subscription = window.subscribe(&menu, cx, {
                                 let shared_state = shared_state.clone();
                                 move |_, _: &DismissEvent, window, _cx| {
-                                    shared_state.borrow_mut().open = false;
+                                    let mut shared = shared_state.borrow_mut();
+                                    shared.open = false;
+                                    shared.menu_view = None;
+                                    shared._subscription = None;
                                     window.refresh();
                                 }
                             });
@@ -301,6 +328,19 @@ impl Element for BreadcrumbFlyout {
                                 shared.menu_view = Some(menu.clone());
                                 shared._subscription = Some(subscription);
                                 window.refresh();
+                            }
+
+                            if let Some(fill) = async_fill {
+                                cx.spawn(async move |cx| {
+                                    let result = cx.background_spawn(async move { fill() }).await;
+                                    let _ = menu.update(cx, |menu, cx| {
+                                        super::breadcrumb_bar::refill_segment_dropdown_menu(
+                                            menu, result, cx,
+                                        );
+                                        cx.notify();
+                                    });
+                                })
+                                .detach();
                             }
                         }
                     });
