@@ -69,8 +69,9 @@ fn compare_items(left: &FileItem, right: &FileItem, preferences: SortPreferences
     }
 }
 
+/// Lexicographic, case-sensitive string order (Files-style name / type / path sort).
 fn compare_text(left: &str, right: &str) -> Ordering {
-    left.to_lowercase().cmp(&right.to_lowercase())
+    left.cmp(right)
 }
 
 #[cfg(test)]
@@ -114,6 +115,34 @@ mod tests {
 
         let names: Vec<_> = items.iter().map(|item| item.name_raw.as_str()).collect();
         assert_eq!(names, ["a-folder", "a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn sorts_names_case_sensitively() {
+        let mut items = vec![
+            item("banana", FileItemKind::File, None),
+            item("Apple", FileItemKind::File, None),
+            item("cherry", FileItemKind::File, None),
+        ];
+
+        sort_items(&mut items, SortPreferences::default());
+
+        let names: Vec<_> = items.iter().map(|item| item.name_raw.as_str()).collect();
+        assert_eq!(names, ["Apple", "banana", "cherry"]);
+    }
+
+    #[test]
+    fn sorts_names_distinguishes_letter_case() {
+        let mut items = vec![
+            item("readme", FileItemKind::File, None),
+            item("Readme", FileItemKind::File, None),
+            item("README", FileItemKind::File, None),
+        ];
+
+        sort_items(&mut items, SortPreferences::default());
+
+        let names: Vec<_> = items.iter().map(|item| item.name_raw.as_str()).collect();
+        assert_eq!(names, ["README", "Readme", "readme"]);
     }
 
     #[test]

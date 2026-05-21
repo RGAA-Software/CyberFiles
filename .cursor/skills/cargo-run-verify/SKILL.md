@@ -1,51 +1,73 @@
 ---
 name: cargo-run-verify
 description: >-
-  After implementing or answering on Rust/GPUI app work, run the app with cargo run
-  and monitor the Cursor terminals folder for panics, build failures, and runtime errors.
-  Use on every turn when CyberFiles or this repo was changed or discussed, when the user
-  asks to verify/run the app, or when finishing any coding task in this workspace.
+  Mandatory after every assistant reply in CyberFiles: kill any running cyberfiles.exe,
+  then cargo run -p cyberfiles, and monitor the Cursor terminals folder for build/runtime
+  errors. Use on every turn in this workspace without exception—even for small answers,
+  docs-only edits, or when the user did not ask to run the app.
 ---
 
-# cargo run 并监听 terminal
+# cargo run 验证（每次回答必做）
 
-## 硬性规则
+## 硬性规则（不可跳过）
 
-每次回答（尤其是改代码、修 bug、加功能之后）结束前必须：
+**每次回答结束前**必须按顺序执行：
 
-1. 在 workspace 根目录执行 **`cargo run`**（本仓库默认：`cargo run -p cyberfiles`）。
-2. **监听 terminal**：读取 `terminals/` 下对应会话文件（或 `Await` 轮询后台 shell），确认：
-   - 编译是否成功；
-   - 进程是否启动；
-   - 是否有 **panic**、**error**、异常退出。
-3. 在回复中简要说明运行结果（成功 / 编译失败 / 运行中 / 发现的问题）。
+1. **结束已有进程**（在启动新的 `cargo run` 之前）
+2. **`cargo run -p cyberfiles`**（workspace 根目录）
+3. **监听 terminal**（`terminals/*.txt` 或 `Await`）
+4. 在回复末尾写简短 **运行验证**
 
-不要忘记。即使用户未再次提醒，也按此流程执行。
+即使用户未提醒、仅回答问题、或只改了一行代码，也**必须**执行。
 
-## 命令
+## 1. 结束已有进程（必须先做）
+
+在 PowerShell（workspace 根目录）：
 
 ```powershell
-Set-Location <workspace-root>
+Set-Location D:\source\CyberFiles   # 或当前 workspace 根
+
+# 结束已运行的 CyberFiles GUI
+Get-Process -Name "cyberfiles" -ErrorAction SilentlyContinue | Stop-Process -Force
+
+# 可选：结束仍占用 target\debug\cyberfiles.exe 的残留（按镜像路径）
+Get-Process | Where-Object { $_.Path -like "*\CyberFiles\target\*\cyberfiles.exe" } | Stop-Process -Force -ErrorAction SilentlyContinue
+```
+
+确认无 `cyberfiles` 后再 `cargo run`，避免旧二进制仍在跑、文件被锁或双实例。
+
+## 2. 启动
+
+```powershell
 cargo run -p cyberfiles
 ```
 
-若刚改过依赖或需确认编译，可先 `cargo check`，但**仍须** `cargo run` 验证 GUI 启动。
+- GUI 长时间运行：Shell `block_until_ms: 0` 放后台。
+- 若刚大改依赖，可先 `cargo check`，但**仍须** `cargo run` 验证启动。
 
-## 监听方式
+## 3. 监听 terminal
 
-- 长时间运行的 GUI：用 `block_until_ms: 0` 放后台，再用 `Await` 或读取 `terminals/*.txt`。
-- 关注输出中的：`Finished`、`error:`、`panic`、`thread 'main' panicked`。
-- 若已有同项目的 `cargo run` 在跑，先读该 terminal 状态；需要重启时再启新进程。
+- 读取对应 `terminals/<id>.txt` 或使用 `Await`（`pattern`: `Running \`target|error:|panic`）。
+- 关注：`Finished`、`Running ...cyberfiles.exe`、`error:`、`panic`、`thread 'main' panicked`、非零 `exit_code`。
+- 编译失败或 panic：修代码后**再次** kill → `cargo run` → 监听，直到启动无 panic 或向用户说明阻塞原因。
 
-## 失败时
-
-- 编译失败：修到 `cargo check` 通过，再 `cargo run`。
-- 运行 panic：根据 stack trace 修代码，重复 run + 监听，直到启动无 panic 或向用户说明阻塞原因。
-
-## 回复模板（可简短）
+## 4. 回复模板
 
 ```markdown
 ### 运行验证
-- `cargo run -p cyberfiles`: <成功 | 编译失败 | 运行中>
+- 已结束旧进程: <是 / 无运行中实例>
+- `cargo run -p cyberfiles`: <编译成功运行中 | 编译失败 | panic>
 - Terminal: <无异常 | 错误摘要>
 ```
+
+## 失败处理
+
+| 情况 | 动作 |
+|------|------|
+| 编译失败 | 修到 `cargo check` 通过 → kill → `cargo run` |
+| 运行 panic | 按 stack trace 修复 → kill → `cargo run` |
+| 端口/文件锁 | 确认已 kill `cyberfiles`，必要时结束卡住的 `cargo` 子进程 |
+
+## 相关文件
+
+- 规则（always apply）：`.cursor/rules/cargo-run-verify.mdc`

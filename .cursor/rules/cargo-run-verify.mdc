@@ -1,20 +1,19 @@
 ---
-description: After code changes in CyberFiles, run cargo run and check terminal for crashes
+description: Mandatory kill + cargo run + terminal check after every reply in CyberFiles
 alwaysApply: true
 ---
 
-# cargo run 验证（每次改完必做）
+# cargo run 验证（每次回答必做，不可跳过）
 
-在本仓库完成实现、修 bug 或改 UI/Rust 代码后，**回答结束前**必须：
+在本仓库**每次回答结束前**，必须按 `.cursor/skills/cargo-run-verify/SKILL.md` 执行：
 
-1. 在 workspace 根目录执行：`cargo run -p cyberfiles`（GUI 长时间运行可放后台）。
-2. **监听 terminal**：读取 `terminals/` 对应会话或 `Await`，确认：
-   - 编译成功（`Finished` + `Running ...cyberfiles.exe`）
-   - 无 `panic`、`thread 'main' panicked`、非预期的 `error:` 退出
-3. 在回复末尾用简短「运行验证」说明结果（成功 / 编译失败 / 运行中 / 崩溃摘要）。
+1. **先 kill** 已运行的 `cyberfiles` / `target\*\cyberfiles.exe` 进程（PowerShell `Stop-Process`）。
+2. 在 workspace 根目录 **`cargo run -p cyberfiles`**（可后台运行）。
+3. **监听 terminal**（`terminals/` 或 `Await`）：`Finished`、`Running ...cyberfiles.exe`、无 `panic`/`error:`。
+4. 回复末尾附简短 **运行验证**。
 
-若已有 `cargo run` 在跑且代码未变，可读现有 terminal；代码变更后应重新编译运行。
+无例外：用户未要求、仅答疑、小改动也须 kill → run → 监听。
 
-失败时：先修到 `cargo check` 通过，再 `cargo run`，直至启动无 panic 或向用户说明阻塞原因。
+代码变更后必须重新编译运行，不可只读旧 terminal。
 
 详见 `.cursor/skills/cargo-run-verify/SKILL.md`。
