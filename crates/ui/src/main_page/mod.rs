@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use cyberfiles_core::{load_config, pinned_folder_paths, record_path_history, save_config};
+use cyberfiles_core::{load_config, record_path_history, save_config};
 use cyberfiles_fs::{
     breadcrumb_root_menu_sections, copy_items, home_navigation_path, list_drives, move_items,
     path_breadcrumbs, DirectoryReadOptions, PathBreadcrumb,
@@ -16,9 +16,6 @@ use gpui_component::{
     input::{Input, InputEvent, InputState},
     notification::Notification,
     resizable::{h_resizable, resizable_panel},
-    sidebar::{
-        Sidebar, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu, SidebarMenuItem,
-    },
     tab::{Tab, TabBar},
     v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
 };
@@ -26,10 +23,10 @@ use rust_i18n::t;
 
 use crate::info_pane::InfoPane;
 use crate::app_state::breadcrumb_navigation_target;
+use crate::sidebar::render_sidebar;
 use crate::omnibar::{OmnibarBreadcrumbHost, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::{PaneShell, ShellPanes};
-use cyberfiles_core::APP_NAME;
 
 struct TabEntry {
     id: u64,
@@ -512,6 +509,60 @@ impl MainPage {
             )
     }
 
+    pub fn active_navigation_target(&self, cx: &App) -> NavigationTarget {
+        self.active_pane(cx).read(cx).target().clone()
+    }
+
+    pub fn toggle_sidebar_collapsed(&mut self, cx: &mut Context<Self>) {
+        let mut config = load_config().unwrap_or_default();
+        config.sidebar_collapsed = !config.sidebar_collapsed;
+        let _ = save_config(&config);
+        cx.notify();
+    }
+
+    pub fn pin_folder_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let path_string = path.to_string_lossy().to_string();
+        let mut config = load_config().unwrap_or_default();
+        if !config.pinned_folders.iter().any(|p| p == &path_string) {
+            config.pinned_folders.push(path_string);
+            let _ = save_config(&config);
+            cx.notify();
+        }
+    }
+
+    pub fn unpin_folder_path(&mut self, path_string: &str, cx: &mut Context<Self>) {
+        let mut config = load_config().unwrap_or_default();
+        if let Some(index) = config
+            .pinned_folders
+            .iter()
+            .position(|p| p == path_string)
+        {
+            config.pinned_folders.remove(index);
+            let _ = save_config(&config);
+            cx.notify();
+        }
+    }
+
+    pub fn move_pinned_folder(&mut self, path_string: &str, delta: i32, cx: &mut Context<Self>) {
+        let mut config = load_config().unwrap_or_default();
+        let Some(index) = config
+            .pinned_folders
+            .iter()
+            .position(|p| p == path_string)
+        else {
+            return;
+        };
+        let new_index = (index as i32 + delta).clamp(0, config.pinned_folders.len() as i32 - 1)
+            as usize;
+        if new_index == index {
+            return;
+        }
+        let entry = config.pinned_folders.remove(index);
+        config.pinned_folders.insert(new_index, entry);
+        let _ = save_config(&config);
+        cx.notify();
+    }
+
     fn pin_current_folder(&mut self, cx: &mut Context<Self>) {
         let pane = self.active_pane(cx);
         let path = pane.read(cx).file_browser().read(cx).current_directory().clone();
@@ -816,117 +867,6 @@ impl MainPage {
             )
     }
 
-    fn render_sidebar(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let drives = list_drives();
-        let pinned = pinned_folder_paths();
-
-        Sidebar::new("files-sidebar")
-            .w(relative(1.))
-            .border_0()
-            .header(
-                SidebarHeader::new().child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .rounded(cx.theme().radius_lg)
-                                .bg(cx.theme().primary)
-                                .text_color(cx.theme().primary_foreground)
-                                .size_8()
-                                .flex_shrink_0()
-                                .child(Icon::new(IconName::GalleryVerticalEnd)),
-                        )
-                        .child(
-                            v_flex()
-                                .gap_0()
-                                .text_sm()
-                                .child(APP_NAME)
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(t!("sidebar.workspace")),
-                                ),
-                        ),
-                ),
-            )
-            .child(
-                SidebarGroup::new(t!("sidebar.section.main"))
-                    .child(
-                        SidebarMenu::new().w_full().child(
-                            SidebarMenuItem::new(t!("nav.home"))
-                                .icon(IconName::LayoutDashboard)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.navigate_to(NavigationTarget::Home, cx);
-                                })),
-                        ),
-                    ),
-            )
-            .child(
-                SidebarGroup::new(t!("sidebar.section.pinned")).child(
-                    SidebarMenu::new().w_full().children(pinned.into_iter().map(|path| {
-                        let label = path
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_else(|| path.to_string_lossy().to_string());
-                        SidebarMenuItem::new(label)
-                            .icon(IconName::Star)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.navigate_to(NavigationTarget::Path(path.clone()), cx);
-                            }))
-                    })),
-                ),
-            )
-            .child(
-                SidebarGroup::new(t!("sidebar.section.places")).child(
-                    SidebarMenu::new().w_full().child(
-                        SidebarMenuItem::new(t!("nav.recycle_bin"))
-                            .icon(IconName::Delete)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.navigate_to(NavigationTarget::RecycleBin, cx);
-                            })),
-                    ),
-                ),
-            )
-            .child(
-                SidebarGroup::new(t!("sidebar.section.drives"))
-                    .child(
-                        SidebarMenu::new().w_full().children(drives.iter().map(|drive| {
-                            let path = drive.path.clone();
-                            SidebarMenuItem::new(drive.label.clone())
-                                .icon(IconName::HardDrive)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.navigate_to(NavigationTarget::Path(path.clone()), cx);
-                                }))
-                        })),
-                    ),
-            )
-            .child(
-                SidebarGroup::new(t!("sidebar.section.network"))
-                    .child(
-                        SidebarMenu::new().w_full().child(
-                            SidebarMenuItem::new(t!("sidebar.network.placeholder"))
-                                .icon(IconName::Globe)
-                                .disable(true),
-                        ),
-                    ),
-            )
-            .footer(
-                v_flex().flex_1().w_full().min_w_0().child(
-                    SidebarMenu::new()
-                        .w_full()
-                        .child(
-                            SidebarMenuItem::new(t!("nav.settings"))
-                                .icon(IconName::Settings2)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.navigate_to(NavigationTarget::Settings, cx);
-                                })),
-                        )
-                        .render("sidebar-settings", window, cx),
-                ),
-            )
-    }
 }
 
 impl Focusable for MainPage {
@@ -1009,7 +949,12 @@ impl Render for MainPage {
                         resizable_panel()
                             .size(px(240.))
                             .size_range(px(200.)..px(360.))
-                            .child(self.render_sidebar(window, cx)),
+                            .child(render_sidebar(
+                                cx.entity(),
+                                self.active_navigation_target(cx),
+                                window,
+                                cx,
+                            )),
                     )
                     .child(
                         resizable_panel().flex_1().child(

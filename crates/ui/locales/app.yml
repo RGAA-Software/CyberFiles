@@ -91,6 +91,54 @@ sidebar.section.network:
   en: Network
   zh-CN: 网络
   zh-HK: 網路
+sidebar.section.library:
+  en: Libraries
+  zh-CN: 库
+  zh-HK: 媒體櫃
+sidebar.section.cloud:
+  en: Cloud drives
+  zh-CN: 云驱动器
+  zh-HK: 雲端磁碟機
+sidebar.section.wsl:
+  en: WSL
+  zh-CN: WSL
+  zh-HK: WSL
+sidebar.section.file_tags:
+  en: File tags
+  zh-CN: 文件标签
+  zh-HK: 檔案標籤
+sidebar.toggle:
+  en: Toggle sidebar
+  zh-CN: 切换侧栏
+  zh-HK: 切換側欄
+sidebar.menu.open:
+  en: Open
+  zh-CN: 打开
+  zh-HK: 開啟
+sidebar.menu.open_new_tab:
+  en: Open in new tab
+  zh-CN: 在新标签页中打开
+  zh-HK: 在新分頁中開啟
+sidebar.menu.pin:
+  en: Pin to sidebar
+  zh-CN: 固定到侧栏
+  zh-HK: 固定到側欄
+sidebar.menu.unpin:
+  en: Unpin from sidebar
+  zh-CN: 从侧栏取消固定
+  zh-HK: 從側欄取消固定
+sidebar.menu.move_up:
+  en: Move up
+  zh-CN: 上移
+  zh-HK: 上移
+sidebar.menu.move_down:
+  en: Move down
+  zh-CN: 下移
+  zh-HK: 下移
+sidebar.menu.properties:
+  en: Properties
+  zh-CN: 属性
+  zh-HK: 內容
 sidebar.pinned.placeholder:
   en: Pin folders in settings (coming soon)
   zh-CN: 在设置中固定文件夹（即将推出）
@@ -507,6 +555,62 @@ settings.page.about:
   en: About
   zh-CN: 关于
   zh-HK: 關於
+settings.page.sidebar:
+  en: Sidebar
+  zh-CN: 侧栏
+  zh-HK: 側欄
+settings.group.sidebar:
+  en: Sidebar
+  zh-CN: 侧栏
+  zh-HK: 側欄
+settings.sidebar.display_mode:
+  en: Display mode
+  zh-CN: 显示模式
+  zh-HK: 顯示模式
+settings.sidebar.display_mode.description:
+  en: Expanded list, compact icons, or minimal off-canvas (like Files).
+  zh-CN: 展开列表、仅图标紧凑模式，或最小化抽屉模式（对齐 Files）。
+  zh-HK: 展開列表、僅圖示緊湊模式，或最小化抽屜模式（對齊 Files）。
+settings.sidebar.mode.expanded:
+  en: Expanded
+  zh-CN: 展开
+  zh-HK: 展開
+settings.sidebar.mode.compact:
+  en: Compact (icons)
+  zh-CN: 紧凑（图标）
+  zh-HK: 緊湊（圖示）
+settings.sidebar.mode.minimal:
+  en: Minimal (off-canvas)
+  zh-CN: 最小（抽屉）
+  zh-HK: 最小（抽屜）
+settings.sidebar.section.pinned:
+  en: Pinned
+  zh-CN: 固定
+  zh-HK: 固定
+settings.sidebar.section.library:
+  en: Library
+  zh-CN: 库
+  zh-HK: 媒體庫
+settings.sidebar.section.drives:
+  en: Drives
+  zh-CN: 驱动器
+  zh-HK: 磁碟機
+settings.sidebar.section.cloud:
+  en: Cloud drives
+  zh-CN: 云盘
+  zh-HK: 雲端磁碟
+settings.sidebar.section.network:
+  en: Network
+  zh-CN: 网络
+  zh-HK: 網路
+settings.sidebar.section.wsl:
+  en: WSL
+  zh-CN: WSL
+  zh-HK: WSL
+settings.sidebar.section.file_tags:
+  en: File tags
+  zh-CN: 文件标签
+  zh-HK: 檔案標籤
 settings.group.appearance:
   en: Appearance
   zh-CN: 外观

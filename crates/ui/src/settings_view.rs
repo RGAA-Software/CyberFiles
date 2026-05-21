@@ -15,8 +15,13 @@ fn ts(text: impl AsRef<str>) -> SharedString {
 
 use crate::shell::preferences::{
     apply_border_radius, apply_font_size, apply_locale, apply_scrollbar_show,
+    apply_sidebar_display_mode, apply_sidebar_section_cloud, apply_sidebar_section_drives,
+    apply_sidebar_section_file_tags, apply_sidebar_section_library,
+    apply_sidebar_section_network, apply_sidebar_section_pinned, apply_sidebar_section_wsl,
     apply_theme_mode, apply_theme_name, current_locale, scrollbar_show_from_key,
-    scrollbar_show_key, set_list_active_highlight,
+    scrollbar_show_key, set_list_active_highlight, sidebar_display_mode, sidebar_section_cloud,
+    sidebar_section_drives, sidebar_section_file_tags, sidebar_section_library,
+    sidebar_section_network, sidebar_section_pinned, sidebar_section_wsl,
 };
 
 pub fn build_settings(cx: &App) -> Settings {
@@ -49,6 +54,12 @@ pub fn build_settings(cx: &App) -> Settings {
         ("scrolling".into(), ts(t!("settings.scrollbar.scrolling"))),
         ("hover".into(), ts(t!("settings.scrollbar.hover"))),
         ("always".into(), ts(t!("settings.scrollbar.always"))),
+    ];
+
+    let sidebar_mode_options = vec![
+        ("expanded".into(), ts(t!("settings.sidebar.mode.expanded"))),
+        ("compact".into(), ts(t!("settings.sidebar.mode.compact"))),
+        ("minimal".into(), ts(t!("settings.sidebar.mode.minimal"))),
     ];
 
     Settings::new("cyberfiles-settings")
@@ -172,6 +183,77 @@ pub fn build_settings(cx: &App) -> Settings {
                                 .default_value(cx.theme().list.active_highlight),
                             )
                             .description(ts(t!("settings.list_highlight.description"))),
+                        ]),
+                ]),
+            SettingPage::new(ts(t!("settings.page.sidebar")))
+                .icon(Icon::new(IconName::GalleryVerticalEnd))
+                .groups(vec![
+                    SettingGroup::new()
+                        .title(ts(t!("settings.group.sidebar")))
+                        .items(vec![
+                            SettingItem::new(
+                                ts(t!("settings.sidebar.display_mode")),
+                                SettingField::dropdown(
+                                    sidebar_mode_options,
+                                    sidebar_display_mode,
+                                    apply_sidebar_display_mode,
+                                )
+                                .default_value(sidebar_display_mode(cx)),
+                            )
+                            .description(ts(t!("settings.sidebar.display_mode.description"))),
+                            SettingItem::new(
+                                ts(t!("settings.sidebar.section.pinned")),
+                                SettingField::switch(
+                                    sidebar_section_pinned,
+                                    apply_sidebar_section_pinned,
+                                )
+                                .default_value(sidebar_section_pinned(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.sidebar.section.library")),
+                                SettingField::switch(
+                                    sidebar_section_library,
+                                    apply_sidebar_section_library,
+                                )
+                                .default_value(sidebar_section_library(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.sidebar.section.drives")),
+                                SettingField::switch(
+                                    sidebar_section_drives,
+                                    apply_sidebar_section_drives,
+                                )
+                                .default_value(sidebar_section_drives(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.sidebar.section.cloud")),
+                                SettingField::switch(
+                                    sidebar_section_cloud,
+                                    apply_sidebar_section_cloud,
+                                )
+                                .default_value(sidebar_section_cloud(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.sidebar.section.network")),
+                                SettingField::switch(
+                                    sidebar_section_network,
+                                    apply_sidebar_section_network,
+                                )
+                                .default_value(sidebar_section_network(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.sidebar.section.wsl")),
+                                SettingField::switch(sidebar_section_wsl, apply_sidebar_section_wsl)
+                                    .default_value(sidebar_section_wsl(cx)),
+                            ),
+                            SettingItem::new(
+                                ts(t!("settings.sidebar.section.file_tags")),
+                                SettingField::switch(
+                                    sidebar_section_file_tags,
+                                    apply_sidebar_section_file_tags,
+                                )
+                                .default_value(sidebar_section_file_tags(cx)),
+                            ),
                         ]),
                 ]),
             SettingPage::new(ts(t!("settings.page.about")))

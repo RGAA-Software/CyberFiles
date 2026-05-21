@@ -40,6 +40,46 @@ pub struct AppConfig {
     /// Recently navigated paths from the omnibar (Files `PathHistoryList`).
     #[serde(default)]
     pub path_history: Vec<String>,
+    /// Sidebar width mode: `expanded`, `compact` (icon), `minimal` (offcanvas).
+    #[serde(default = "default_sidebar_display_mode")]
+    pub sidebar_display_mode: String,
+    #[serde(default)]
+    pub sidebar_collapsed: bool,
+    #[serde(default = "default_true")]
+    pub show_sidebar_section_pinned: bool,
+    #[serde(default = "default_true")]
+    pub show_sidebar_section_library: bool,
+    #[serde(default = "default_true")]
+    pub show_sidebar_section_drives: bool,
+    #[serde(default = "default_true")]
+    pub show_sidebar_section_cloud: bool,
+    #[serde(default = "default_true")]
+    pub show_sidebar_section_network: bool,
+    #[serde(default = "default_true")]
+    pub show_sidebar_section_wsl: bool,
+    #[serde(default = "default_true")]
+    pub show_sidebar_section_file_tags: bool,
+    /// User-defined file tags for sidebar (full tag system is future work).
+    #[serde(default)]
+    pub file_tags: Vec<FileTagConfig>,
+}
+
+/// Sidebar file tag entry (Files `FileTagsManager` subset).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileTagConfig {
+    pub name: String,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub paths: Vec<String>,
+}
+
+fn default_sidebar_display_mode() -> String {
+    "expanded".into()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_show_info_pane() -> bool {
@@ -69,8 +109,27 @@ impl Default for AppConfig {
             file_sort_direction: None,
             file_show_hidden: None,
             path_history: Vec::new(),
+            sidebar_display_mode: default_sidebar_display_mode(),
+            sidebar_collapsed: false,
+            show_sidebar_section_pinned: true,
+            show_sidebar_section_library: true,
+            show_sidebar_section_drives: true,
+            show_sidebar_section_cloud: true,
+            show_sidebar_section_network: true,
+            show_sidebar_section_wsl: true,
+            show_sidebar_section_file_tags: true,
+            file_tags: Vec::new(),
         }
     }
+}
+
+/// Sidebar is icon-only when `sidebar_display_mode == "compact"`.
+pub fn sidebar_is_compact(config: &AppConfig) -> bool {
+    config.sidebar_display_mode == "compact"
+}
+
+pub fn sidebar_is_offcanvas(config: &AppConfig) -> bool {
+    config.sidebar_display_mode == "minimal"
 }
 
 /// Updates file-browser fields in settings and writes `settings.json`.

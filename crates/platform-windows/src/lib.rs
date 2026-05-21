@@ -13,6 +13,8 @@ mod paths;
 #[cfg(windows)]
 mod quick_access;
 #[cfg(windows)]
+mod shell_folder;
+#[cfg(windows)]
 mod recycle;
 #[cfg(windows)]
 mod shell;
@@ -25,6 +27,11 @@ pub use icons::{icon_hint_for_path, ShellIconHint};
 pub use paths::{is_recycle_bin_path, recycle_bin_folder};
 #[cfg(windows)]
 pub use quick_access::{list_shell_quick_access_folders, ShellQuickAccessEntry};
+#[cfg(windows)]
+pub use shell_folder::{
+    list_cloud_drive_roots, list_known_folder_folders, list_wsl_distro_roots, ShellFolderEntry,
+    FOLDERID_LIBRARIES, FOLDERID_NETWORK,
+};
 #[cfg(windows)]
 pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 #[cfg(windows)]
@@ -115,6 +122,13 @@ mod stubs {
     pub fn list_shell_quick_access_folders() -> anyhow::Result<Vec<ShellQuickAccessEntry>> {
         Ok(Vec::new())
     }
+
+    #[derive(Debug, Clone)]
+    pub struct ShellFolderEntry {
+        pub display_name: String,
+        pub path: PathBuf,
+    }
+
 
     pub fn open_item_properties(_path: &Path) -> anyhow::Result<()> {
         Ok(())

@@ -98,6 +98,95 @@ pub fn scrollbar_show_key(show: ScrollbarShow) -> SharedString {
     }
 }
 
+fn mutate_config(cx: &mut App, mutate: impl FnOnce(&mut AppConfig)) {
+    let mut config = cyberfiles_core::load_config().unwrap_or_default();
+    mutate(&mut config);
+    let _ = save_config(&config);
+    cx.refresh_windows();
+}
+
+pub fn sidebar_display_mode(_cx: &App) -> SharedString {
+    cyberfiles_core::load_config()
+        .map(|c| c.sidebar_display_mode.into())
+        .unwrap_or_else(|| "expanded".into())
+}
+
+pub fn apply_sidebar_display_mode(mode: SharedString, cx: &mut App) {
+    mutate_config(cx, |config| {
+        config.sidebar_display_mode = mode.to_string();
+    });
+}
+
+pub fn sidebar_section_pinned(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_sidebar_section_pinned)
+        .unwrap_or(true)
+}
+
+pub fn apply_sidebar_section_pinned(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_sidebar_section_pinned = enabled);
+}
+
+pub fn sidebar_section_library(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_sidebar_section_library)
+        .unwrap_or(true)
+}
+
+pub fn apply_sidebar_section_library(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_sidebar_section_library = enabled);
+}
+
+pub fn sidebar_section_drives(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_sidebar_section_drives)
+        .unwrap_or(true)
+}
+
+pub fn apply_sidebar_section_drives(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_sidebar_section_drives = enabled);
+}
+
+pub fn sidebar_section_cloud(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_sidebar_section_cloud)
+        .unwrap_or(true)
+}
+
+pub fn apply_sidebar_section_cloud(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_sidebar_section_cloud = enabled);
+}
+
+pub fn sidebar_section_network(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_sidebar_section_network)
+        .unwrap_or(true)
+}
+
+pub fn apply_sidebar_section_network(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_sidebar_section_network = enabled);
+}
+
+pub fn sidebar_section_wsl(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_sidebar_section_wsl)
+        .unwrap_or(true)
+}
+
+pub fn apply_sidebar_section_wsl(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_sidebar_section_wsl = enabled);
+}
+
+pub fn sidebar_section_file_tags(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.show_sidebar_section_file_tags)
+        .unwrap_or(true)
+}
+
+pub fn apply_sidebar_section_file_tags(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.show_sidebar_section_file_tags = enabled);
+}
+
 pub fn scrollbar_show_from_key(key: &str) -> ScrollbarShow {
     match key {
         "hover" => ScrollbarShow::Hover,
@@ -156,5 +245,15 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         file_sort_direction: prior.file_sort_direction,
         file_show_hidden: prior.file_show_hidden,
         path_history: prior.path_history,
+        sidebar_display_mode: prior.sidebar_display_mode,
+        sidebar_collapsed: prior.sidebar_collapsed,
+        show_sidebar_section_pinned: prior.show_sidebar_section_pinned,
+        show_sidebar_section_library: prior.show_sidebar_section_library,
+        show_sidebar_section_drives: prior.show_sidebar_section_drives,
+        show_sidebar_section_cloud: prior.show_sidebar_section_cloud,
+        show_sidebar_section_network: prior.show_sidebar_section_network,
+        show_sidebar_section_wsl: prior.show_sidebar_section_wsl,
+        show_sidebar_section_file_tags: prior.show_sidebar_section_file_tags,
+        file_tags: prior.file_tags,
     }
 }

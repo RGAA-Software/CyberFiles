@@ -7,6 +7,7 @@ mod main_page;
 mod omnibar;
 mod settings_view;
 mod shell;
+mod sidebar;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
