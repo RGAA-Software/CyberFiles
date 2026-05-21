@@ -17,7 +17,10 @@ pub use columns::column_trail_for;
 pub use drives::{default_user_profile, home_navigation_path, list_drives, DriveInfo};
 pub use item::{DirectoryReadOptions, FileItem, FileItemKind};
 pub use local::read_directory;
-pub use omnibar::{omnibar_path_suggestions, path_breadcrumbs, OmnibarPathSuggestion, PathBreadcrumb};
+pub use omnibar::{
+    breadcrumb_dropdown_entries, omnibar_path_suggestions, path_breadcrumbs,
+    OmnibarPathSuggestion, PathBreadcrumb,
+};
 pub use ops::{
     create_directory, create_file, delete_paths, recycle_paths, rename_path,
     unique_new_file_name, unique_new_folder_name,

@@ -1,15 +1,18 @@
 use std::path::PathBuf;
 
 use cyberfiles_core::{load_config, pinned_folder_paths, record_path_history, save_config};
-use cyberfiles_fs::{home_navigation_path, list_drives, path_breadcrumbs, PathBreadcrumb};
+use cyberfiles_fs::{
+    breadcrumb_dropdown_entries, home_navigation_path, list_drives, path_breadcrumbs,
+    PathBreadcrumb,
+};
 use cyberfiles_commands::FocusOmnibar;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    breadcrumb::{Breadcrumb, BreadcrumbItem},
     button::{Button, ButtonVariants as _},
     h_flex,
     label::Label,
     input::{Input, InputEvent, InputState},
+    menu::{DropdownMenu as _, PopupMenuItem},
     resizable::{h_resizable, resizable_panel},
     sidebar::{
         Sidebar, SidebarGroup, SidebarHeader, SidebarItem, SidebarMenu, SidebarMenuItem,
@@ -393,26 +396,91 @@ impl MainPage {
                     )
                     .when(show_breadcrumbs, |bar| {
                         bar.child(
-                            div()
+                            h_flex()
                                 .id("omnibar-breadcrumbs")
                                 .flex_1()
                                 .min_w_0()
+                                .gap_1()
+                                .items_center()
                                 .overflow_x_scroll()
-                                .cursor_pointer()
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.start_omnibar_edit(window, cx);
-                                }))
-                                .child(Breadcrumb::new().children(
-                                    breadcrumbs.iter().map(|crumb| {
-                                        let path = crumb.path.clone();
+                                .children(breadcrumbs.iter().enumerate().map(
+                                    |(index, crumb)| {
+                                        let is_last = index + 1 == breadcrumbs.len();
+                                        let path_nav = crumb.path.clone();
+                                        let path_menu = crumb.path.clone();
                                         let label = crumb.label.clone();
-                                        BreadcrumbItem::new(label).on_click(move |_, _, cx| {
-                                            crate::app_state::AppNavigation::navigate_breadcrumb(
-                                                path.clone(),
-                                                cx,
-                                            );
-                                        })
-                                    }),
+                                        let show_sep = !is_last;
+                                        h_flex()
+                                            .items_center()
+                                            .child(
+                                                Button::new(("omnibar-crumb", index))
+                                                    .xsmall()
+                                                    .ghost()
+                                                    .label(label)
+                                                    .on_click(cx.listener(
+                                                        move |this, _: &ClickEvent, _, cx| {
+                                                            if is_last {
+                                                                return;
+                                                            }
+                                                            this.omnibar_editing = false;
+                                                            crate::app_state::AppNavigation::navigate_breadcrumb(
+                                                                path_nav.clone(),
+                                                                cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            )
+                                            .child(
+                                                Button::new(("omnibar-crumb-menu", index))
+                                                    .xsmall()
+                                                    .ghost()
+                                                    .icon(IconName::ChevronDown)
+                                                    .dropdown_menu_with_anchor(
+                                                        Anchor::BottomLeft,
+                                                        move |menu, _, _| {
+                                                            let entries =
+                                                                breadcrumb_dropdown_entries(
+                                                                    &path_menu,
+                                                                );
+                                                            let mut menu = menu.scrollable(true);
+                                                            if entries.is_empty() {
+                                                                menu = menu.item(
+                                                                    PopupMenuItem::new(t!(
+                                                                        "omnibar.breadcrumb.empty"
+                                                                    ))
+                                                                    .disabled(true),
+                                                                );
+                                                            } else {
+                                                                for entry in entries {
+                                                                    let target =
+                                                                        entry.path.clone();
+                                                                    let entry_label =
+                                                                        entry.label.clone();
+                                                                    menu = menu.item(
+                                                                        PopupMenuItem::new(
+                                                                            entry_label,
+                                                                        )
+                                                                        .on_click(
+                                                                            move |_, _, cx| {
+                                                                                crate::app_state::AppNavigation::navigate_to_path(
+                                                                                    target.clone(),
+                                                                                    cx,
+                                                                                );
+                                                                            },
+                                                                        ),
+                                                                    );
+                                                                }
+                                                            }
+                                                            menu
+                                                        },
+                                                    ),
+                                            )
+                                            .when(show_sep, |row| {
+                                                row.child(
+                                                    Icon::new(IconName::ChevronRight).small(),
+                                                )
+                                            })
+                                    },
                                 )),
                         )
                     })

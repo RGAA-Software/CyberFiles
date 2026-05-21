@@ -31,6 +31,10 @@ omnibar.command.placeholder:
   en: Search commands…
   zh-CN: 搜索命令…
   zh-HK: 搜尋命令…
+omnibar.breadcrumb.empty:
+  en: No subfolders
+  zh-CN: 没有子文件夹
+  zh-HK: 沒有子資料夾
 nav.split_pane:
   en: Toggle dual pane
   zh-CN: 切换双栏

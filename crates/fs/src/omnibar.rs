@@ -52,6 +52,32 @@ pub struct OmnibarPathSuggestion {
 }
 
 const MAX_SUGGESTIONS: usize = 10;
+const MAX_BREADCRUMB_ENTRIES: usize = 50;
+
+/// Subfolder entries for a breadcrumb segment dropdown (chevron menu).
+pub fn breadcrumb_dropdown_entries(path: &Path) -> Vec<OmnibarPathSuggestion> {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return Vec::new();
+    };
+
+    let mut suggestions = Vec::new();
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if !entry_path.is_dir() {
+            continue;
+        }
+        suggestions.push(OmnibarPathSuggestion {
+            label: entry.file_name().to_string_lossy().to_string(),
+            path: entry_path,
+        });
+        if suggestions.len() >= MAX_BREADCRUMB_ENTRIES {
+            break;
+        }
+    }
+
+    suggestions.sort_by(|a, b| a.label.cmp(&b.label));
+    suggestions
+}
 
 /// Path-mode suggestions: history when input is empty/special, otherwise child folder names.
 pub fn omnibar_path_suggestions(

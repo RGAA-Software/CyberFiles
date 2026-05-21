@@ -1586,16 +1586,17 @@ impl FileBrowser {
         self.focus_search(window, cx);
     }
 
-    fn on_shell_properties(&mut self, _: &ShellProperties, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_shell_properties(&mut self, _: &ShellProperties, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = self.primary_path() else {
             return;
         };
-        if let Err(error) = platform::open_item_properties(&path) {
-            window.push_notification(
-                Notification::error(format!("{}: {error}", t!("files.properties.error"))),
-                cx,
-            );
-        }
+        let path = path.to_path_buf();
+        cx.spawn(async move |_, cx| {
+            let _ = cx
+                .background_spawn(async move { platform::open_item_properties(&path) })
+                .await;
+        })
+        .detach();
     }
 
     /// Files-style item context flyout: app commands first, then cached Shell extensions.
