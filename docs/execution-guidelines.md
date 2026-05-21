@@ -145,4 +145,4 @@ rg "div\(\)\s*\.(text|child)" crates/ui/src
 
 ---
 
-*最后更新：2026-05-21。Omnibar 面包屑为自建 `PathBreadcrumbBar`（Files 前缀省略号 + 宽度折叠 + 根下拉）；回归清单见 [`omnibar-breadcrumb-bugs.md`](omnibar-breadcrumb-bugs.md)。文件列表锁定 `v_virtual_list`。*
+*最后更新：2026-05-21。Omnibar 面包屑：`PathBreadcrumbBar`；回归 [`omnibar-breadcrumb-bugs.md`](omnibar-breadcrumb-bugs.md)；与 Files 差距 [`omnibar-breadcrumb-files-gap.md`](omnibar-breadcrumb-files-gap.md)。文件列表锁定 `v_virtual_list`。*
