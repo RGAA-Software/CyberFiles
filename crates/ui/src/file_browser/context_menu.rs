@@ -11,14 +11,14 @@ use cyberfiles_core::load_config;
 use cyberfiles_fs::SortOption;
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
 use gpui::{
-    div, img, prelude::*, AnyElement, App, Context, Entity, Image, ImageFormat, ObjectFit, Pixels,
+    div, img, prelude::*, AnyElement, Context, Entity, Image, ImageFormat, ObjectFit, Pixels,
     SharedString, Window, px,
 };
 use gpui_component::{
     h_flex,
     menu::{PopupMenu, PopupMenuItem},
     notification::Notification,
-    Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
+    Disableable as _, Icon, IconName, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -38,6 +38,12 @@ const SHELL_MENU_MAX_HEIGHT: Pixels = px(620.);
 
 fn finish_shell_popup_menu(menu: PopupMenu) -> PopupMenu {
     menu.scrollable(true).max_h(SHELL_MENU_MAX_HEIGHT)
+}
+
+fn entries_contain_submenu(entries: &[ShellContextMenuEntry]) -> bool {
+    entries
+        .iter()
+        .any(|entry| matches!(entry, ShellContextMenuEntry::Submenu { .. }))
 }
 
 fn resolve_submenu_entries(
@@ -542,58 +548,52 @@ fn shell_row_icon_slot(icon_png: Option<Arc<Vec<u8>>>) -> AnyElement {
     }
 }
 
-fn shell_submenu_popup_item(
+fn append_shell_submenu_item(
+    menu: PopupMenu,
     label: String,
-    icon_png: Option<Vec<u8>>,
-    branch_entries: Vec<ShellContextMenuEntry>,
-    paths: Vec<PathBuf>,
-    extended_verbs: bool,
-    browser: Entity<FileBrowser>,
-) -> PopupMenuItem {
-    let display_label = platform::format_shell_menu_label(&label);
-    let row_png = icon_png.map(Arc::new);
-    let open_branch = move |window: &mut Window, cx: &mut App| {
-        if branch_entries.is_empty() {
-            return;
-        }
-        let position = window.mouse_position();
-        let _ = browser.update(cx, |browser, cx| {
-            browser.open_shell_branch_menu(
-                branch_entries.clone(),
-                paths.clone(),
-                extended_verbs,
-                position,
-                window,
-                cx,
-            );
-        });
-    };
-    PopupMenuItem::element(move |_window, _cx| {
-        h_flex()
-            .items_center()
-            .gap_2()
-            .px_2()
-            .py_1()
-            .min_w(px(200.))
-            .child(shell_row_icon_slot(row_png.clone()))
-            .child(div().flex_1().text_sm().child(display_label.clone()))
-            .child(Icon::new(IconName::ChevronRight).xsmall())
-            .into_any_element()
-    })
-    .on_click(move |_, window, cx| open_branch(window, cx))
-}
-
-pub(crate) fn append_shell_entries(
-    mut menu: PopupMenu,
-    entries: &[ShellContextMenuEntry],
+    children: &[ShellContextMenuEntry],
+    lazy_parent_index: Option<u32>,
     paths: &[PathBuf],
     extended_verbs: bool,
     browser: Entity<FileBrowser>,
-    _window: &mut Window,
-    _cx: &mut Context<PopupMenu>,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let browser = browser.clone();
-    for entry in entries {
+    let display_label = platform::format_shell_menu_label(&label);
+    let log_label = display_label.clone();
+    let paths_for_sub = paths.to_vec();
+    let browser_sub = browser.clone();
+    let lazy_index = lazy_parent_index;
+    let children_stash = children.to_vec();
+    menu.submenu(display_label, window, cx, move |sub, window, cx| {
+        let loaded = resolve_submenu_entries(lazy_index, &children_stash);
+        eprintln!(
+            "[shell-menu] submenu {:?} lazy={lazy_index:?} entries={}",
+            log_label, loaded.len()
+        );
+        if loaded.is_empty() {
+            sub.item(PopupMenuItem::new(t!("files.menu.shell_empty")).disabled(true))
+        } else {
+            append_shell_entries(
+                sub,
+                &loaded,
+                &paths_for_sub,
+                extended_verbs,
+                browser_sub.clone(),
+                window,
+                cx,
+            )
+        }
+    })
+}
+
+fn append_shell_flat_popup_items(
+    mut menu: PopupMenu,
+    flat_entries: &[ShellContextMenuEntry],
+    paths: &[PathBuf],
+    extended_verbs: bool,
+) -> PopupMenu {
+    for entry in flat_entries {
         match entry {
             ShellContextMenuEntry::Separator => {
                 menu = menu.separator();
@@ -614,25 +614,84 @@ pub(crate) fn append_shell_entries(
                     extended_verbs,
                 ));
             }
-            ShellContextMenuEntry::Submenu {
-                label,
-                children,
-                lazy_parent_index,
-                icon_png,
-                ..
-            } => {
-                menu = menu.item(shell_submenu_popup_item(
-                    label.clone(),
-                    icon_png.clone(),
-                    resolve_submenu_entries(*lazy_parent_index, children),
-                    paths.to_vec(),
-                    extended_verbs,
-                    browser.clone(),
-                ));
-            }
+            ShellContextMenuEntry::Submenu { .. } => {}
         }
     }
-    finish_shell_popup_menu(menu)
+    menu
+}
+
+pub(crate) fn append_shell_entries(
+    mut menu: PopupMenu,
+    entries: &[ShellContextMenuEntry],
+    paths: &[PathBuf],
+    extended_verbs: bool,
+    browser: Entity<FileBrowser>,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let browser = browser.clone();
+    if entries_contain_submenu(entries) {
+        // Native submenu rows (hover flyout); plain rows as PopupMenuItem (not inside scrollable).
+        let mut flat_batch = Vec::new();
+        for entry in entries {
+            match entry {
+                ShellContextMenuEntry::Submenu {
+                    label,
+                    children,
+                    lazy_parent_index,
+                    ..
+                } => {
+                    if !flat_batch.is_empty() {
+                        menu =
+                            append_shell_flat_popup_items(menu, &flat_batch, paths, extended_verbs);
+                        flat_batch.clear();
+                    }
+                    menu = append_shell_submenu_item(
+                        menu,
+                        label.clone(),
+                        children,
+                        *lazy_parent_index,
+                        paths,
+                        extended_verbs,
+                        browser.clone(),
+                        window,
+                        cx,
+                    );
+                }
+                _ => flat_batch.push(entry.clone()),
+            }
+        }
+        if !flat_batch.is_empty() {
+            menu = append_shell_flat_popup_items(menu, &flat_batch, paths, extended_verbs);
+        }
+        menu.max_h(SHELL_MENU_MAX_HEIGHT)
+    } else {
+        for entry in entries {
+            match entry {
+                ShellContextMenuEntry::Separator => {
+                    menu = menu.separator();
+                }
+                ShellContextMenuEntry::Item {
+                    label,
+                    command_offset,
+                    command_string,
+                    icon_png,
+                    ..
+                } => {
+                    menu = menu.item(shell_popup_item(
+                        label.clone(),
+                        icon_png.clone(),
+                        paths.to_vec(),
+                        *command_offset,
+                        command_string.clone(),
+                        extended_verbs,
+                    ));
+                }
+                ShellContextMenuEntry::Submenu { .. } => {}
+            }
+        }
+        finish_shell_popup_menu(menu)
+    }
 }
 
 fn build_recycle_item_menu(

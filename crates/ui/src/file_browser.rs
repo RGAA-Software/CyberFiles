@@ -562,35 +562,48 @@ impl FileBrowser {
             return;
         }
 
-        let browser_entity = cx.entity();
         let browser_weak = cx.weak_entity();
-        let menu = PopupMenu::build(window, cx, {
-            let browser_entity = browser_entity.clone();
-            move |menu, window, menu_cx| {
-                context_menu::append_shell_entries(
-                    menu,
-                    &entries,
-                    &paths,
-                    extended_verbs,
-                    browser_entity,
-                    window,
-                    menu_cx,
-                )
-            }
-        });
-
-        self.shell_branch_menu = Some(menu.clone());
-        self.shell_branch_menu_position = position;
-        self._shell_branch_subscription = Some(window.subscribe(&menu, cx, {
-            move |_, _: &DismissEvent, window, cx| {
+        let entries = entries.clone();
+        let paths = paths.clone();
+        cx.defer(move |cx| {
+            let Some(window) = cx.active_window() else {
+                return;
+            };
+            let _ = window.update(cx, |_, window, cx| {
+                let Some(browser_entity) = browser_weak.upgrade() else {
+                    return;
+                };
+                let menu = PopupMenu::build(window, cx, {
+                    let browser_entity = browser_entity.clone();
+                    move |menu, window, menu_cx| {
+                        context_menu::append_shell_entries(
+                            menu,
+                            &entries,
+                            &paths,
+                            extended_verbs,
+                            browser_entity,
+                            window,
+                            menu_cx,
+                        )
+                    }
+                });
+                let browser_weak_dismiss = browser_weak.clone();
                 let _ = browser_weak.update(cx, |browser, cx| {
-                    browser.dismiss_shell_branch_menu();
+                    browser.shell_branch_menu = Some(menu.clone());
+                    browser.shell_branch_menu_position = position;
+                    browser._shell_branch_subscription = Some(window.subscribe(&menu, cx, {
+                        move |_, _: &DismissEvent, window, cx| {
+                            let _ = browser_weak_dismiss.update(cx, |browser, cx| {
+                                browser.dismiss_shell_branch_menu();
+                                cx.notify();
+                            });
+                            window.refresh();
+                        }
+                    }));
                     cx.notify();
                 });
-                window.refresh();
-            }
-        }));
-        cx.notify();
+            });
+        });
     }
 
     fn open_context_menu(
