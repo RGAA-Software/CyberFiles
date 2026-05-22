@@ -10,15 +10,12 @@ use cyberfiles_commands::{
 use cyberfiles_core::load_config;
 use cyberfiles_fs::SortOption;
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
-use gpui::{
-    div, img, prelude::*, AnyElement, Context, Entity, Image, ImageFormat, ObjectFit, Pixels,
-    SharedString, Window, px,
-};
+use gpui::{div, prelude::*, Context, Entity, Pixels, SharedString, Window, px};
 use gpui_component::{
     h_flex,
     menu::{PopupMenu, PopupMenuItem},
     notification::Notification,
-    Disableable as _, Icon, IconName, WindowExt as _,
+    Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -35,6 +32,83 @@ use crate::toolbar_button::toolbar_icon_button;
 
 /// Max height for Shell extension lists (`PopupMenu::scrollable` + nested branch flyouts).
 const SHELL_MENU_MAX_HEIGHT: Pixels = px(620.);
+
+/// Files-style context menu row (`Size::Medium` / 32px).
+const CONTEXT_MENU_ROW_HEIGHT: Pixels = px(32.);
+const CONTEXT_MENU_ICON_SIZE: Pixels = px(16.);
+/// Matches gpui-component popup menu `INNER_PADDING`.
+const CONTEXT_MENU_INNER_PADDING: Pixels = px(8.);
+
+fn apply_context_menu_style(menu: PopupMenu) -> PopupMenu {
+    menu
+}
+
+fn context_menu_icon_cell(icon: Icon) -> impl IntoElement {
+    div()
+        .w(CONTEXT_MENU_ICON_SIZE)
+        .h(CONTEXT_MENU_ICON_SIZE)
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(icon.xsmall())
+}
+
+fn context_menu_icon_cell_empty() -> impl IntoElement {
+    div()
+        .w(CONTEXT_MENU_ICON_SIZE)
+        .h(CONTEXT_MENU_ICON_SIZE)
+        .flex_none()
+}
+
+fn context_menu_text_row(
+    label: SharedString,
+    icon: Option<Icon>,
+    trailing_chevron: bool,
+) -> impl IntoElement {
+    h_flex()
+        .w_full()
+        .h(CONTEXT_MENU_ROW_HEIGHT)
+        .min_h(CONTEXT_MENU_ROW_HEIGHT)
+        .items_center()
+        .gap_2()
+        .px(CONTEXT_MENU_INNER_PADDING)
+        .child(if let Some(icon) = icon {
+            context_menu_icon_cell(icon).into_any_element()
+        } else {
+            context_menu_icon_cell_empty().into_any_element()
+        })
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_sm()
+                .child(label),
+        )
+        .when(trailing_chevron, |row| {
+            row.child(Icon::new(IconName::ChevronRight).xsmall())
+        })
+}
+
+fn context_menu_action_item(
+    label: impl Into<SharedString>,
+    icon: Icon,
+    action: Box<dyn gpui::Action>,
+    disabled: bool,
+    checked: bool,
+) -> PopupMenuItem {
+    let label = label.into();
+    let left_icon = if checked {
+        Icon::new(IconName::Check)
+    } else {
+        icon.clone()
+    };
+    PopupMenuItem::element(move |_, _| {
+        context_menu_text_row(label.clone(), Some(left_icon.clone()), false)
+    })
+        .action(action)
+        .disabled(disabled)
+}
 
 fn finish_shell_popup_menu(menu: PopupMenu) -> PopupMenu {
     menu.scrollable(true).max_h(SHELL_MENU_MAX_HEIGHT)
@@ -71,11 +145,12 @@ pub fn build_context_menu(
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    if browser.read(cx).is_background_context_menu() {
+    let menu = if browser.read(cx).is_background_context_menu() {
         build_background_menu(menu, browser, window, cx)
     } else {
         build_item_menu(menu, browser, window, cx)
-    }
+    };
+    apply_context_menu_style(menu)
 }
 
 fn build_background_menu(
@@ -106,24 +181,27 @@ fn build_background_menu(
         let focus = browser_layout.read(cx).focus_handle.clone();
         let view_mode = browser_layout.read(cx).view_mode;
         menu.action_context(focus)
-            .item(
-                PopupMenuItem::new(t!("files.view.details"))
-                    .icon(Icon::new(IconName::GalleryVerticalEnd))
-                    .checked(view_mode == ViewMode::Details)
-                    .action(Box::new(ViewDetails)),
-            )
-            .item(
-                PopupMenuItem::new(t!("files.view.grid"))
-                    .icon(Icon::new(IconName::LayoutDashboard))
-                    .checked(view_mode == ViewMode::Grid)
-                    .action(Box::new(ViewGrid)),
-            )
-            .item(
-                PopupMenuItem::new(t!("files.view.columns"))
-                    .icon(Icon::new(IconName::PanelLeft))
-                    .checked(view_mode == ViewMode::Columns)
-                    .action(Box::new(ViewColumns)),
-            )
+            .item(context_menu_action_item(
+                t!("files.view.details"),
+                Icon::new(IconName::GalleryVerticalEnd),
+                Box::new(ViewDetails),
+                false,
+                view_mode == ViewMode::Details,
+            ))
+            .item(context_menu_action_item(
+                t!("files.view.grid"),
+                Icon::new(IconName::LayoutDashboard),
+                Box::new(ViewGrid),
+                false,
+                view_mode == ViewMode::Grid,
+            ))
+            .item(context_menu_action_item(
+                t!("files.view.columns"),
+                Icon::new(IconName::PanelLeft),
+                Box::new(ViewColumns),
+                false,
+                view_mode == ViewMode::Columns,
+            ))
     })
     .submenu(t!("files.menu.sort"), window, cx, move |menu, _, cx| {
         let state = browser_sort.read(cx);
@@ -136,37 +214,56 @@ fn build_background_menu(
             t!("files.show_hidden.on")
         };
         menu.action_context(focus)
-            .item(
-                PopupMenuItem::new(t!("files.sort.name"))
-                    .checked(sort.option == SortOption::Name)
-                    .action(Box::new(SortByName)),
-            )
-            .item(
-                PopupMenuItem::new(t!("files.sort.modified"))
-                    .checked(sort.option == SortOption::DateModified)
-                    .action(Box::new(SortByModified)),
-            )
-            .item(
-                PopupMenuItem::new(t!("files.sort.created"))
-                    .checked(sort.option == SortOption::DateCreated)
-                    .action(Box::new(SortByCreated)),
-            )
-            .item(
-                PopupMenuItem::new(t!("files.sort.size"))
-                    .checked(sort.option == SortOption::Size)
-                    .action(Box::new(SortBySize)),
-            )
-            .item(
-                PopupMenuItem::new(t!("files.sort.type"))
-                    .checked(sort.option == SortOption::FileType)
-                    .action(Box::new(SortByType)),
-            )
+            .item(context_menu_action_item(
+                t!("files.sort.name"),
+                Icon::empty(),
+                Box::new(SortByName),
+                false,
+                sort.option == SortOption::Name,
+            ))
+            .item(context_menu_action_item(
+                t!("files.sort.modified"),
+                Icon::empty(),
+                Box::new(SortByModified),
+                false,
+                sort.option == SortOption::DateModified,
+            ))
+            .item(context_menu_action_item(
+                t!("files.sort.created"),
+                Icon::empty(),
+                Box::new(SortByCreated),
+                false,
+                sort.option == SortOption::DateCreated,
+            ))
+            .item(context_menu_action_item(
+                t!("files.sort.size"),
+                Icon::empty(),
+                Box::new(SortBySize),
+                false,
+                sort.option == SortOption::Size,
+            ))
+            .item(context_menu_action_item(
+                t!("files.sort.type"),
+                Icon::empty(),
+                Box::new(SortByType),
+                false,
+                sort.option == SortOption::FileType,
+            ))
             .separator()
-            .menu(
+            .item(context_menu_action_item(
                 t!("files.sort.toggle_direction"),
+                Icon::empty(),
                 Box::new(ToggleSortDirection),
-            )
-            .menu(hidden_label, Box::new(ToggleShowHidden))
+                false,
+                false,
+            ))
+            .item(context_menu_action_item(
+                hidden_label,
+                Icon::empty(),
+                Box::new(ToggleShowHidden),
+                false,
+                false,
+            ))
     });
 
     if !in_recycle && !in_file_tag {
@@ -218,63 +315,81 @@ fn build_directory_item_menu(
     menu = append_quick_action_toolbar(menu, has_selection, can_paste);
     menu = menu.separator();
 
-    menu = menu.menu_with_icon(
+    menu = menu.item(context_menu_action_item(
         t!("files.menu.open"),
         Icon::new(IconName::Folder),
         Box::new(OpenItem),
-    );
+        false,
+        false,
+    ));
 
     if single && !paths[0].is_dir() {
-        menu = menu.menu_with_icon(
+        menu = menu.item(context_menu_action_item(
             t!("files.menu.open_with"),
             Icon::new(IconName::Settings2),
             Box::new(OpenWithDialog),
-        );
+            false,
+            false,
+        ));
     }
 
     if single {
         let path = paths[0].clone();
+        let tab_label: SharedString = t!("sidebar.menu.open_new_tab").into();
+        let tab_path = path.clone();
         menu = menu.item(
-            PopupMenuItem::new(t!("sidebar.menu.open_new_tab"))
-                .icon(Icon::new(IconName::File))
-                .on_click(move |_, _, cx| {
-                    AppNavigation::open_path_in_new_tab(path.clone(), cx);
-                }),
+            PopupMenuItem::element(move |_, _| {
+                context_menu_text_row(tab_label.clone(), Some(Icon::new(IconName::File)), false)
+            })
+            .on_click(move |_, _, cx| {
+                AppNavigation::open_path_in_new_tab(tab_path.clone(), cx);
+            }),
         );
-        menu = menu.menu_with_icon(
-            t!("files.menu.open_in_new_window"),
-            Icon::new(IconName::ExternalLink),
-            Box::new(OpenInNewWindow),
-        );
-        menu = menu.menu_with_icon(
-            t!("files.menu.open_in_new_pane"),
-            Icon::new(IconName::PanelLeft),
-            Box::new(OpenInNewPane),
-        );
+        menu = menu
+            .item(context_menu_action_item(
+                t!("files.menu.open_in_new_window"),
+                Icon::new(IconName::ExternalLink),
+                Box::new(OpenInNewWindow),
+                false,
+                false,
+            ))
+            .item(context_menu_action_item(
+                t!("files.menu.open_in_new_pane"),
+                Icon::new(IconName::PanelLeft),
+                Box::new(OpenInNewPane),
+                false,
+                false,
+            ));
     }
 
     menu = menu.separator();
 
-    menu = menu.menu_with_icon(
+    menu = menu.item(context_menu_action_item(
         t!("files.menu.copy_path"),
         Icon::new(IconName::ExternalLink),
         Box::new(CopyPath),
-    );
+        false,
+        false,
+    ));
 
     if multi {
-        menu = menu.menu_with_icon(
+        menu = menu.item(context_menu_action_item(
             t!("files.menu.create_folder_from_selection"),
             Icon::new(IconName::Folder),
             Box::new(CreateFolderFromSelection),
-        );
+            false,
+            false,
+        ));
     }
 
     if single && !paths[0].is_dir() {
-        menu = menu.menu_with_icon(
+        menu = menu.item(context_menu_action_item(
             t!("files.menu.create_shortcut"),
             Icon::new(IconName::ExternalLink),
             Box::new(CreateShortcut),
-        );
+            false,
+            false,
+        ));
     }
 
     menu = menu
@@ -300,16 +415,21 @@ fn build_directory_item_menu(
         let pin_icon = Icon::new(IconName::Folder);
         if path_is_pinned(&path_string) {
             let ps = path_string.clone();
+            let label: SharedString = pin_label.into();
             menu = menu.item(
-                PopupMenuItem::new(pin_label)
-                    .icon(pin_icon)
-                    .on_click(move |_, _, cx| AppNavigation::unpin_folder(&ps, cx)),
+                PopupMenuItem::element(move |_, _| {
+                    context_menu_text_row(label.clone(), Some(pin_icon.clone()), false)
+                })
+                .on_click(move |_, _, cx| AppNavigation::unpin_folder(&ps, cx)),
             );
         } else if path.exists() {
+            let label: SharedString = pin_label.into();
+            let pin_path = path.clone();
             menu = menu.item(
-                PopupMenuItem::new(pin_label)
-                    .icon(pin_icon)
-                    .on_click(move |_, _, cx| AppNavigation::pin_folder(path.clone(), cx)),
+                PopupMenuItem::element(move |_, _| {
+                    context_menu_text_row(label.clone(), Some(pin_icon.clone()), false)
+                })
+                .on_click(move |_, _, cx| AppNavigation::pin_folder(pin_path.clone(), cx)),
             );
         }
     }
@@ -317,23 +437,32 @@ fn build_directory_item_menu(
     if single {
         if let Some(parent) = paths[0].parent() {
             let parent = parent.to_path_buf();
+            let loc_label: SharedString = t!("files.menu.open_file_location").into();
+            let loc_parent = parent.clone();
             menu = menu.item(
-                PopupMenuItem::new(t!("files.menu.open_file_location"))
-                    .icon(Icon::new(IconName::Folder))
-                    .on_click(move |_, _, cx| {
-                        AppNavigation::navigate_to_path(parent.clone(), cx);
-                    }),
+                PopupMenuItem::element(move |_, _| {
+                    context_menu_text_row(
+                        loc_label.clone(),
+                        Some(Icon::new(IconName::Folder)),
+                        false,
+                    )
+                })
+                .on_click(move |_, _, cx| {
+                    AppNavigation::navigate_to_path(loc_parent.clone(), cx);
+                }),
             );
         }
     }
 
     menu = menu
         .separator()
-        .menu_with_icon(
+        .item(context_menu_action_item(
             t!("files.menu.open_in_terminal"),
             Icon::new(IconName::File),
             Box::new(OpenInTerminal),
-        )
+            false,
+            false,
+        ))
         .item(placeholder_item(
             t!("files.menu.edit_file_tags"),
             IconName::File,
@@ -448,12 +577,13 @@ fn append_show_more_options(
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
     let paths_for_sub = paths.clone();
-    menu.submenu_with_icon(
-        Some(Icon::new(IconName::Ellipsis)),
-        t!("files.menu.show_more_options"),
-        window,
-        cx,
-        move |sub, window, cx| {
+    apply_context_menu_style(
+        menu.submenu_with_icon(
+            Some(Icon::new(IconName::Ellipsis)),
+            t!("files.menu.show_more_options"),
+            window,
+            cx,
+            move |sub, window, cx| {
             match shell_submenu_snapshot(&shell_menu_cache, &paths_for_sub, extended_verbs) {
             ShellSubmenuSnapshot::Loading => sub.item(
                 PopupMenuItem::new(t!("files.menu.shell_loading")).disabled(true),
@@ -471,7 +601,8 @@ fn append_show_more_options(
                 cx,
             ),
             }
-        },
+            },
+        ),
     )
 }
 
@@ -481,11 +612,14 @@ fn placeholder_item(
     message: impl Into<SharedString>,
 ) -> PopupMenuItem {
     let message = message.into();
-    PopupMenuItem::new(label)
-        .icon(Icon::new(icon))
-        .on_click(move |_, window, cx| {
-            window.push_notification(Notification::info(message.clone()), cx);
-        })
+    let label = label.into();
+    let menu_icon = Icon::new(icon);
+    PopupMenuItem::element(move |_, _| {
+        context_menu_text_row(label.clone(), Some(menu_icon.clone()), false)
+    })
+    .on_click(move |_, window, cx| {
+        window.push_notification(Notification::info(message.clone()), cx);
+    })
 }
 
 fn shell_menu_item_is_properties(command_string: Option<&str>, label: &str) -> bool {
@@ -517,35 +651,33 @@ fn shell_popup_item(
         }
     };
 
-    let row_label = display_label.clone();
+    let row_label: SharedString = display_label.into();
     let row_png = icon_png.map(Arc::new);
     PopupMenuItem::element(move |window, _| {
         let icon_slot = if let Some(png) = row_png.clone() {
             shell_menu_icon_img(png, window).into_any_element()
         } else {
-            div().w(px(16.)).h(px(16.)).into_any_element()
+            context_menu_icon_cell_empty().into_any_element()
         };
         h_flex()
+            .w_full()
+            .h(CONTEXT_MENU_ROW_HEIGHT)
+            .min_h(CONTEXT_MENU_ROW_HEIGHT)
             .items_center()
             .gap_2()
-            .px_2()
-            .py_1()
+            .px(CONTEXT_MENU_INNER_PADDING)
             .min_w(px(200.))
             .child(icon_slot)
-            .child(div().text_sm().child(row_label.clone()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_sm()
+                    .child(row_label.clone()),
+            )
             .into_any_element()
     })
     .on_click(move |_, window, cx| invoke(window, cx))
-}
-
-fn shell_row_icon_slot(icon_png: Option<Arc<Vec<u8>>>) -> AnyElement {
-    match icon_png {
-        Some(png) => img(Arc::new(Image::from_bytes(ImageFormat::Png, (*png).clone())))
-            .size(px(16.))
-            .object_fit(ObjectFit::Contain)
-            .into_any_element(),
-        None => div().w(px(16.)).h(px(16.)).into_any_element(),
-    }
 }
 
 fn append_shell_submenu_item(
@@ -565,7 +697,12 @@ fn append_shell_submenu_item(
     let browser_sub = browser.clone();
     let lazy_index = lazy_parent_index;
     let children_stash = children.to_vec();
-    menu.submenu(display_label, window, cx, move |sub, window, cx| {
+    menu.submenu_with_icon(
+        Some(Icon::empty()),
+        display_label,
+        window,
+        cx,
+        move |sub, window, cx| {
         let loaded = resolve_submenu_entries(lazy_index, &children_stash);
         eprintln!(
             "[shell-menu] submenu {:?} lazy={lazy_index:?} entries={}",
@@ -584,7 +721,8 @@ fn append_shell_submenu_item(
                 cx,
             )
         }
-    })
+        },
+    )
 }
 
 fn append_shell_flat_popup_items(
@@ -664,7 +802,7 @@ pub(crate) fn append_shell_entries(
         if !flat_batch.is_empty() {
             menu = append_shell_flat_popup_items(menu, &flat_batch, paths, extended_verbs);
         }
-        menu.max_h(SHELL_MENU_MAX_HEIGHT)
+        apply_context_menu_style(menu.max_h(SHELL_MENU_MAX_HEIGHT))
     } else {
         for entry in entries {
             match entry {
@@ -690,7 +828,7 @@ pub(crate) fn append_shell_entries(
                 ShellContextMenuEntry::Submenu { .. } => {}
             }
         }
-        finish_shell_popup_menu(menu)
+        apply_context_menu_style(finish_shell_popup_menu(menu))
     }
 }
 
@@ -708,20 +846,36 @@ fn build_recycle_item_menu(
     let mut menu = menu.action_context(focus);
     menu = append_quick_action_toolbar(menu, has_selection, can_paste);
     menu.separator()
-        .menu_with_icon(t!("files.menu.open"), Icon::new(IconName::Folder), Box::new(OpenItem))
+        .item(context_menu_action_item(
+            t!("files.menu.open"),
+            Icon::new(IconName::Folder),
+            Box::new(OpenItem),
+            false,
+            false,
+        ))
         .separator()
-        .menu_with_icon(t!("files.menu.copy"), Icon::new(IconName::Copy), Box::new(CopyItems))
+        .item(context_menu_action_item(
+            t!("files.menu.copy"),
+            Icon::new(IconName::Copy),
+            Box::new(CopyItems),
+            false,
+            false,
+        ))
         .separator()
-        .menu_with_icon(
+        .item(context_menu_action_item(
             t!("files.menu.delete_permanent"),
             Icon::new(IconName::Delete),
             Box::new(DeleteItemsPermanent),
-        )
-        .menu_with_icon(
+            false,
+            false,
+        ))
+        .item(context_menu_action_item(
             t!("files.menu.properties"),
             Icon::new(IconName::Settings2),
             Box::new(ShellProperties),
-        )
+            false,
+            false,
+        ))
 }
 
 fn build_file_tag_item_menu(
@@ -740,29 +894,41 @@ fn build_file_tag_item_menu(
     menu = append_quick_action_toolbar(menu, has_selection, false);
     menu = menu
         .separator()
-        .menu_with_icon(t!("files.menu.open"), Icon::new(IconName::Folder), Box::new(OpenItem));
+        .item(context_menu_action_item(
+            t!("files.menu.open"),
+            Icon::new(IconName::Folder),
+            Box::new(OpenItem),
+            false,
+            false,
+        ));
 
     if single_dir {
         let path = paths[0].clone();
+        let tab_label: SharedString = t!("sidebar.menu.open_new_tab").into();
         menu = menu.item(
-            PopupMenuItem::new(t!("sidebar.menu.open_new_tab"))
-                .icon(Icon::new(IconName::File))
-                .on_click(move |_, _, cx| {
-                    AppNavigation::open_path_in_new_tab(path.clone(), cx);
-                }),
+            PopupMenuItem::element(move |_, _| {
+                context_menu_text_row(tab_label.clone(), Some(Icon::new(IconName::File)), false)
+            })
+            .on_click(move |_, _, cx| {
+                AppNavigation::open_path_in_new_tab(path.clone(), cx);
+            }),
         );
     }
 
-    menu.menu_with_icon(
+    menu.item(context_menu_action_item(
         t!("files.menu.copy_path"),
         Icon::new(IconName::ExternalLink),
         Box::new(CopyPath),
-    )
-    .menu_with_icon(
+        false,
+        false,
+    ))
+    .item(context_menu_action_item(
         t!("files.menu.properties"),
         Icon::new(IconName::Settings2),
         Box::new(ShellProperties),
-    )
+        false,
+        false,
+    ))
 }
 
 fn path_is_pinned(path_string: &str) -> bool {
