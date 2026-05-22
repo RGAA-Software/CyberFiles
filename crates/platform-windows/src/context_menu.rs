@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -19,14 +19,28 @@ use windows::Win32::UI::WindowsAndMessaging::{
     MIIM_SUBMENU, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON,
 };
 
-use crate::shell_icon::bitmap_to_png;
+use crate::shell_icon::{bitmap_to_png, menu_icon_pixel_size, system_scale_factor};
 
 const CMD_FIRST: u32 = 1;
 const CMD_LAST: u32 = 0x7fff;
 const MAX_SHELL_MENU_ITEMS: usize = 96;
 const MAX_SUBMENU_DEPTH: u32 = 8;
-const MENU_ICON_PX: i32 = 16;
 const SHELL_MENU_ICONS_ENABLED: bool = true;
+
+thread_local! {
+    /// STA thread: physical pixels for `CopyImage` when rasterizing menu bitmaps.
+    static MENU_ICON_EXTRACT_PX: Cell<u32> = const { Cell::new(16) };
+}
+
+fn set_menu_icon_extract_px(px: u32) {
+    MENU_ICON_EXTRACT_PX.with(|c| {
+        c.set(px.clamp(16, crate::shell_icon::MAX_ICON_SIZE));
+    });
+}
+
+fn menu_icon_extract_px() -> u32 {
+    MENU_ICON_EXTRACT_PX.with(|c| c.get())
+}
 
 /// Strip Win32 menu mnemonics (`&`) the same way as Files `ExtractLabelAndAccessKey`.
 pub fn format_shell_menu_label(raw: &str) -> String {
@@ -174,9 +188,11 @@ pub(crate) fn release_prepared_menu() {
 pub(crate) fn prepare_and_enumerate_top_level(
     paths: &[PathBuf],
     extended_verbs: bool,
+    menu_icon_extract_px: u32,
 ) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    set_menu_icon_extract_px(menu_icon_extract_px);
     shell_log!(
-        "prepare_and_enumerate_top_level: paths={:?} extended={}",
+        "prepare_and_enumerate_top_level: paths={:?} extended={} icon_px={menu_icon_extract_px}",
         paths,
         extended_verbs
     );
@@ -466,11 +482,12 @@ unsafe fn menu_item_icon_png(hbmp: HBITMAP) -> Option<Vec<u8>> {
         return None;
     }
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let extract_px = menu_icon_extract_px() as i32;
         let copy = CopyImage(
             HANDLE(hbmp.0),
             IMAGE_BITMAP,
-            MENU_ICON_PX,
-            MENU_ICON_PX,
+            extract_px,
+            extract_px,
             LR_COPYRETURNORG,
         )
         .ok()?;
@@ -526,7 +543,9 @@ pub fn warm_up_query_context_menu() {
             shell_log!("warm_up start: {}", path.display());
             let result: anyhow::Result<Vec<ShellContextMenuEntry>> = (|| {
                 std::fs::write(&path, b"")?;
-                let entries = shell_menu_session::query_with_session(&[path.clone()], false)?;
+                let icon_px = menu_icon_pixel_size(system_scale_factor());
+                let entries =
+                    shell_menu_session::query_with_session(&[path.clone()], false, icon_px)?;
                 let _ = std::fs::remove_file(&path);
                 Ok(entries)
             })();
@@ -548,9 +567,10 @@ pub fn warm_up_query_context_menu() {
 pub fn query_shell_context_menu_items(
     paths: &[PathBuf],
     extended_verbs: bool,
+    menu_icon_extract_px: u32,
 ) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
     shell_log!(
-        "query start: n_paths={} extended={} paths={:?}",
+        "query start: n_paths={} extended={} icon_px={menu_icon_extract_px} paths={:?}",
         paths.len(),
         extended_verbs,
         paths
@@ -563,7 +583,8 @@ pub fn query_shell_context_menu_items(
         shell_log!("query abort: not same_parent");
         return Ok(Vec::new());
     }
-    let entries = shell_menu_session::query_with_session(paths, extended_verbs)?;
+    let entries =
+        shell_menu_session::query_with_session(paths, extended_verbs, menu_icon_extract_px)?;
     shell_log!("query ok: entries={}", entries.len());
     Ok(entries)
 }
@@ -703,8 +724,9 @@ mod windows_tests {
             ("file", vec![file.clone()]),
             ("directory", vec![subdir.clone()]),
         ] {
-            let normal =
-                query_shell_context_menu_items(&paths, false).unwrap_or_else(|e| {
+            let icon_px = menu_icon_pixel_size(system_scale_factor());
+            let normal = query_shell_context_menu_items(&paths, false, icon_px)
+                .unwrap_or_else(|e| {
                     panic!("query normal ({label}): {e:#}");
                 });
             eprintln!("[shell-menu] smoke {label}: entries={}", normal.len());

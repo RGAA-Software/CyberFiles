@@ -34,10 +34,13 @@ pub fn clear_session() {
 pub fn query_with_session(
     paths: &[PathBuf],
     extended_verbs: bool,
+    menu_icon_extract_px: u32,
 ) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
     let _guard = shell_op_lock();
     let paths = paths.to_vec();
-    shell_sta().post(move || context_menu::prepare_and_enumerate_top_level(&paths, extended_verbs))
+    shell_sta().post(move || {
+        context_menu::prepare_and_enumerate_top_level(&paths, extended_verbs, menu_icon_extract_px)
+    })
 }
 
 /// Expand one Shell submenu on the owning STA thread (Files `LoadSubMenu` + `WM_INITMENUPOPUP`).

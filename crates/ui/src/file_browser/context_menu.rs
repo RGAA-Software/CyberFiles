@@ -15,7 +15,7 @@ use gpui_component::{
     h_flex,
     menu::{PopupMenu, PopupMenuItem},
     notification::Notification,
-    Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
+    Disableable as _, Icon, IconName, Size, Sizable as _, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -33,8 +33,8 @@ use crate::toolbar_button::toolbar_icon_button;
 /// Max height for Shell extension lists (`PopupMenu::scrollable` + nested branch flyouts).
 const SHELL_MENU_MAX_HEIGHT: Pixels = px(620.);
 
-/// Files-style context menu row (`Size::Medium` / 32px).
-const CONTEXT_MENU_ROW_HEIGHT: Pixels = px(32.);
+/// Matches gpui-component `PopupMenu` default row height (26px).
+const CONTEXT_MENU_ROW_HEIGHT: Pixels = px(26.);
 const CONTEXT_MENU_ICON_SIZE: Pixels = px(16.);
 /// Matches gpui-component popup menu `INNER_PADDING`.
 const CONTEXT_MENU_INNER_PADDING: Pixels = px(8.);
@@ -59,6 +59,18 @@ fn context_menu_icon_cell_empty() -> impl IntoElement {
         .w(CONTEXT_MENU_ICON_SIZE)
         .h(CONTEXT_MENU_ICON_SIZE)
         .flex_none()
+}
+
+fn context_menu_shell_icon_cell(png: Arc<Vec<u8>>, window: &Window) -> impl IntoElement {
+    div()
+        .w(CONTEXT_MENU_ICON_SIZE)
+        .h(CONTEXT_MENU_ICON_SIZE)
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .overflow_hidden()
+        .child(shell_menu_icon_img(png, window))
 }
 
 fn context_menu_text_row(
@@ -494,9 +506,11 @@ fn append_quick_action_toolbar(
         PopupMenuItem::element(move |window, cx| {
             h_flex()
                 .id("context-quick-actions")
+                .h(CONTEXT_MENU_ROW_HEIGHT)
+                .min_h(CONTEXT_MENU_ROW_HEIGHT)
+                .items_center()
                 .gap(px(2.))
                 .px_2()
-                .py_1()
                 .child(quick_toolbar_button(
                     "ctx-cut",
                     IconName::Replace,
@@ -559,6 +573,7 @@ fn quick_toolbar_button(
     cx: &mut gpui::App,
 ) -> impl gpui::IntoElement {
     toolbar_icon_button(id)
+        .with_size(Size::Small)
         .icon(toolbar_icon(icon))
         .disabled(!enabled)
         .on_click(move |_, window, cx| {
@@ -577,6 +592,7 @@ fn append_show_more_options(
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
     let paths_for_sub = paths.clone();
+    let menu_icon_pixel_size = platform::menu_icon_pixel_size(window.scale_factor());
     apply_context_menu_style(
         menu.submenu_with_icon(
             Some(Icon::new(IconName::Ellipsis)),
@@ -584,7 +600,12 @@ fn append_show_more_options(
             window,
             cx,
             move |sub, window, cx| {
-            match shell_submenu_snapshot(&shell_menu_cache, &paths_for_sub, extended_verbs) {
+            match shell_submenu_snapshot(
+                &shell_menu_cache,
+                &paths_for_sub,
+                extended_verbs,
+                menu_icon_pixel_size,
+            ) {
             ShellSubmenuSnapshot::Loading => sub.item(
                 PopupMenuItem::new(t!("files.menu.shell_loading")).disabled(true),
             ),
@@ -655,7 +676,7 @@ fn shell_popup_item(
     let row_png = icon_png.map(Arc::new);
     PopupMenuItem::element(move |window, _| {
         let icon_slot = if let Some(png) = row_png.clone() {
-            shell_menu_icon_img(png, window).into_any_element()
+            context_menu_shell_icon_cell(png, window).into_any_element()
         } else {
             context_menu_icon_cell_empty().into_any_element()
         };

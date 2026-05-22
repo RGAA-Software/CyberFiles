@@ -27,7 +27,28 @@ use crate::icons::shell_dummy_icon_path;
 use crate::paths::{is_recycle_bin_path, SHELL_RECYCLE_BIN_PATH};
 
 /// Maximum Shell icon dimension we request (matches Files `ShellIconSizes.Jumbo`).
-const MAX_ICON_SIZE: u32 = 256;
+pub const MAX_ICON_SIZE: u32 = 256;
+
+/// Logical menu-row icon size (matches gpui-component popup menu icons).
+pub const MENU_ICON_LOGICAL_PX: f32 = 16.;
+
+/// Display scale for the primary display (`GetDpiForSystem` / 96).
+pub fn system_scale_factor() -> f32 {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::HiDpi::GetDpiForSystem;
+        (GetDpiForSystem() as f32 / 96.0).max(1.0)
+    }
+    #[cfg(not(windows))]
+    {
+        1.0
+    }
+}
+
+/// Physical pixels to extract for a 16×16 logical Shell menu icon at `scale_factor`.
+pub fn menu_icon_pixel_size(scale_factor: f32) -> u32 {
+    shell_icon_pixel_size(MENU_ICON_LOGICAL_PX, scale_factor)
+}
 
 static ICON_CACHE: Mutex<Option<HashMap<(PathBuf, u32), Vec<u8>>>> = Mutex::new(None);
 static LIST_KEY_CACHE: Mutex<Option<HashMap<(String, u32), Vec<u8>>>> = Mutex::new(None);

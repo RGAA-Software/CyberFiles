@@ -130,6 +130,8 @@ struct RenameState {
 pub(crate) struct ShellMenuCache {
     paths: Vec<PathBuf>,
     extended_verbs: bool,
+    /// Physical pixels used when rasterizing menu bitmaps (window scale at fetch time).
+    menu_icon_pixel_size: u32,
     entries: Vec<ShellContextMenuEntry>,
 }
 
@@ -156,6 +158,7 @@ pub(crate) fn shell_submenu_snapshot(
     cache: &Arc<RwLock<Option<ShellMenuCache>>>,
     paths: &[PathBuf],
     extended_verbs: bool,
+    menu_icon_pixel_size: u32,
 ) -> ShellSubmenuSnapshot {
     let Ok(guard) = cache.read() else {
         return ShellSubmenuSnapshot::Loading;
@@ -180,6 +183,13 @@ pub(crate) fn shell_submenu_snapshot(
             "[shell-menu] submenu build: Loading (extended mismatch) cache={} ui={extended_verbs}",
             cache.extended_verbs,
             extended_verbs = extended_verbs
+        );
+        return ShellSubmenuSnapshot::Loading;
+    }
+    if cache.menu_icon_pixel_size != menu_icon_pixel_size {
+        eprintln!(
+            "[shell-menu] submenu build: Loading (icon_px mismatch) cache={} ui={menu_icon_pixel_size}",
+            cache.menu_icon_pixel_size,
         );
         return ShellSubmenuSnapshot::Loading;
     }
@@ -396,7 +406,7 @@ impl FileBrowser {
     }
 
     /// Prefetch Shell context menu on the dedicated Shell STA worker (non-blocking for GPUI).
-    fn request_shell_menu_fetch(&mut self, cx: &mut Context<Self>) {
+    fn request_shell_menu_fetch(&mut self, window: &Window, cx: &mut Context<Self>) {
         if self.browse_location != BrowseLocation::Directory {
             return;
         }
@@ -407,6 +417,7 @@ impl FileBrowser {
         }
 
         let extended = self.context_menu_extended_verbs;
+        let menu_icon_pixel_size = platform::menu_icon_pixel_size(window.scale_factor());
         let paths_key = normalize_paths_for_shell_cache(&paths);
         if self
             .shell_menu_cache
@@ -415,6 +426,7 @@ impl FileBrowser {
             .and_then(|guard| guard.as_ref().map(|cache| {
                 cache.paths == paths_key
                     && cache.extended_verbs == extended
+                    && cache.menu_icon_pixel_size == menu_icon_pixel_size
                     && !cache.entries.is_empty()
             }))
             .unwrap_or(false)
@@ -437,7 +449,11 @@ impl FileBrowser {
         self._shell_menu_task = Some(cx.spawn(async move |this, cx| {
             let query_result = cx
                 .background_spawn(async move {
-                    platform::query_shell_context_menu_items(&paths_for_query, extended)
+                    platform::query_shell_context_menu_items(
+                        &paths_for_query,
+                        extended,
+                        menu_icon_pixel_size,
+                    )
                 })
                 .await;
             let retry_after_err = query_result.is_err();
@@ -460,6 +476,7 @@ impl FileBrowser {
                                 *guard = Some(ShellMenuCache {
                                     paths: paths_key,
                                     extended_verbs: extended,
+                                    menu_icon_pixel_size,
                                     entries,
                                 });
                             }
@@ -517,8 +534,18 @@ impl FileBrowser {
                         if cache_hit {
                             return;
                         }
-                        browser.request_shell_menu_fetch(cx);
-                        cx.notify();
+                        let handle = retry_handle.clone();
+                        cx.defer(move |cx| {
+                            let Some(window) = cx.active_window() else {
+                                return;
+                            };
+                            let _ = window.update(cx, |_, window, cx| {
+                                let _ = handle.update(cx, |browser, cx| {
+                                    browser.request_shell_menu_fetch(window, cx);
+                                    cx.notify();
+                                });
+                            });
+                        });
                     });
                     let _ = this.update(cx, |_, cx| {
                         cx.defer(move |cx| {
@@ -619,7 +646,7 @@ impl FileBrowser {
         );
         self.context_menu_position = position;
         self.context_menu_open = true;
-        self.request_shell_menu_fetch(cx);
+        self.request_shell_menu_fetch(window, cx);
         self.schedule_context_menu_rebuild(window, cx);
         cx.notify();
     }

@@ -33,8 +33,8 @@ pub use icons::{
 };
 #[cfg(windows)]
 pub use shell_icon::{
-    shell_icon_pixel_size, shell_icon_png, shell_icon_png_for_list_key, shell_icon_png_from_cache,
-    shell_icon_png_scaled,
+    menu_icon_pixel_size, shell_icon_pixel_size, shell_icon_png, shell_icon_png_for_list_key,
+    shell_icon_png_from_cache, shell_icon_png_scaled, system_scale_factor,
 };
 #[cfg(windows)]
 pub use paths::{is_recycle_bin_path, recycle_bin_folder, SHELL_RECYCLE_BIN_PATH};
@@ -124,8 +124,17 @@ mod stubs {
     pub fn query_shell_context_menu_items(
         _paths: &[PathBuf],
         _extended_verbs: bool,
+        _menu_icon_extract_px: u32,
     ) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
         Ok(Vec::new())
+    }
+
+    pub fn menu_icon_pixel_size(_scale_factor: f32) -> u32 {
+        16
+    }
+
+    pub fn system_scale_factor() -> f32 {
+        1.0
     }
 
     pub fn invoke_shell_context_menu_item(
