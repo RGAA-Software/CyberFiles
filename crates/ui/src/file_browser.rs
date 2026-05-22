@@ -30,15 +30,15 @@ use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolba
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry, ShellIconHint};
 use crate::app_state::AppFileClipboard;
 use gpui::{
-    actions, prelude::*, ClipboardItem, ClickEvent, Entity, FocusHandle,
-    Focusable, ParentElement, ScrollStrategy, Subscription, Window, *,
+    actions, anchored, deferred, prelude::*, ClipboardItem, ClickEvent, DismissEvent, Entity,
+    FocusHandle, Focusable, ParentElement, ScrollStrategy, Subscription, Window, *,
 };
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     h_flex,
     input::{Input, InputState},
-    menu::ContextMenuExt,
+    menu::PopupMenu,
     notification::Notification,
     scroll::{ScrollableElement as _, ScrollbarAxis},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
@@ -168,6 +168,13 @@ pub struct FileBrowser {
     shell_menu_cache: Option<ShellMenuCache>,
     _shell_menu_task: Option<Task<()>>,
     context_menu_extended_verbs: bool,
+    context_menu_open: bool,
+    context_menu_position: Point<Pixels>,
+    context_menu_view: Option<Entity<PopupMenu>>,
+    _context_menu_subscription: Option<Subscription>,
+    /// Bumped when Shell entries finish loading; drives menu rebuild while open.
+    shell_menu_revision: u64,
+    context_menu_built_revision: u64,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -239,6 +246,12 @@ impl FileBrowser {
             shell_menu_cache: None,
             _shell_menu_task: None,
             context_menu_extended_verbs: false,
+            context_menu_open: false,
+            context_menu_position: Point::default(),
+            context_menu_view: None,
+            _context_menu_subscription: None,
+            shell_menu_revision: 0,
+            context_menu_built_revision: 0,
             _subscriptions: Vec::new(),
         }
     }
@@ -329,9 +342,81 @@ impl FileBrowser {
                     extended_verbs: extended,
                     entries,
                 });
+                browser.shell_menu_revision = browser.shell_menu_revision.wrapping_add(1);
                 cx.notify();
             });
         }));
+    }
+
+    fn dismiss_context_menu(&mut self) {
+        self.context_menu_open = false;
+        self.context_menu_view = None;
+        self._context_menu_subscription = None;
+    }
+
+    fn open_context_menu(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.context_menu_position = position;
+        self.context_menu_open = true;
+        self.request_shell_menu_fetch(cx);
+        self.rebuild_context_menu(window, cx);
+        cx.notify();
+    }
+
+    fn rebuild_context_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.context_menu_open {
+            return;
+        }
+
+        let browser = cx.entity();
+        let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
+            context_menu::build_context_menu(menu, browser.clone(), window, cx)
+        });
+
+        let browser_weak = cx.weak_entity();
+        self._context_menu_subscription = Some(window.subscribe(&menu, cx, {
+            move |_, _: &DismissEvent, window, cx| {
+                let _ = browser_weak.update(cx, |browser, cx| {
+                    browser.dismiss_context_menu();
+                    cx.notify();
+                });
+                window.refresh();
+            }
+        }));
+        self.context_menu_view = Some(menu);
+        self.context_menu_built_revision = self.shell_menu_revision;
+    }
+
+    fn render_context_menu_overlay(
+        &self,
+        window: &Window,
+    ) -> impl IntoElement {
+        let Some(menu) = self.context_menu_view.clone() else {
+            return div().into_any_element();
+        };
+        let position = self.context_menu_position;
+
+        deferred(
+            anchored().child(
+                div()
+                    .w(window.bounds().size.width)
+                    .h(window.bounds().size.height)
+                    .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        anchored()
+                            .position(position)
+                            .snap_to_window_with_margin(px(8.))
+                            .anchor(Anchor::TopLeft)
+                            .child(menu),
+                    ),
+            ),
+        )
+        .with_priority(1)
+        .into_any_element()
     }
 
     fn prepare_context_menu_target(&mut self, index: usize) {
@@ -1328,11 +1413,10 @@ impl FileBrowser {
             }))
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
-                    this.request_shell_menu_fetch(cx);
-                    cx.notify();
+                    this.open_context_menu(event.position, window, cx);
                 }),
             )
             .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
@@ -1437,11 +1521,10 @@ impl FileBrowser {
             }))
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
-                    this.request_shell_menu_fetch(cx);
-                    cx.notify();
+                    this.open_context_menu(event.position, window, cx);
                 }),
             )
             .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
@@ -1874,7 +1957,12 @@ impl Render for FileBrowser {
         let show_hidden = self.read_options.show_hidden_items;
         let sort_label = self.sort_label();
         let in_recycle_bin = self.browse_location == BrowseLocation::RecycleBin;
-        let browser = cx.entity();
+
+        if self.context_menu_open
+            && self.context_menu_built_revision != self.shell_menu_revision
+        {
+            self.rebuild_context_menu(window, cx);
+        }
 
         let page_gap = if self.show_content_toolbar && !self.show_toolbar {
             px(0.)
@@ -2088,18 +2176,15 @@ impl Render for FileBrowser {
                     }))
                     .on_mouse_down(
                         MouseButton::Right,
-                        cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
                             this.set_context_menu_extended_verbs(event.modifiers.shift);
-                            cx.notify();
+                            this.open_context_menu(event.position, window, cx);
                         }),
                     )
                     .child(self.file_list(window, cx)),
             )
-            .context_menu(move |menu, window, cx| {
-                browser.update(cx, |browser, cx| {
-                    browser.request_shell_menu_fetch(cx);
-                });
-                context_menu::build_context_menu(menu, browser.clone(), window, cx)
+            .when(self.context_menu_open, |this| {
+                this.child(self.render_context_menu_overlay(window))
             })
     }
 }

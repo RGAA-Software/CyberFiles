@@ -176,7 +176,6 @@ fn build_directory_item_menu(
     let single_dir = single && paths[0].is_dir();
     let multi = paths.len() > 1;
     let focus = state.focus_handle.clone();
-    let shell_cache = state.shell_menu_cache.clone();
     let extended = state.context_menu_extended_verbs;
 
     let mut menu = menu.action_context(focus);
@@ -308,19 +307,7 @@ fn build_directory_item_menu(
         .separator();
 
     if has_selection {
-        let entries = shell_cache
-            .filter(|c| c.paths == paths)
-            .map(|c| c.entries.clone())
-            .unwrap_or_default();
-        menu = append_show_more_options(
-            menu,
-            entries,
-            paths,
-            extended,
-            browser,
-            window,
-            cx,
-        );
+        menu = append_show_more_options(menu, paths, extended, browser, window, cx);
     }
 
     menu
@@ -408,23 +395,36 @@ fn quick_toolbar_button(
         .into_any_element()
 }
 
+fn shell_entries_for_paths(
+    browser: &Entity<FileBrowser>,
+    paths: &[PathBuf],
+    cx: &gpui::App,
+) -> Vec<ShellContextMenuEntry> {
+    browser
+        .read(cx)
+        .shell_menu_cache
+        .as_ref()
+        .filter(|cache| cache.paths == paths)
+        .map(|cache| cache.entries.clone())
+        .unwrap_or_default()
+}
+
 fn append_show_more_options(
     menu: PopupMenu,
-    entries: Vec<ShellContextMenuEntry>,
     paths: Vec<PathBuf>,
     extended_verbs: bool,
     browser: Entity<FileBrowser>,
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let paths = paths;
-    let browser = browser;
+    let paths_for_sub = paths.clone();
     menu.submenu_with_icon(
         Some(Icon::new(IconName::Ellipsis)),
         t!("files.menu.show_more_options"),
         window,
         cx,
         move |sub, window, cx| {
+            let entries = shell_entries_for_paths(&browser, &paths_for_sub, cx);
             if entries.is_empty() {
                 sub.item(
                     PopupMenuItem::new(t!("files.menu.shell_loading"))
@@ -434,7 +434,7 @@ fn append_show_more_options(
                 append_shell_entries(
                     sub,
                     &entries,
-                    &paths,
+                    &paths_for_sub,
                     extended_verbs,
                     browser.clone(),
                     window,
@@ -650,6 +650,7 @@ impl FileBrowser {
             .is_some_and(|c| c.extended_verbs != extended)
         {
             self.shell_menu_cache = None;
+            self.shell_menu_revision = self.shell_menu_revision.wrapping_add(1);
         }
     }
 }
