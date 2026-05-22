@@ -120,7 +120,7 @@ impl Default for AppConfig {
         Self {
             locale: "en".into(),
             dark_mode: false,
-            theme_name: "CyberFiles Blue".into(),
+            theme_name: "One".into(),
             font_size: 16.,
             border_radius: 6.,
             scrollbar_show: "scrolling".into(),

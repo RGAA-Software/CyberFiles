@@ -1,20 +1,19 @@
-//! CyberFiles-owned theme catalog. Color JSON is embedded from `cyberfiles-assets`;
-//! runtime always applies these themes instead of gpui-component built-in defaults.
+//! CyberFiles theme catalog — Zed built-in themes (One, Ayu, Gruvbox) via gpui-component `ThemeSet` JSON.
 
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
-use cyberfiles_assets::themes::{CYBERFILES_BLUE, CYBERFILES_MINT, CYBERFILES_YELLOW};
+use cyberfiles_assets::themes::{AYU, GRUVBOX, ONE};
 use gpui::{App, SharedString};
 use gpui_component::{Theme, ThemeConfig, ThemeMode, ThemeSet};
 
-/// Persisted `theme_name` in `settings.json` (theme set id, not light/dark variant name).
-pub const DEFAULT_THEME_SET_ID: &str = "CyberFiles Blue";
+/// Persisted `theme_name` in `settings.json` (theme set id).
+pub const DEFAULT_THEME_SET_ID: &str = "One";
 
 static CATALOG: OnceLock<ThemeCatalog> = OnceLock::new();
 
-/// One theme set (e.g. CyberFiles Blue) with light and dark variants.
+/// One selectable theme set (paired light + dark, matching Zed defaults where applicable).
 #[derive(Debug, Clone)]
 pub struct ThemeSetEntry {
     pub id: SharedString,
@@ -64,16 +63,24 @@ impl ThemeCatalog {
             .unwrap_or(name);
         match base {
             "Default" | "Default Light" | "Default Dark" => DEFAULT_THEME_SET_ID.into(),
-            "CyberFiles" => DEFAULT_THEME_SET_ID.into(),
+            "CyberFiles" | "CyberFiles Blue" | "CyberFiles Mint" | "CyberFiles Yellow" => {
+                DEFAULT_THEME_SET_ID.into()
+            }
+            "One Dark" | "One Light" => "One".into(),
+            "Ayu Dark" | "Ayu Light" => "Ayu".into(),
+            "Ayu Mirage" => "Ayu Mirage".into(),
+            "Gruvbox Dark" | "Gruvbox Light" => "Gruvbox".into(),
+            "Gruvbox Dark Hard" | "Gruvbox Light Hard" => "Gruvbox Hard".into(),
+            "Gruvbox Dark Soft" | "Gruvbox Light Soft" => "Gruvbox Soft".into(),
             other => other.into(),
         }
     }
 
     fn load_embedded() -> Self {
         let mut sets = HashMap::new();
-        for json in [CYBERFILES_BLUE, CYBERFILES_MINT, CYBERFILES_YELLOW] {
+        for json in [ONE, AYU, GRUVBOX] {
             if let Ok(set) = serde_json::from_str::<ThemeSet>(json) {
-                if let Some(entry) = ThemeSetEntry::from_theme_set(set) {
+                for entry in ThemeSetEntry::entries_from_family(set) {
                     sets.insert(entry.id.clone(), entry);
                 }
             }
@@ -88,32 +95,88 @@ impl ThemeCatalog {
 }
 
 impl ThemeSetEntry {
-    fn from_theme_set(set: ThemeSet) -> Option<Self> {
-        let mut light = None;
-        let mut dark = None;
+    fn entries_from_family(set: ThemeSet) -> Vec<Self> {
+        let family = set.name.to_string();
+        let mut by_name: HashMap<String, Arc<ThemeConfig>> = HashMap::new();
         for theme in set.themes {
-            if theme.mode.is_dark() {
-                dark = Some(Arc::new(theme));
-            } else {
-                light = Some(Arc::new(theme));
-            }
+            by_name.insert(theme.name.to_string(), Arc::new(theme));
         }
-        let (light, dark) = (light?, dark?);
-        Some(Self {
-            id: set.name.clone(),
-            display_name: set.name,
-            light,
-            dark,
-        })
+
+        let mut dark_names: Vec<String> = by_name
+            .values()
+            .filter(|t| t.mode.is_dark())
+            .map(|t| t.name.to_string())
+            .collect();
+        dark_names.sort();
+
+        let mut entries = Vec::new();
+        for dark_name in dark_names {
+            let Some(dark) = by_name.get(&dark_name).cloned() else {
+                continue;
+            };
+            let light_name = light_partner_name(&family, &dark_name);
+            let light = by_name
+                .get(&light_name)
+                .cloned()
+                .or_else(|| {
+                    by_name
+                        .values()
+                        .find(|t| !t.mode.is_dark())
+                        .cloned()
+                });
+            let Some(light) = light else {
+                continue;
+            };
+            let id = set_id_for_pair(&family, &dark_name);
+            entries.push(Self {
+                id: id.clone().into(),
+                display_name: id.into(),
+                light,
+                dark,
+            });
+        }
+        entries
     }
 }
 
-/// Install CyberFiles themes after `gpui_component::init` (replaces active light/dark configs).
+fn light_partner_name(family: &str, dark_name: &str) -> String {
+    if dark_name == "Ayu Mirage" {
+        return "Ayu Light".into();
+    }
+    if let Some(base) = dark_name.strip_suffix(" Dark Soft") {
+        return format!("{base} Light Soft");
+    }
+    if let Some(base) = dark_name.strip_suffix(" Dark Hard") {
+        return format!("{base} Light Hard");
+    }
+    if let Some(base) = dark_name.strip_suffix(" Dark") {
+        return format!("{base} Light");
+    }
+    format!("{family} Light")
+}
+
+fn set_id_for_pair(family: &str, dark_name: &str) -> String {
+    if dark_name == "Ayu Mirage" {
+        return "Ayu Mirage".into();
+    }
+    if dark_name.ends_with(" Dark Soft") {
+        return format!("{family} Soft");
+    }
+    if dark_name.ends_with(" Dark Hard") {
+        return format!("{family} Hard");
+    }
+    if dark_name.ends_with(" Dark") {
+        return family.to_string();
+    }
+    dark_name.to_string()
+}
+
+/// Install Zed themes after `gpui_component::init` (replaces active light/dark configs).
 pub fn install(cx: &mut App) {
     let catalog = ThemeCatalog::global();
     let default = catalog
         .get(catalog.default_id.as_ref())
-        .expect("embedded CyberFiles theme");
+        .expect("embedded Zed theme");
 
     if !cx.has_global::<Theme>() {
         Theme::change(ThemeMode::Light, None, cx);
@@ -161,13 +224,21 @@ mod tests {
     #[test]
     fn embedded_theme_sets_load() {
         let catalog = ThemeCatalog::load_embedded();
-        assert_eq!(catalog.sets.len(), 3);
-        for id in ["CyberFiles Blue", "CyberFiles Mint", "CyberFiles Yellow"] {
+        assert_eq!(catalog.sets.len(), 6);
+        for id in [
+            "One",
+            "Ayu",
+            "Ayu Mirage",
+            "Gruvbox",
+            "Gruvbox Hard",
+            "Gruvbox Soft",
+        ] {
             let entry = catalog.get(id).expect(id);
             assert!(entry.light.mode == ThemeMode::Light);
             assert!(entry.dark.mode == ThemeMode::Dark);
-            assert!(entry.light.name.as_ref().contains(id));
-            assert!(entry.dark.name.as_ref().contains(id));
         }
+        let one = catalog.get("One").unwrap();
+        assert_eq!(one.light.name.as_ref(), "One Light");
+        assert_eq!(one.dark.name.as_ref(), "One Dark");
     }
 }

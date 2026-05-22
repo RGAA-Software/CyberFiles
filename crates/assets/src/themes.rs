@@ -1,10 +1,10 @@
-//! Embedded CyberFiles color themes (gpui-component `ThemeSet` JSON).
+//! Embedded UI color themes (gpui-component `ThemeSet` JSON), ported from Zed built-in themes.
 
-/// Blue primary palette: light + dark variants.
-pub const CYBERFILES_BLUE: &str = include_str!("../themes/cyberfiles-blue.json");
+/// Atom One family (One Light / One Dark).
+pub const ONE: &str = include_str!("../themes/one.json");
 
-/// Mint green (emerald) primary palette.
-pub const CYBERFILES_MINT: &str = include_str!("../themes/cyberfiles-mint.json");
+/// Ayu family (Ayu Light / Ayu Dark / Ayu Mirage).
+pub const AYU: &str = include_str!("../themes/ayu.json");
 
-/// Light yellow (amber) primary palette.
-pub const CYBERFILES_YELLOW: &str = include_str!("../themes/cyberfiles-yellow.json");
+/// Gruvbox family (standard, hard, and soft light/dark variants).
+pub const GRUVBOX: &str = include_str!("../themes/gruvbox.json");
