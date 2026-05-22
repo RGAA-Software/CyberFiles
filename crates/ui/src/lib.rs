@@ -11,6 +11,7 @@ mod settings_view;
 mod shell;
 mod shell_icon;
 mod sidebar;
+mod theme;
 mod toolbar_button;
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -32,6 +33,7 @@ pub fn init(cx: &mut App) {
         init_locale();
     }
     gpui_component::init(cx);
+    theme::install(cx);
     cx.set_global(crate::app_state::AppFileClipboard::default());
     if let Some(ref cfg) = config {
         shell::preferences::apply_config(cfg, cx);

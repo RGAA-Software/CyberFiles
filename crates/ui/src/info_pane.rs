@@ -12,7 +12,7 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
-use crate::icons::inline_icon;
+use crate::icons::{icon_foreground, inline_icon};
 
 pub struct InfoPane {
     selected_tab: usize,
@@ -79,7 +79,7 @@ fn tab_content(
     }
 }
 
-fn details_panel(item: Option<&FileItem>, _cx: &mut Context<InfoPane>) -> impl IntoElement {
+fn details_panel(item: Option<&FileItem>, cx: &mut Context<InfoPane>) -> impl IntoElement {
     let (name, detail_lines) = item_details(item);
 
     v_flex()
@@ -91,8 +91,13 @@ fn details_panel(item: Option<&FileItem>, _cx: &mut Context<InfoPane>) -> impl I
                     h_flex()
                         .gap_2()
                         .items_center()
-                        .child(inline_icon(IconName::Info))
-                        .child(Label::new(name).text_sm()),
+                        .text_color(cx.theme().foreground)
+                        .child(icon_foreground(IconName::Info, cx))
+                        .child(
+                            Label::new(name)
+                                .text_sm()
+                                .text_color(cx.theme().foreground),
+                        ),
                 )
                 .child(
                     DescriptionList::vertical()
@@ -149,7 +154,11 @@ fn preview_text_content(path: &std::path::Path, cx: &mut Context<InfoPane>) -> A
             .border_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().muted)
-            .child(Label::new(text).text_xs())
+            .child(
+                Label::new(text)
+                    .text_xs()
+                    .text_color(cx.theme().foreground),
+            )
             .into_any_element(),
         Err(error) => Alert::error(
             "info-pane-preview-error",

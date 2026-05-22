@@ -1,7 +1,7 @@
 //! App-wide Material icon render sizes (SVG assets are 24×24; on-screen size is unified).
 
-use gpui::px;
-use gpui_component::{Icon, IconName, Sizable as _, Size};
+use gpui::{div, prelude::*, px, App};
+use gpui_component::{ActiveTheme as _, Icon, IconName, Sizable as _, Size};
 
 const APP_ICON_PX: Size = Size::Size(px(18.));
 
@@ -12,6 +12,22 @@ fn sized_icon(icon: IconName) -> Icon {
 /// Toolbar, title bar, breadcrumbs, sidebar, settings, tab bar — all 18px.
 pub fn toolbar_icon(icon: IconName) -> Icon {
     sized_icon(icon)
+}
+
+/// Icon tinted with the active theme primary text color (`currentColor` in SVG).
+pub fn icon_foreground(icon: IconName, cx: &App) -> impl IntoElement {
+    div()
+        .flex_none()
+        .text_color(cx.theme().foreground)
+        .child(toolbar_icon(icon))
+}
+
+/// Icon tinted for secondary / metadata text.
+pub fn icon_muted(icon: IconName, cx: &App) -> impl IntoElement {
+    div()
+        .flex_none()
+        .text_color(cx.theme().muted_foreground)
+        .child(toolbar_icon(icon))
 }
 
 pub fn sidebar_icon(icon: IconName) -> Icon {

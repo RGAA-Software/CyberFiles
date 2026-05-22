@@ -1,8 +1,8 @@
 use cyberfiles_core::{self, AppConfig, WINDOW_HEIGHT, WINDOW_WIDTH, save_config};
 use gpui::{App, SharedString, px};
-use gpui_component::{
-    ActiveTheme as _, Theme, ThemeMode, ThemeRegistry, scroll::ScrollbarShow,
-};
+use gpui_component::{ActiveTheme as _, Theme, ThemeMode, scroll::ScrollbarShow};
+
+use crate::theme::{self, ThemeCatalog};
 
 use crate::i18n;
 
@@ -43,15 +43,15 @@ pub fn apply_locale(locale: &str, cx: &mut App) {
 }
 
 pub fn apply_theme_mode(mode: ThemeMode, cx: &mut App) {
-    Theme::change(mode, None, cx);
+    let set_id = theme::current_theme_set_id(cx);
+    theme::apply_set(set_id.as_ref(), mode, cx);
     cx.refresh_windows();
     persist_preferences(cx);
 }
 
 pub fn apply_theme_name(name: SharedString, cx: &mut App) {
-    if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(name.as_ref()).cloned() {
-        Theme::global_mut(cx).apply_config(&theme_config);
-    }
+    let mode = Theme::global(cx).mode;
+    theme::apply_set(name.as_ref(), mode, cx);
     cx.refresh_windows();
     persist_preferences(cx);
 }
@@ -269,22 +269,13 @@ pub fn scrollbar_show_from_key(key: &str) -> ScrollbarShow {
 /// Apply saved settings at startup (before the window and app menus exist).
 pub fn apply_config(config: &AppConfig, cx: &mut App) {
     i18n::set_locale(&config.locale);
-    Theme::change(
-        if config.dark_mode {
-            ThemeMode::Dark
-        } else {
-            ThemeMode::Light
-        },
-        None,
-        cx,
-    );
-    if let Some(theme_config) = ThemeRegistry::global(cx)
-        .themes()
-        .get(config.theme_name.as_str())
-        .cloned()
-    {
-        Theme::global_mut(cx).apply_config(&theme_config);
-    }
+    let mode = if config.dark_mode {
+        ThemeMode::Dark
+    } else {
+        ThemeMode::Light
+    };
+    let set_id = ThemeCatalog::normalize_set_id(&config.theme_name);
+    theme::apply_set(set_id.as_ref(), mode, cx);
     Theme::global_mut(cx).font_size = px(config.font_size);
     let theme = Theme::global_mut(cx);
     theme.radius = px(config.border_radius);
@@ -302,7 +293,7 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
     AppConfig {
         locale: i18n::locale().to_string(),
         dark_mode: cx.theme().mode.is_dark(),
-        theme_name: cx.theme().theme_name().to_string(),
+        theme_name: theme::current_theme_set_id(cx).to_string(),
         font_size: cx.theme().font_size.as_f32(),
         border_radius: cx.theme().radius.as_f32(),
         scrollbar_show: scrollbar_show_key(cx.theme().scrollbar_show).to_string(),

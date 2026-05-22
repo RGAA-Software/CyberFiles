@@ -104,6 +104,7 @@ impl Render for DragPathPreview {
             .border_1()
             .border_color(cx.theme().border)
             .text_sm()
+            .text_color(cx.theme().popover_foreground)
             .child(self.label.clone())
     }
 }
@@ -1105,6 +1106,7 @@ impl FileBrowser {
             .gap_2()
             .items_center()
             .text_sm()
+            .text_color(cx.theme().foreground)
             .hover(|this| this.bg(cx.theme().accent))
             .when(selected, |this| {
                 this.bg(cx.theme().accent)
@@ -1318,6 +1320,7 @@ impl FileBrowser {
                     .min_w_0()
                     .overflow_hidden()
                     .text_ellipsis()
+                    .text_color(cx.theme().foreground)
                     .child(item.display_name.clone()),
             )
             .child(

@@ -1295,6 +1295,7 @@ dependencies = [
  "gpui-component",
  "rust-i18n",
  "serde",
+ "serde_json",
  "sys-locale",
 ]
 

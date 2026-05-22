@@ -80,12 +80,14 @@ impl HomePage {
                     .w_full()
                     .gap_2()
                     .items_center()
-                    .child(inline_icon(chevron))
+                    .text_color(cx.theme().foreground)
+                    .child(crate::icons::icon_foreground(chevron, cx))
                     .child(icon)
                     .child(
                         Label::new(title)
                             .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD),
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground),
                     ),
             )
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -460,6 +462,7 @@ impl HomePage {
                     .overflow_hidden()
                     .text_ellipsis()
                     .text_sm()
+                    .text_color(cx.theme().foreground)
                     .child(name),
             )
             .child(

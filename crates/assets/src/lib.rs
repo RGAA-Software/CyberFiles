@@ -5,6 +5,10 @@
 //! close icons stay on gpui-component (Lucide) artwork.
 //!
 //! Run `python scripts/sync_material_icons.py` to refresh Material SVGs.
+//!
+//! UI color themes live in `themes/*.json` (see [`themes`] module).
+
+pub mod themes;
 
 use gpui::{AssetSource, Result, SharedString};
 use gpui_component_assets::Assets as ComponentAssets;

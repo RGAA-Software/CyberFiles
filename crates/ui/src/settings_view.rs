@@ -1,7 +1,7 @@
 use cyberfiles_core::APP_NAME;
 use gpui::{App, ParentElement, SharedString, Styled};
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, ThemeMode, ThemeRegistry,
+    ActiveTheme as _, Icon, IconName, ThemeMode,
     group_box::GroupBoxVariant,
     label::Label,
     setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
@@ -14,6 +14,7 @@ fn ts(text: impl AsRef<str>) -> SharedString {
 }
 
 use crate::icons::sidebar_icon;
+use crate::theme;
 use crate::shell::preferences::{
     apply_border_radius, apply_font_size, apply_locale, apply_scrollbar_show,
     apply_home_widget_drives, apply_home_widget_file_tags, apply_home_widget_network,
@@ -28,11 +29,7 @@ use crate::shell::preferences::{
 };
 
 pub fn build_settings(cx: &App) -> Settings {
-    let theme_options: Vec<(SharedString, SharedString)> = ThemeRegistry::global(cx)
-        .sorted_themes()
-        .iter()
-        .map(|theme| (theme.name.clone(), theme.name.clone()))
-        .collect();
+    let theme_options = theme::theme_set_options();
 
     let language_options = vec![
         ("en".into(), "English".into()),
@@ -107,12 +104,12 @@ pub fn build_settings(cx: &App) -> Settings {
                                 ts(t!("settings.color_theme")),
                                 SettingField::scrollable_dropdown(
                                     theme_options,
-                                    |cx: &App| cx.theme().theme_name().clone(),
+                                    theme::current_theme_set_id,
                                     |name: SharedString, cx: &mut App| {
                                         apply_theme_name(name, cx);
                                     },
                                 )
-                                .default_value(cx.theme().theme_name()),
+                                .default_value(theme::current_theme_set_id(cx)),
                             )
                             .description(ts(t!("settings.color_theme.description"))),
                         ]),
