@@ -455,6 +455,126 @@ files.menu.shell_menu:
   en: Show in Explorer
   zh-CN: 在资源管理器中显示
   zh-HK: 在檔案總管中顯示
+files.menu.layout:
+  en: Layout
+  zh-CN: 布局
+  zh-HK: 配置
+files.menu.sort:
+  en: Sort
+  zh-CN: 排序
+  zh-HK: 排序
+files.menu.new:
+  en: New
+  zh-CN: 新建
+  zh-HK: 新增
+files.menu.copy_path:
+  en: Copy path
+  zh-CN: 复制路径
+  zh-HK: 複製路徑
+files.menu.open_file_location:
+  en: Open file location
+  zh-CN: 打开文件所在位置
+  zh-HK: 開啟檔案位置
+files.menu.delete_permanent:
+  en: Delete permanently
+  zh-CN: 永久删除
+  zh-HK: 永久刪除
+files.menu.shell_overflow:
+  en: More options
+  zh-CN: 更多选项
+  zh-HK: 更多選項
+files.menu.show_more_options:
+  en: Show more options
+  zh-CN: 显示更多选项
+  zh-HK: 顯示更多選項
+files.menu.shell_loading:
+  en: Loading Shell extensions…
+  zh-CN: 正在加载 Shell 扩展…
+  zh-HK: 正在載入 Shell 擴充功能…
+files.menu.open_with:
+  en: Open with
+  zh-CN: 打开方式
+  zh-HK: 開啟方式
+files.menu.open_in_new_window:
+  en: Open in new window
+  zh-CN: 在新窗口中打开
+  zh-HK: 在新視窗中開啟
+files.menu.create_shortcut:
+  en: Create shortcut
+  zh-CN: 创建快捷方式
+  zh-HK: 建立捷徑
+files.menu.compress:
+  en: Compress
+  zh-CN: 压缩
+  zh-HK: 壓縮
+files.menu.send_to:
+  en: Send to
+  zh-CN: 发送到
+  zh-HK: 傳送到
+files.menu.edit_file_tags:
+  en: Edit file tags
+  zh-CN: 编辑文件标签
+  zh-HK: 編輯檔案標籤
+files.menu.not_implemented:
+  en: Coming soon
+  zh-CN: 即将推出
+  zh-HK: 即將推出
+files.open_new_window.error:
+  en: Could not open in Explorer
+  zh-CN: 无法在资源管理器中打开
+  zh-HK: 無法在檔案總管中開啟
+files.open_with.error:
+  en: Could not open Open with dialog
+  zh-CN: 无法打开「打开方式」对话框
+  zh-HK: 無法開啟「開啟方式」對話方塊
+files.create_shortcut.error:
+  en: Could not create shortcut
+  zh-CN: 无法创建快捷方式
+  zh-HK: 無法建立捷徑
+files.create_shortcut.success:
+  en: Shortcut created
+  zh-CN: 快捷方式已创建
+  zh-HK: 捷徑已建立
+files.menu.open_in_new_pane:
+  en: Open in new pane
+  zh-CN: 在新窗格中打开
+  zh-HK: 在新窗格中開啟
+files.menu.open_in_terminal:
+  en: Open in Windows Terminal
+  zh-CN: 在 Windows 终端中打开
+  zh-HK: 在 Windows 終端機中開啟
+files.menu.create_folder_from_selection:
+  en: Create folder with selection
+  zh-CN: 用所选内容创建文件夹
+  zh-HK: 用所選內容建立資料夾
+files.create_folder_from_selection.success:
+  en: Folder created and items moved.
+  zh-CN: 已创建文件夹并移动项目。
+  zh-HK: 已建立資料夾並移動項目。
+files.terminal.error:
+  en: Could not open terminal
+  zh-CN: 无法打开终端
+  zh-HK: 無法開啟終端機
+files.view.details:
+  en: Details
+  zh-CN: 详细信息
+  zh-HK: 詳細資料
+files.view.grid:
+  en: Grid
+  zh-CN: 网格
+  zh-HK: 格狀
+files.view.columns:
+  en: Columns
+  zh-CN: 分栏
+  zh-HK: 分欄
+settings.context_menu.shell_submenu:
+  en: Shell extensions in «Show more options»
+  zh-CN: Shell 扩展放在「显示更多选项」中
+  zh-HK: Shell 擴充功能放在「顯示更多選項」中
+settings.context_menu.shell_submenu.description:
+  en: "Matches Files — third-party Explorer verbs appear only under Show more options, not in the main flyout. Hold Shift while right-clicking for extended verbs."
+  zh-CN: 与 Files 一致：第三方资源管理器动词仅出现在「显示更多选项」子菜单。按住 Shift 并右键可显示扩展动词。
+  zh-HK: 與 Files 一致：第三方檔案總管動詞僅出現在「顯示更多選項」子選單。按住 Shift 並以右鍵點擊可顯示延伸動詞。
 files.recycle.hint:
   en: Recycle Bin — deleted items use Explorer shell listing.
   zh-CN: 回收站 — 已删除项目通过系统文件夹浏览。

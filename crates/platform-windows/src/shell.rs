@@ -30,7 +30,8 @@ pub fn open_item_properties(path: &Path) -> anyhow::Result<()> {
 }
 
 pub use crate::context_menu::{
-    invoke_shell_context_menu_item, query_shell_context_menu_items, ShellContextMenuEntry,
+    invoke_shell_context_menu_item, open_in_new_explorer_window, query_shell_context_menu_items,
+    show_open_with_dialog, ShellContextMenuEntry,
 };
 
 /// Optional Explorer-style popup at the cursor (not the default Files parity UX).

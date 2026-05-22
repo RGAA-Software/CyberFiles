@@ -3,7 +3,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use windows::core::{Interface, PCSTR, PCWSTR};
-use windows::Win32::Foundation::{BOOL, HWND, POINT};
+use windows::Win32::Foundation::{BOOL, HANDLE, HWND, POINT};
 use crate::com::ensure_com_apartment;
 use windows::Win32::UI::Shell::{
     CMINVOKECOMMANDINFO, CMF_EXTENDEDVERBS, CMF_NORMAL, IContextMenu, IContextMenu3,
@@ -11,16 +11,20 @@ use windows::Win32::UI::Shell::{
     SHParseDisplayName,
 };
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
+use windows::Win32::Graphics::Gdi::HBITMAP;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreatePopupMenu, DestroyMenu, GetCursorPos, GetForegroundWindow, GetMenuItemCount,
-    GetMenuItemInfoW, SetForegroundWindow, TrackPopupMenu, HMENU, MENUITEMINFOW, MFT_SEPARATOR,
-    MFT_STRING, MF_POPUP, MIIM_FTYPE, MIIM_ID, MIIM_STRING, TPM_LEFTALIGN, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON,
+    CopyImage, CreatePopupMenu, DestroyMenu, GetCursorPos, GetForegroundWindow, GetMenuItemCount,
+    GetMenuItemInfoW, GetSubMenu, SetForegroundWindow, TrackPopupMenu, HMENU, IMAGE_BITMAP,
+    LR_COPYRETURNORG, MENUITEMINFOW, MFT_SEPARATOR, MFT_STRING, MF_POPUP, MIIM_BITMAP, MIIM_FTYPE,
+    MIIM_ID, MIIM_STRING, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON,
 };
+
+use crate::shell_icon::bitmap_to_png;
 
 const CMD_FIRST: u32 = 1;
 const CMD_LAST: u32 = 0x7fff;
-const MAX_SHELL_MENU_ITEMS: usize = 32;
+const MAX_SHELL_MENU_ITEMS: usize = 96;
+const MENU_ICON_PX: i32 = 16;
 
 /// One row in a Files-style merged context flyout (not a native `TrackPopupMenu` surface).
 #[derive(Debug, Clone)]
@@ -30,6 +34,14 @@ pub enum ShellContextMenuEntry {
         label: String,
         command_offset: u32,
         command_string: Option<String>,
+        /// PNG bytes (16×16) from the Shell menu bitmap, when present.
+        icon_png: Option<Vec<u8>>,
+    },
+    /// Nested Shell popup (merged into flyout as submenu or flattened).
+    Submenu {
+        label: String,
+        children: Vec<ShellContextMenuEntry>,
+        icon_png: Option<Vec<u8>>,
     },
 }
 
@@ -167,7 +179,7 @@ unsafe fn enumerate_popup_menu(popup: HMENU) -> anyhow::Result<Vec<ShellContextM
     let mut entries = Vec::new();
     let mut info = MENUITEMINFOW {
         cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
-        fMask: MIIM_FTYPE | MIIM_ID | MIIM_STRING,
+        fMask: MIIM_FTYPE | MIIM_ID | MIIM_STRING | MIIM_BITMAP,
         ..Default::default()
     };
 
@@ -190,6 +202,20 @@ unsafe fn enumerate_popup_menu(popup: HMENU) -> anyhow::Result<Vec<ShellContextM
         }
 
         if info.fType.0 & MF_POPUP.0 != 0 {
+            let label_len = label_buf.iter().position(|&c| c == 0).unwrap_or(0);
+            let label = String::from_utf16_lossy(&label_buf[..label_len]);
+            let submenu = GetSubMenu(popup, index as i32);
+            if !submenu.is_invalid() {
+                if let Ok(children) = enumerate_popup_menu(submenu) {
+                    if !children.is_empty() {
+                        entries.push(ShellContextMenuEntry::Submenu {
+                            label,
+                            children,
+                            icon_png: menu_item_icon_png(info.hbmpItem),
+                        });
+                    }
+                }
+            }
             continue;
         }
 
@@ -209,10 +235,63 @@ unsafe fn enumerate_popup_menu(popup: HMENU) -> anyhow::Result<Vec<ShellContextM
             label,
             command_offset,
             command_string: None,
+            icon_png: menu_item_icon_png(info.hbmpItem),
         });
     }
 
     Ok(entries)
+}
+
+unsafe fn menu_item_icon_png(hbmp: HBITMAP) -> Option<Vec<u8>> {
+    if hbmp.is_invalid() {
+        return None;
+    }
+    let copy = CopyImage(
+        HANDLE(hbmp.0),
+        IMAGE_BITMAP,
+        MENU_ICON_PX,
+        MENU_ICON_PX,
+        LR_COPYRETURNORG,
+    )
+    .ok()?;
+    bitmap_to_png(HBITMAP(copy.0)).ok()
+}
+
+/// Opens the system «Open with» dialog for a file (same as Explorer).
+pub fn show_open_with_dialog(path: &Path) -> anyhow::Result<()> {
+    use std::process::Command;
+
+    let path = path.to_string_lossy();
+    let status = Command::new("rundll32.exe")
+        .arg("shell32.dll,OpenAs_RunDLL")
+        .arg(path.as_ref())
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!("OpenAs dialog exited with {status}")
+    }
+}
+
+/// Opens the parent folder in a new Explorer window (Files «Open in new window» subset).
+pub fn open_in_new_explorer_window(path: &Path) -> anyhow::Result<()> {
+    use std::process::Command;
+
+    let target = if path.is_dir() {
+        path.to_path_buf()
+    } else {
+        path.parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| path.to_path_buf())
+    };
+    let status = Command::new("explorer.exe")
+        .arg(target.as_os_str())
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!("explorer exited with {status}")
+    }
 }
 
 /// Enumerates Shell context menu entries for merging into a GPUI flyout (Files-style).
@@ -234,14 +313,18 @@ pub fn query_shell_context_menu_items(
 }
 
 /// Invokes one Shell menu command by offset (from [`query_shell_context_menu_items`]).
-pub fn invoke_shell_context_menu_item(paths: &[PathBuf], command_offset: u32) -> anyhow::Result<()> {
+pub fn invoke_shell_context_menu_item(
+    paths: &[PathBuf],
+    command_offset: u32,
+    extended_verbs: bool,
+) -> anyhow::Result<()> {
     if paths.is_empty() || !same_parent(paths) {
         anyhow::bail!("invalid paths for shell menu invoke");
     }
 
     ensure_com_apartment()?;
     unsafe {
-        let handle = create_context_menu(paths, false)?;
+        let handle = create_context_menu(paths, extended_verbs)?;
         let hwnd = GetForegroundWindow();
         let mut info = CMINVOKECOMMANDINFO::default();
         info.cbSize = std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32;

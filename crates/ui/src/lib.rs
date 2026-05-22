@@ -10,6 +10,7 @@ mod omnibar;
 mod settings_view;
 mod shell;
 mod shell_icon;
+mod shell_menu_icon;
 mod sidebar;
 mod theme;
 mod toolbar_button;

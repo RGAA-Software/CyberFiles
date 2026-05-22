@@ -84,6 +84,9 @@ pub struct AppConfig {
     pub home_file_tags_expanded: bool,
     #[serde(default = "default_true")]
     pub home_recent_expanded: bool,
+    /// When true, extra Shell verbs beyond the first few appear in a «More» submenu (Files default).
+    #[serde(default = "default_true")]
+    pub context_menu_shell_extensions_submenu: bool,
 }
 
 /// Sidebar file tag entry (Files `FileTagsManager` subset).
@@ -151,6 +154,7 @@ impl Default for AppConfig {
             home_network_expanded: true,
             home_file_tags_expanded: true,
             home_recent_expanded: true,
+            context_menu_shell_extensions_submenu: true,
         }
     }
 }

@@ -25,7 +25,7 @@
 
 ## CyberFiles 分阶段实现
 
-### 阶段 A（当前）
+### 阶段 A（已完成）
 
 1. 文件列表右键 → **GPUI `ContextMenu`**（`ContextMenuExt`）
 2. 菜单结构对齐 Files **首轮**：打开、重命名、复制、剪切、粘贴、删除、属性
@@ -33,12 +33,15 @@
 4. 回收站虚拟页不合并 Shell（同 Files）
 5. 已移除默认 `TrackPopupMenu` 路径（`ShellContextMenu` 动作）
 
-### 阶段 B
+### 阶段 B（当前）
 
-- 空白区域 / 当前文件夹 `BaseContextMenuFlyout` 等价物
-- Shift → `CMF_EXTENDEDVERBS`；设置项「将 Shell 扩展移入子菜单」
-- 子菜单、图标、`IContextMenu2` 消息泵
-- 回收站 / ZIP / FTP 页禁用 Shell 合并（同 Files）
+- **空白区域** `BaseContextMenuFlyout`：粘贴、布局/排序子菜单、新建、刷新
+- **项菜单（Files 布局）**：顶栏图标快捷操作（剪切/复制/粘贴/重命名/删除/属性）→ 打开/新标签/新窗格 → 复制路径/用所选建文件夹/固定 → 终端 → **显示更多选项**（全部 Shell 扩展，含嵌套子菜单）
+- **Shift** → `CMF_EXTENDEDVERBS`
+- **设置** → Shell 扩展仅出现在「显示更多选项」
+- **Shell 行图标**：`icon_png` + `shell_menu_icon_img`（「显示更多选项」子菜单内）
+- **选中预取**：左键改选时后台 `query_shell_context_menu_items`，减轻首次右键「正在加载」
+- 待做：Open with 动态列表、压缩/发送到/文件标签/分享、毛玻璃样式、`IContextMenu2`、菜单打开后 Shell 缓存到达时自动刷新
 
 ### 阶段 C
 
@@ -50,7 +53,7 @@
 |----|------|
 | 文档 | 本文档、`files-parity-roadmap.md`、`files-rust-port-plan.md` |
 | Shell COM | `crates/platform-windows/src/context_menu.rs` |
-| UI | `crates/ui/src/file_browser.rs` — `populate_item_context_menu` |
+| UI | `crates/ui/src/file_browser/context_menu.rs`；`file_browser.rs` 预取 Shell |
 | 命令 | `crates/commands` — 文件操作；Shell 项 invoke 用带索引的本地 action |
 
 ## 验收

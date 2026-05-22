@@ -19,9 +19,10 @@ use crate::shell::preferences::{
     apply_border_radius, apply_font_size, apply_locale, apply_scrollbar_show,
     apply_home_widget_drives, apply_home_widget_file_tags, apply_home_widget_network,
     apply_home_widget_quick_access, apply_home_widget_recent, apply_sidebar_display_mode,
-    apply_sidebar_section_cloud, apply_sidebar_section_drives, apply_sidebar_section_file_tags,
-    apply_sidebar_section_library, apply_sidebar_section_network, apply_sidebar_section_pinned,
-    apply_sidebar_section_wsl, apply_theme_mode, apply_theme_name, current_locale,
+    apply_context_menu_shell_submenu, apply_sidebar_section_cloud, apply_sidebar_section_drives,
+    apply_sidebar_section_file_tags, apply_sidebar_section_library, apply_sidebar_section_network,
+    apply_sidebar_section_pinned, apply_sidebar_section_wsl, apply_theme_mode, apply_theme_name,
+    context_menu_shell_submenu, current_locale,
     home_widget_drives, home_widget_file_tags, home_widget_network, home_widget_quick_access,
     home_widget_recent, scrollbar_show_from_key, scrollbar_show_key, set_list_active_highlight,
     sidebar_display_mode, sidebar_section_cloud, sidebar_section_drives, sidebar_section_file_tags,
@@ -183,6 +184,17 @@ pub fn build_settings(cx: &App) -> Settings {
                                 .default_value(cx.theme().list.active_highlight),
                             )
                             .description(ts(t!("settings.list_highlight.description"))),
+                            SettingItem::new(
+                                ts(t!("settings.context_menu.shell_submenu")),
+                                SettingField::switch(
+                                    context_menu_shell_submenu,
+                                    apply_context_menu_shell_submenu,
+                                )
+                                .default_value(context_menu_shell_submenu(cx)),
+                            )
+                            .description(ts(t!(
+                                "settings.context_menu.shell_submenu.description"
+                            ))),
                         ]),
                 ]),
             SettingPage::new(ts(t!("settings.page.sidebar")))

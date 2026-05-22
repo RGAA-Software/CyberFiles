@@ -38,7 +38,7 @@ use gpui_component::{
     dialog::DialogButtonProps,
     h_flex,
     input::{Input, InputState},
-    menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
+    menu::ContextMenuExt,
     notification::Notification,
     scroll::{ScrollableElement as _, ScrollbarAxis},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
@@ -46,15 +46,25 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
+#[path = "file_browser/context_menu.rs"]
+mod context_menu;
+
 actions!(
     file_browser_prefs,
     [
         SortByName,
         SortByModified,
+        SortByCreated,
         SortBySize,
         SortByType,
         ToggleSortDirection,
         ToggleShowHidden,
+        OpenInNewPane,
+        OpenInNewWindow,
+        OpenInTerminal,
+        OpenWithDialog,
+        CreateFolderFromSelection,
+        CreateShortcut,
     ]
 );
 
@@ -115,13 +125,14 @@ struct RenameState {
 }
 
 #[derive(Clone, Debug)]
-struct ShellMenuCache {
+pub(crate) struct ShellMenuCache {
     paths: Vec<PathBuf>,
+    extended_verbs: bool,
     entries: Vec<ShellContextMenuEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum BrowseLocation {
+pub(crate) enum BrowseLocation {
     Directory,
     RecycleBin,
     FileTag { tag_name: String },
@@ -156,6 +167,7 @@ pub struct FileBrowser {
     watched_dir: Option<PathBuf>,
     shell_menu_cache: Option<ShellMenuCache>,
     _shell_menu_task: Option<Task<()>>,
+    context_menu_extended_verbs: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -226,6 +238,7 @@ impl FileBrowser {
             watched_dir: None,
             shell_menu_cache: None,
             _shell_menu_task: None,
+            context_menu_extended_verbs: false,
             _subscriptions: Vec::new(),
         }
     }
@@ -295,11 +308,10 @@ impl FileBrowser {
             return;
         }
 
-        if self
-            .shell_menu_cache
-            .as_ref()
-            .is_some_and(|cache| cache.paths == paths)
-        {
+        let extended = self.context_menu_extended_verbs;
+        if self.shell_menu_cache.as_ref().is_some_and(|cache| {
+            cache.paths == paths && cache.extended_verbs == extended
+        }) {
             return;
         }
 
@@ -307,13 +319,14 @@ impl FileBrowser {
         self._shell_menu_task = Some(cx.spawn(async move |browser, cx| {
             let paths_for_query = paths.clone();
             let entries = cx.background_spawn(async move {
-                platform::query_shell_context_menu_items(&paths_for_query, false)
+                platform::query_shell_context_menu_items(&paths_for_query, extended)
                     .unwrap_or_default()
             }).await;
 
             let _ = browser.update(cx, |browser, cx| {
                 browser.shell_menu_cache = Some(ShellMenuCache {
                     paths,
+                    extended_verbs: extended,
                     entries,
                 });
                 cx.notify();
@@ -614,7 +627,7 @@ impl FileBrowser {
         self.focused_index = None;
     }
 
-    fn handle_row_click(&mut self, index: usize, event: &ClickEvent) {
+    fn handle_row_click(&mut self, index: usize, event: &ClickEvent, cx: &mut Context<Self>) {
         let Some(item) = self.display_items.get(index) else {
             return;
         };
@@ -648,6 +661,7 @@ impl FileBrowser {
         }
 
         self.focused_index = Some(index);
+        self.request_shell_menu_fetch(cx);
     }
 
     fn open_item(&mut self, path: PathBuf, kind: FileItemKind, cx: &mut Context<Self>) {
@@ -779,6 +793,28 @@ impl FileBrowser {
 
     fn cancel_rename(&mut self) {
         self.renaming = None;
+    }
+
+    fn create_folder_from_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
+            return;
+        }
+        let name = unique_new_folder_name(&self.current_dir);
+        match create_directory(&self.current_dir, &name) {
+            Ok(dest_dir) => match move_items(&paths, &dest_dir) {
+                Ok(()) => {
+                    self.error = None;
+                    self.refresh();
+                    window.push_notification(
+                        Notification::success(t!("files.create_folder_from_selection.success")),
+                        cx,
+                    );
+                }
+                Err(error) => self.error = Some(error.to_string()),
+            },
+            Err(error) => self.error = Some(error.to_string()),
+        }
     }
 
     pub fn create_new_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1286,13 +1322,14 @@ impl FileBrowser {
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
-                    this.handle_row_click(index, event);
+                    this.handle_row_click(index, event, cx);
                     cx.notify();
                 }
             }))
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
                     this.request_shell_menu_fetch(cx);
                     cx.notify();
@@ -1394,13 +1431,14 @@ impl FileBrowser {
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
-                    this.handle_row_click(index, event);
+                    this.handle_row_click(index, event, cx);
                     cx.notify();
                 }
             }))
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
                     this.request_shell_menu_fetch(cx);
                     cx.notify();
@@ -1491,6 +1529,7 @@ impl FileBrowser {
 
     fn on_select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.select_all();
+        self.request_shell_menu_fetch(cx);
         cx.notify();
     }
 
@@ -1562,6 +1601,11 @@ impl FileBrowser {
         cx.notify();
     }
 
+    fn on_sort_created(&mut self, _: &SortByCreated, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_sort_option(SortOption::DateCreated);
+        cx.notify();
+    }
+
     fn on_sort_size(&mut self, _: &SortBySize, _: &mut Window, cx: &mut Context<Self>) {
         self.set_sort_option(SortOption::Size);
         cx.notify();
@@ -1600,6 +1644,95 @@ impl FileBrowser {
         cx.notify();
     }
 
+    fn on_open_in_new_pane(&mut self, _: &OpenInNewPane, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = self.primary_path() else {
+            return;
+        };
+        AppNavigation::open_path_in_secondary_pane(path, cx);
+    }
+
+    fn on_open_in_terminal(&mut self, _: &OpenInTerminal, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = self.primary_path() else {
+            return;
+        };
+        if let Err(error) = open_path_in_terminal(&path) {
+            window.push_notification(
+                Notification::error(format!("{}: {error}", t!("files.terminal.error"))),
+                cx,
+            );
+        }
+    }
+
+    fn on_create_folder_from_selection(
+        &mut self,
+        _: &CreateFolderFromSelection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.create_folder_from_selection(window, cx);
+    }
+
+    fn on_open_in_new_window(
+        &mut self,
+        _: &OpenInNewWindow,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(path) = self.primary_path() else {
+            return;
+        };
+        if let Err(error) = platform::open_in_new_explorer_window(&path) {
+            window.push_notification(
+                Notification::error(format!("{}: {error}", t!("files.open_new_window.error"))),
+                cx,
+            );
+        }
+    }
+
+    fn on_open_with_dialog(
+        &mut self,
+        _: &OpenWithDialog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(path) = self.primary_path() else {
+            return;
+        };
+        if path.is_dir() {
+            return;
+        }
+        if let Err(error) = platform::show_open_with_dialog(&path) {
+            window.push_notification(
+                Notification::error(format!("{}: {error}", t!("files.open_with.error"))),
+                cx,
+            );
+        }
+    }
+
+    fn on_create_shortcut(
+        &mut self,
+        _: &CreateShortcut,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(path) = self.primary_path() else {
+            return;
+        };
+        if let Err(error) = create_shortcut_for_path(&path) {
+            window.push_notification(
+                Notification::error(format!("{}: {error}", t!("files.create_shortcut.error"))),
+                cx,
+            );
+        } else {
+            window.push_notification(
+                Notification::success(t!("files.create_shortcut.success")),
+                cx,
+            );
+            self.refresh();
+            cx.notify();
+        }
+    }
+
     fn on_new_file(&mut self, _: &NewFile, window: &mut Window, cx: &mut Context<Self>) {
         self.create_new_file(window, cx);
         cx.notify();
@@ -1634,89 +1767,6 @@ impl FileBrowser {
         .detach();
     }
 
-    /// Right-click on empty list area (Files `BaseContextMenuFlyout` subset).
-    fn build_background_context_menu(&self, menu: PopupMenu) -> PopupMenu {
-        menu.menu(t!("files.menu.paste"), Box::new(PasteItems))
-            .menu(t!("files.new_folder"), Box::new(NewFolder))
-            .menu(t!("files.new_file"), Box::new(NewFile))
-            .separator()
-            .menu(t!("files.menu.refresh"), Box::new(RefreshDirectory))
-    }
-
-    /// Files-style item context flyout: app commands first, then cached Shell extensions.
-    fn build_item_context_menu(&self, menu: PopupMenu, browser: Entity<Self>) -> PopupMenu {
-        let mut menu = menu
-            .menu(t!("files.menu.open"), Box::new(OpenItem))
-            .menu(t!("files.menu.rename"), Box::new(RenameItem))
-            .separator()
-            .menu(t!("files.menu.copy"), Box::new(CopyItems))
-            .menu(t!("files.menu.cut"), Box::new(CutItems))
-            .menu(t!("files.menu.paste"), Box::new(PasteItems))
-            .separator()
-            .menu(t!("files.menu.delete"), Box::new(DeleteItems))
-            .menu(t!("files.menu.properties"), Box::new(ShellProperties));
-
-        if self.browse_location != BrowseLocation::Directory {
-            return menu;
-        }
-
-        let paths = self.selected_paths_vec();
-        if paths.is_empty() {
-            return menu;
-        }
-
-        let Some(cache) = &self.shell_menu_cache else {
-            return menu;
-        };
-        if cache.paths != paths || cache.entries.is_empty() {
-            return menu;
-        }
-
-        menu = menu.separator();
-        for entry in &cache.entries {
-            match entry {
-                ShellContextMenuEntry::Separator => {
-                    menu = menu.separator();
-                }
-                ShellContextMenuEntry::Item {
-                    label,
-                    command_offset,
-                    ..
-                } => {
-                    let browser = browser.clone();
-                    let paths = paths.clone();
-                    let offset = *command_offset;
-                    let label = label.clone();
-                    menu = menu.item(
-                        PopupMenuItem::new(label).on_click(move |_, window, cx| {
-                            if let Err(error) =
-                                platform::invoke_shell_context_menu_item(&paths, offset)
-                            {
-                                window.push_notification(
-                                    Notification::error(format!(
-                                        "{}: {error}",
-                                        t!("files.context_menu.error")
-                                    )),
-                                    cx,
-                                );
-                            }
-                            let _ = browser;
-                        }),
-                    );
-                }
-            }
-        }
-
-        menu
-    }
-
-    fn build_context_menu(&self, menu: PopupMenu, browser: Entity<Self>) -> PopupMenu {
-        if self.browse_location == BrowseLocation::Directory && self.selected_paths.is_empty() {
-            self.build_background_context_menu(menu)
-        } else {
-            self.build_item_context_menu(menu, browser)
-        }
-    }
 }
 
 impl FileBrowser {
@@ -1862,11 +1912,18 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_navigate_previous))
             .on_action(cx.listener(Self::on_navigate_next))
             .on_action(cx.listener(Self::on_sort_name))
+            .on_action(cx.listener(Self::on_sort_created))
             .on_action(cx.listener(Self::on_sort_modified))
             .on_action(cx.listener(Self::on_sort_size))
             .on_action(cx.listener(Self::on_sort_type))
             .on_action(cx.listener(Self::on_toggle_sort_direction))
             .on_action(cx.listener(Self::on_toggle_show_hidden))
+            .on_action(cx.listener(Self::on_open_in_new_pane))
+            .on_action(cx.listener(Self::on_open_in_terminal))
+            .on_action(cx.listener(Self::on_create_folder_from_selection))
+            .on_action(cx.listener(Self::on_open_in_new_window))
+            .on_action(cx.listener(Self::on_open_with_dialog))
+            .on_action(cx.listener(Self::on_create_shortcut))
             .when(self.show_content_toolbar, |this| {
                 this.child(self.render_content_toolbar(cx))
             })
@@ -2029,15 +2086,20 @@ impl Render for FileBrowser {
                         this.clear_selection();
                         cx.notify();
                     }))
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                            this.set_context_menu_extended_verbs(event.modifiers.shift);
+                            cx.notify();
+                        }),
+                    )
                     .child(self.file_list(window, cx)),
             )
-            .context_menu(move |menu, _window, menu_cx| {
-                browser.update(menu_cx, |browser, cx| {
+            .context_menu(move |menu, window, cx| {
+                browser.update(cx, |browser, cx| {
                     browser.request_shell_menu_fetch(cx);
                 });
-                browser
-                    .read(menu_cx)
-                    .build_context_menu(menu, browser.clone())
+                context_menu::build_context_menu(menu, browser.clone(), window, cx)
             })
     }
 }
@@ -2130,6 +2192,61 @@ fn sort_option_config_value(option: SortOption) -> &'static str {
         SortOption::Size => "size",
         SortOption::FileType => "type",
         SortOption::Path => "path",
+    }
+}
+
+#[cfg(windows)]
+fn open_path_in_terminal(path: &Path) -> anyhow::Result<()> {
+    use std::path::Path;
+    use std::process::Command;
+
+    let dir = if path.is_dir() {
+        path.to_path_buf()
+    } else {
+        path.parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| anyhow::anyhow!("no parent directory"))?
+    };
+    let dir = dir.to_string_lossy();
+    let wt = Command::new("wt.exe").args(["-d", &dir]).spawn();
+    if wt.is_ok() {
+        return Ok(());
+    }
+    Command::new("cmd")
+        .args(["/C", "start", "", "wt.exe", "-d", &dir])
+        .spawn()?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn open_path_in_terminal(_path: &Path) -> anyhow::Result<()> {
+    anyhow::bail!("terminal launch is only supported on Windows")
+}
+
+/// Creates `Shortcut to <name>.lnk` in the parent directory via WScript.Shell.
+fn create_shortcut_for_path(path: &Path) -> anyhow::Result<()> {
+    use std::process::Command;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("no parent directory"))?;
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Shortcut".into());
+    let link_path = parent.join(format!("Shortcut to {stem}.lnk"));
+    let target = path.to_string_lossy().replace('\'', "''");
+    let link = link_path.to_string_lossy().replace('\'', "''");
+    let script = format!(
+        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{link}'); $s.TargetPath='{target}'; $s.Save()"
+    );
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!("powershell shortcut creation failed")
     }
 }
 

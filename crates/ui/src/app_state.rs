@@ -42,6 +42,15 @@ impl AppNavigation {
         });
     }
 
+    /// Open a path in the secondary pane (enables dual pane if needed).
+    pub fn open_path_in_secondary_pane(
+        path: PathBuf,
+        cx: &mut (impl AppContext + BorrowMut<App>),
+    ) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| page.open_path_in_secondary_pane(path, cx));
+    }
+
     pub fn drop_paths_on_directory(
         dest: PathBuf,
         paths: Vec<PathBuf>,
@@ -146,5 +155,12 @@ impl AppFileClipboard {
 
     pub fn set(clipboard: FileClipboard, cx: &mut (impl AppContext + BorrowMut<App>)) {
         cx.borrow_mut().set_global(Self(Some(clipboard)));
+    }
+
+    pub fn has_items(cx: &mut (impl AppContext + BorrowMut<App>)) -> bool {
+        cx.borrow_mut()
+            .try_global::<Self>()
+            .map(|clipboard| clipboard.0.is_some())
+            .unwrap_or(false)
     }
 }

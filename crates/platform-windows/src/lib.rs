@@ -44,8 +44,9 @@ pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 pub use volume::{DriveKind, VolumeDetails, volume_details};
 #[cfg(windows)]
 pub use shell::{
-    invoke_shell_context_menu_item, open_item_properties, query_shell_context_menu_items,
-    show_shell_context_menu, ShellContextMenuEntry,
+    invoke_shell_context_menu_item, open_in_new_explorer_window, open_item_properties,
+    query_shell_context_menu_items, show_open_with_dialog, show_shell_context_menu,
+    ShellContextMenuEntry,
 };
 
 #[cfg(not(windows))]
@@ -92,6 +93,12 @@ mod stubs {
             label: String,
             command_offset: u32,
             command_string: Option<String>,
+            icon_png: Option<Vec<u8>>,
+        },
+        Submenu {
+            label: String,
+            children: Vec<ShellContextMenuEntry>,
+            icon_png: Option<Vec<u8>>,
         },
     }
 
@@ -105,6 +112,7 @@ mod stubs {
     pub fn invoke_shell_context_menu_item(
         _paths: &[PathBuf],
         _command_offset: u32,
+        _extended_verbs: bool,
     ) -> anyhow::Result<()> {
         Ok(())
     }

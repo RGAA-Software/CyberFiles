@@ -93,6 +93,11 @@ unsafe fn shell_icon_png_inner(path: &Path, size: u32) -> anyhow::Result<Vec<u8>
     hbitmap_to_png(hbitmap)
 }
 
+/// Converts a GDI bitmap to PNG (used for Shell context menu row icons).
+pub fn bitmap_to_png(hbitmap: HBITMAP) -> anyhow::Result<Vec<u8>> {
+    unsafe { hbitmap_to_png(hbitmap) }
+}
+
 unsafe fn hbitmap_to_png(hbitmap: HBITMAP) -> anyhow::Result<Vec<u8>> {
     let mut bm = BITMAP::default();
     if GetObjectW(

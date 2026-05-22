@@ -256,6 +256,21 @@ impl MainPage {
         self.add_tab(NavigationTarget::Path(path), cx);
     }
 
+    pub fn open_path_in_secondary_pane(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        record_path_history(&path);
+        let shell = self.active_shell();
+        shell.update(cx, |shell, cx| {
+            if !shell.dual_pane() {
+                shell.toggle_dual_pane(cx);
+            }
+            shell.secondary().update(cx, |pane, cx| {
+                pane.open_path(path, cx);
+            });
+            shell.set_active(crate::shell::PaneSide::Secondary, cx);
+        });
+        cx.notify();
+    }
+
     pub fn schedule_breadcrumb_drag_preview(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if self.omnibar_working_directory(cx).as_ref() == Some(&path) {
             return;

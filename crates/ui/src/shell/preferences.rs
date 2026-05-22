@@ -196,6 +196,16 @@ pub fn apply_sidebar_section_file_tags(enabled: bool, cx: &mut App) {
     mutate_config(cx, |c| c.show_sidebar_section_file_tags = enabled);
 }
 
+pub fn context_menu_shell_submenu(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.context_menu_shell_extensions_submenu)
+        .unwrap_or(true)
+}
+
+pub fn apply_context_menu_shell_submenu(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.context_menu_shell_extensions_submenu = enabled);
+}
+
 pub fn home_widget_quick_access(_cx: &App) -> bool {
     cyberfiles_core::load_config()
         .map(|c| c.show_home_quick_access)
@@ -327,5 +337,6 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         home_network_expanded: prior.home_network_expanded,
         home_file_tags_expanded: prior.home_file_tags_expanded,
         home_recent_expanded: prior.home_recent_expanded,
+        context_menu_shell_extensions_submenu: prior.context_menu_shell_extensions_submenu,
     }
 }
