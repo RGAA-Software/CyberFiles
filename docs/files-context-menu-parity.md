@@ -41,7 +41,8 @@
 - **设置** → Shell 扩展仅出现在「显示更多选项」
 - **Shell 行图标**：`icon_png` + `shell_menu_icon_img`（「显示更多选项」子菜单内）
 - **选中预取**：左键改选时后台 `query_shell_context_menu_items`，减轻首次右键「正在加载」
-- 待做：Open with 动态列表、压缩/发送到/文件标签/分享、毛玻璃样式、`IContextMenu2`、菜单打开后 Shell 缓存到达时自动刷新
+- **Shell 缓存热更新**：菜单打开期间预取完成会重建 `PopupMenu`（`shell_menu_revision`）
+- 待做：Open with 动态列表、压缩/发送到/文件标签/分享、毛玻璃样式、`IContextMenu2`
 
 ### 阶段 C
 
