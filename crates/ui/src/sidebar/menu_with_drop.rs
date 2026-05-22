@@ -14,13 +14,13 @@ use gpui::{
 };
 use gpui_component::{
     h_flex,
-    menu::{ContextMenuExt as _, PopupMenu},
     Collapsible, Icon, StyledExt,
     sidebar::SidebarItem,
     v_flex, ActiveTheme as _,
 };
 
 use crate::drag::DraggedFilePaths;
+use crate::popup_menu::{ContextMenuExt as _, PopupMenu};
 use crate::shell_icon::shell_icon_for_path;
 use super::constants::SIDEBAR_ITEM_HEIGHT;
 

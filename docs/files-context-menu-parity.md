@@ -39,7 +39,7 @@
 - **项菜单（Files 布局）**：顶栏图标快捷操作（剪切/复制/粘贴/重命名/删除/属性）→ 打开/新标签/新窗格 → 复制路径/用所选建文件夹/固定 → 终端 → **显示更多选项**（全部 Shell 扩展，含嵌套子菜单）
 - **Shift** → `CMF_EXTENDEDVERBS`
 - **设置** → Shell 扩展仅出现在「显示更多选项」
-- **Shell 行图标**：`icon_png` + `shell_menu_icon_img`（「显示更多选项」子菜单内）
+- **Shell 行图标**：`PopupMenuItem::icon_png`（CyberFiles fork `popup_menu`，彩色 PNG）
 - **选中预取**：左键改选时后台 `query_shell_context_menu_items`，减轻首次右键「正在加载」
 - **Shell 缓存热更新**：菜单打开期间预取完成会重建 `PopupMenu`（`shell_menu_revision`）
 - 待做：Open with 动态列表、压缩/发送到/文件标签/分享、毛玻璃样式、`IContextMenu2`
@@ -54,7 +54,7 @@
 |----|------|
 | 文档 | 本文档、`files-parity-roadmap.md`、`files-rust-port-plan.md` |
 | Shell COM | `crates/platform-windows/src/context_menu.rs` |
-| UI | `crates/ui/src/file_browser/context_menu.rs`；`file_browser.rs` 预取 Shell |
+| UI | `crates/ui/src/file_browser/context_menu.rs`；`crates/ui/src/popup_menu/`（fork）；`file_browser.rs` 预取 Shell |
 | 命令 | `crates/commands` — 文件操作；Shell 项 invoke 用带索引的本地 action |
 
 ## 验收

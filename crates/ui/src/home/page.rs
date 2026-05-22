@@ -8,12 +8,12 @@ use gpui::{
     MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window,
 };
 use gpui_component::{
-    menu::{PopupMenu, PopupMenuItem},
     v_flex,
 };
 use rust_i18n::t;
 
 use crate::app_state::AppNavigation;
+use crate::popup_menu::{PopupMenu, PopupMenuItem};
 use crate::home::widgets::{load_network_entries, NetworkEntry};
 
 /// Loaded Home dashboard data (Files `RefreshWidgetProperties` snapshot).

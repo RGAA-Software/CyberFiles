@@ -11,7 +11,7 @@ mod settings_view;
 mod shell;
 mod list_icon_cache;
 mod shell_icon;
-mod shell_menu_icon;
+mod popup_menu;
 mod sidebar;
 mod theme;
 mod toolbar_button;
@@ -21,6 +21,7 @@ rust_i18n::i18n!("locales", fallback = "en");
 use gpui::App;
 
 pub use main_page::MainPage;
+pub use popup_menu::{ContextMenuExt, DropdownMenu, PopupMenu, PopupMenuItem};
 pub use cyberfiles_assets::Assets;
 pub use i18n::{init_locale, locale, set_locale};
 pub use shell::open_main_window;
@@ -35,6 +36,7 @@ pub fn init(cx: &mut App) {
         init_locale();
     }
     gpui_component::init(cx);
+    popup_menu::init(cx);
     theme::install(cx);
     cx.set_global(crate::app_state::AppFileClipboard::default());
     if let Some(ref cfg) = config {

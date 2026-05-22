@@ -16,7 +16,9 @@ use gpui::{
     Styled, Subscription, Window,
 };
 use cyberfiles_fs::BreadcrumbDropdownResult;
-use gpui_component::{menu::PopupMenu, IconName, Selectable};
+use gpui_component::{IconName, Selectable};
+
+use crate::popup_menu::PopupMenu;
 
 use crate::icons::inline_icon;
 use crate::toolbar_button::{toolbar_icon_button, TOOLBAR_BUTTON_PX};

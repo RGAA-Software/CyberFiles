@@ -1296,6 +1296,7 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
+ "smallvec",
  "sys-locale",
 ]
 

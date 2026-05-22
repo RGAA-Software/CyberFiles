@@ -4,7 +4,6 @@ use cyberfiles_core::{load_config, sidebar_is_compact, sidebar_is_offcanvas};
 use cyberfiles_platform_windows::{open_item_properties, SHELL_RECYCLE_BIN_PATH};
 use gpui::{prelude::*, ClickEvent, *};
 use gpui_component::{
-    menu::{PopupMenu, PopupMenuItem},
     sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarItem, SidebarToggleButton},
     Collapsible,
     h_flex, ActiveTheme as _, Icon, IconName,
@@ -12,6 +11,7 @@ use gpui_component::{
 use rust_i18n::t;
 
 use crate::drag::DraggedFilePaths;
+use crate::popup_menu::{PopupMenu, PopupMenuItem};
 use crate::icons::sidebar_icon;
 use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;

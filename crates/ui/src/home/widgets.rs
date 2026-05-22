@@ -14,12 +14,12 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     label::Label,
-    menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem},
     v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
 };
 use rust_i18n::t;
 
 use crate::app_state::AppNavigation;
+use crate::popup_menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
 use crate::icons::{compact_icon, inline_icon, pin_icon};
 use crate::home::page::HomePage;
 use crate::home::widget_shell::{

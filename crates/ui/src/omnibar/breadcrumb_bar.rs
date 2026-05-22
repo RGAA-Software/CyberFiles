@@ -10,13 +10,13 @@ use gpui::{prelude::*, *};
 use gpui_component::plot::label::measure_text_width;
 use gpui_component::{
     h_flex,
-    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
     ActiveTheme as _, IconName,
 };
 use rust_i18n::t;
 
 use super::breadcrumb_flyout::BreadcrumbFlyout;
 use crate::app_state::AppNavigation;
+use crate::popup_menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use crate::file_browser::DraggedFilePaths;
 use crate::icons::toolbar_icon;
 use crate::toolbar_button::{toolbar_icon_button, toolbar_labeled_button, TOOLBAR_BUTTON_PX};
