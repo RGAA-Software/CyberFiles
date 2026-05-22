@@ -243,6 +243,10 @@ pub struct FileBrowser {
     context_menu_position: Point<Pixels>,
     context_menu_view: Option<Entity<PopupMenu>>,
     _context_menu_subscription: Option<Subscription>,
+    /// Nested Shell submenu flyout (parent uses scroll host so gpui `scrollable` does not clip submenus).
+    shell_branch_menu: Option<Entity<PopupMenu>>,
+    shell_branch_menu_position: Point<Pixels>,
+    _shell_branch_subscription: Option<Subscription>,
     /// Bumped when Shell entries finish loading; drives menu rebuild while open.
     shell_menu_revision: u64,
     context_menu_built_revision: u64,
@@ -326,6 +330,9 @@ impl FileBrowser {
             context_menu_position: Point::default(),
             context_menu_view: None,
             _context_menu_subscription: None,
+            shell_branch_menu: None,
+            shell_branch_menu_position: Point::default(),
+            _shell_branch_subscription: None,
             shell_menu_revision: 0,
             context_menu_built_revision: 0,
             list_icon_warm_token: 0,
@@ -532,6 +539,58 @@ impl FileBrowser {
         self.context_menu_open = false;
         self.context_menu_view = None;
         self._context_menu_subscription = None;
+        self.dismiss_shell_branch_menu();
+    }
+
+    pub(crate) fn dismiss_shell_branch_menu(&mut self) {
+        self.shell_branch_menu = None;
+        self.shell_branch_menu_position = Point::default();
+        self._shell_branch_subscription = None;
+    }
+
+    pub(crate) fn open_shell_branch_menu(
+        &mut self,
+        entries: Vec<ShellContextMenuEntry>,
+        paths: Vec<PathBuf>,
+        extended_verbs: bool,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.dismiss_shell_branch_menu();
+        if entries.is_empty() {
+            return;
+        }
+
+        let browser_entity = cx.entity();
+        let browser_weak = cx.weak_entity();
+        let menu = PopupMenu::build(window, cx, {
+            let browser_entity = browser_entity.clone();
+            move |menu, window, menu_cx| {
+                context_menu::append_shell_entries(
+                    menu,
+                    &entries,
+                    &paths,
+                    extended_verbs,
+                    browser_entity,
+                    window,
+                    menu_cx,
+                )
+            }
+        });
+
+        self.shell_branch_menu = Some(menu.clone());
+        self.shell_branch_menu_position = position;
+        self._shell_branch_subscription = Some(window.subscribe(&menu, cx, {
+            move |_, _: &DismissEvent, window, cx| {
+                let _ = browser_weak.update(cx, |browser, cx| {
+                    browser.dismiss_shell_branch_menu();
+                    cx.notify();
+                });
+                window.refresh();
+            }
+        }));
+        cx.notify();
     }
 
     fn open_context_menu(
@@ -620,6 +679,8 @@ impl FileBrowser {
             return div().into_any_element();
         };
         let position = self.context_menu_position;
+        let branch_menu = self.shell_branch_menu.clone();
+        let branch_position = self.shell_branch_menu_position;
 
         deferred(
             anchored().child(
@@ -633,7 +694,16 @@ impl FileBrowser {
                             .snap_to_window_with_margin(px(8.))
                             .anchor(Anchor::TopLeft)
                             .child(menu),
-                    ),
+                    )
+                    .when_some(branch_menu, |layer, branch| {
+                        layer.child(
+                            anchored()
+                                .position(branch_position)
+                                .snap_to_window_with_margin(px(8.))
+                                .anchor(Anchor::TopLeft)
+                                .child(branch),
+                        )
+                    }),
             ),
         )
         .with_priority(1)
@@ -883,6 +953,7 @@ impl FileBrowser {
         }
         self._shell_menu_task.take();
         self.shell_menu_fetch_paths = None;
+        self.dismiss_shell_branch_menu();
     }
 
     fn navigate_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {

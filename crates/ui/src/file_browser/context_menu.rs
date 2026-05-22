@@ -10,12 +10,15 @@ use cyberfiles_commands::{
 use cyberfiles_core::load_config;
 use cyberfiles_fs::SortOption;
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
-use gpui::{div, prelude::*, Context, Entity, SharedString, Window, px};
+use gpui::{
+    div, img, prelude::*, AnyElement, App, Context, Entity, Image, ImageFormat, ObjectFit, Pixels,
+    SharedString, Window, px,
+};
 use gpui_component::{
     h_flex,
     menu::{PopupMenu, PopupMenuItem},
     notification::Notification,
-    Disableable as _, Icon, IconName, WindowExt as _,
+    Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -29,6 +32,31 @@ use crate::app_state::{AppFileClipboard, AppNavigation};
 use crate::icons::toolbar_icon;
 use crate::shell_menu_icon::shell_menu_icon_img;
 use crate::toolbar_button::toolbar_icon_button;
+
+/// Max height for Shell extension lists (`PopupMenu::scrollable` + nested branch flyouts).
+const SHELL_MENU_MAX_HEIGHT: Pixels = px(620.);
+
+fn finish_shell_popup_menu(menu: PopupMenu) -> PopupMenu {
+    menu.scrollable(true).max_h(SHELL_MENU_MAX_HEIGHT)
+}
+
+fn resolve_submenu_entries(
+    lazy_parent_index: Option<u32>,
+    children: &[ShellContextMenuEntry],
+) -> Vec<ShellContextMenuEntry> {
+    if let Some(index) = lazy_parent_index {
+        match std::thread::spawn(move || platform::load_lazy_submenu(index)).join() {
+            Ok(Ok(items)) => items,
+            Ok(Err(error)) => {
+                eprintln!("[shell-menu] lazy submenu err: {error:#}");
+                Vec::new()
+            }
+            Err(_) => Vec::new(),
+        }
+    } else {
+        children.to_vec()
+    }
+}
 
 /// Build the file list context menu (background or item flyout).
 pub fn build_context_menu(
@@ -435,9 +463,7 @@ fn append_show_more_options(
                 browser.clone(),
                 window,
                 cx,
-            )
-            .scrollable(true)
-            .max_h(px(420.)),
+            ),
             }
         },
     )
@@ -506,14 +532,65 @@ fn shell_popup_item(
     .on_click(move |_, window, cx| invoke(window, cx))
 }
 
-fn append_shell_entries(
+fn shell_row_icon_slot(icon_png: Option<Arc<Vec<u8>>>) -> AnyElement {
+    match icon_png {
+        Some(png) => img(Arc::new(Image::from_bytes(ImageFormat::Png, (*png).clone())))
+            .size(px(16.))
+            .object_fit(ObjectFit::Contain)
+            .into_any_element(),
+        None => div().w(px(16.)).h(px(16.)).into_any_element(),
+    }
+}
+
+fn shell_submenu_popup_item(
+    label: String,
+    icon_png: Option<Vec<u8>>,
+    branch_entries: Vec<ShellContextMenuEntry>,
+    paths: Vec<PathBuf>,
+    extended_verbs: bool,
+    browser: Entity<FileBrowser>,
+) -> PopupMenuItem {
+    let display_label = platform::format_shell_menu_label(&label);
+    let row_png = icon_png.map(Arc::new);
+    let open_branch = move |window: &mut Window, cx: &mut App| {
+        if branch_entries.is_empty() {
+            return;
+        }
+        let position = window.mouse_position();
+        let _ = browser.update(cx, |browser, cx| {
+            browser.open_shell_branch_menu(
+                branch_entries.clone(),
+                paths.clone(),
+                extended_verbs,
+                position,
+                window,
+                cx,
+            );
+        });
+    };
+    PopupMenuItem::element(move |_window, _cx| {
+        h_flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .py_1()
+            .min_w(px(200.))
+            .child(shell_row_icon_slot(row_png.clone()))
+            .child(div().flex_1().text_sm().child(display_label.clone()))
+            .child(Icon::new(IconName::ChevronRight).xsmall())
+            .into_any_element()
+    })
+    .on_click(move |_, window, cx| open_branch(window, cx))
+}
+
+pub(crate) fn append_shell_entries(
     mut menu: PopupMenu,
     entries: &[ShellContextMenuEntry],
     paths: &[PathBuf],
     extended_verbs: bool,
     browser: Entity<FileBrowser>,
-    window: &mut Window,
-    cx: &mut Context<PopupMenu>,
+    _window: &mut Window,
+    _cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
     let browser = browser.clone();
     for entry in entries {
@@ -541,48 +618,21 @@ fn append_shell_entries(
                 label,
                 children,
                 lazy_parent_index,
+                icon_png,
                 ..
             } => {
-                let paths = paths.to_vec();
-                let label = platform::format_shell_menu_label(&label);
-                let browser_sub = browser.clone();
-                let lazy_index = *lazy_parent_index;
-                let children = children.clone();
-                menu = menu.submenu(label, window, cx, move |sub, window, cx| {
-                    let entries = if let Some(index) = lazy_index {
-                        match std::thread::spawn(move || platform::load_lazy_submenu(index)).join() {
-                            Ok(Ok(items)) => items,
-                            Ok(Err(error)) => {
-                                eprintln!("[shell-menu] lazy submenu err: {error:#}");
-                                Vec::new()
-                            }
-                            Err(_) => Vec::new(),
-                        }
-                    } else {
-                        children.clone()
-                    };
-                    if entries.is_empty() {
-                        sub.item(
-                            PopupMenuItem::new(t!("files.menu.shell_empty")).disabled(true),
-                        )
-                    } else {
-                        append_shell_entries(
-                            sub,
-                            &entries,
-                            &paths,
-                            extended_verbs,
-                            browser_sub.clone(),
-                            window,
-                            cx,
-                        )
-                        .scrollable(true)
-                        .max_h(px(420.))
-                    }
-                });
+                menu = menu.item(shell_submenu_popup_item(
+                    label.clone(),
+                    icon_png.clone(),
+                    resolve_submenu_entries(*lazy_parent_index, children),
+                    paths.to_vec(),
+                    extended_verbs,
+                    browser.clone(),
+                ));
             }
         }
     }
-    menu
+    finish_shell_popup_menu(menu)
 }
 
 fn build_recycle_item_menu(
