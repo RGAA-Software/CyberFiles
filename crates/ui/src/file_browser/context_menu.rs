@@ -435,7 +435,9 @@ fn append_show_more_options(
                 browser.clone(),
                 window,
                 cx,
-            ),
+            )
+            .scrollable(true)
+            .max_h(px(420.)),
             }
         },
     )
@@ -470,6 +472,7 @@ fn shell_popup_item(
     command_string: Option<String>,
     extended_verbs: bool,
 ) -> PopupMenuItem {
+    let display_label = platform::format_shell_menu_label(&label);
     let is_properties = shell_menu_item_is_properties(command_string.as_deref(), &label);
     let invoke = move |_window: &mut Window, _cx: &mut gpui::App| {
         let result = if is_properties {
@@ -482,24 +485,25 @@ fn shell_popup_item(
         }
     };
 
-    if let Some(png) = icon_png {
-        let row_label = label.clone();
-        let row_png = Arc::new(png);
-        PopupMenuItem::element(move |window, _| {
-            h_flex()
-                .items_center()
-                .gap_2()
-                .px_2()
-                .py_1()
-                .min_w(px(180.))
-                .child(shell_menu_icon_img(row_png.clone(), window))
-                .child(div().text_sm().child(row_label.clone()))
-                .into_any_element()
-        })
-        .on_click(move |_, window, cx| invoke(window, cx))
-    } else {
-        PopupMenuItem::new(label).on_click(move |_, window, cx| invoke(window, cx))
-    }
+    let row_label = display_label.clone();
+    let row_png = icon_png.map(Arc::new);
+    PopupMenuItem::element(move |window, _| {
+        let icon_slot = if let Some(png) = row_png.clone() {
+            shell_menu_icon_img(png, window).into_any_element()
+        } else {
+            div().w(px(16.)).h(px(16.)).into_any_element()
+        };
+        h_flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .py_1()
+            .min_w(px(200.))
+            .child(icon_slot)
+            .child(div().text_sm().child(row_label.clone()))
+            .into_any_element()
+    })
+    .on_click(move |_, window, cx| invoke(window, cx))
 }
 
 fn append_shell_entries(
@@ -540,7 +544,7 @@ fn append_shell_entries(
                 ..
             } => {
                 let paths = paths.to_vec();
-                let label = label.clone();
+                let label = platform::format_shell_menu_label(&label);
                 let browser_sub = browser.clone();
                 let lazy_index = *lazy_parent_index;
                 let children = children.clone();
@@ -571,6 +575,8 @@ fn append_shell_entries(
                             window,
                             cx,
                         )
+                        .scrollable(true)
+                        .max_h(px(420.))
                     }
                 });
             }

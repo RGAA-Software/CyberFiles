@@ -26,8 +26,29 @@ const CMD_LAST: u32 = 0x7fff;
 const MAX_SHELL_MENU_ITEMS: usize = 96;
 const MAX_SUBMENU_DEPTH: u32 = 8;
 const MENU_ICON_PX: i32 = 16;
-/// Shell menu bitmap → PNG is disabled until icon extraction is hardened (was crashing on some rows).
-const SHELL_MENU_ICONS_ENABLED: bool = false;
+const SHELL_MENU_ICONS_ENABLED: bool = true;
+
+/// Strip Win32 menu mnemonics (`&`) the same way as Files `ExtractLabelAndAccessKey`.
+pub fn format_shell_menu_label(raw: &str) -> String {
+    let mut label = String::new();
+    let mut chars = raw.chars().peekable();
+    while let Some(current) = chars.next() {
+        if current != '&' {
+            label.push(current);
+            continue;
+        }
+        let Some(next) = chars.next() else {
+            label.push('&');
+            break;
+        };
+        if next == '&' {
+            label.push('&');
+            continue;
+        }
+        label.push(next);
+    }
+    label
+}
 
 /// Debug logging for Shell context menu merge (stderr → `cargo run` terminal).
 macro_rules! shell_log {
@@ -375,7 +396,7 @@ unsafe fn enumerate_popup_menu(
         };
         if !submenu.is_invalid() {
             let label_len = label_buf.iter().position(|&c| c == 0).unwrap_or(0);
-            let label = String::from_utf16_lossy(&label_buf[..label_len]);
+            let label = format_shell_menu_label(&String::from_utf16_lossy(&label_buf[..label_len]));
             if expand_submenus {
                 if let Ok(children) = enumerate_popup_menu(submenu, context_menu, depth + 1, true) {
                     if !children.is_empty() {
@@ -405,7 +426,7 @@ unsafe fn enumerate_popup_menu(
             skipped_empty_label += 1;
             continue;
         }
-        let label = String::from_utf16_lossy(&label_buf[..label_len]);
+        let label = format_shell_menu_label(&String::from_utf16_lossy(&label_buf[..label_len]));
         let command_offset = info.wID.saturating_sub(CMD_FIRST);
         if command_offset > CMD_LAST.saturating_sub(CMD_FIRST) {
             skipped_bad_id += 1;
@@ -444,15 +465,19 @@ unsafe fn menu_item_icon_png(hbmp: HBITMAP) -> Option<Vec<u8>> {
     if !SHELL_MENU_ICONS_ENABLED || hbmp.is_invalid() {
         return None;
     }
-    let copy = CopyImage(
-        HANDLE(hbmp.0),
-        IMAGE_BITMAP,
-        MENU_ICON_PX,
-        MENU_ICON_PX,
-        LR_COPYRETURNORG,
-    )
-    .ok()?;
-    bitmap_to_png(HBITMAP(copy.0)).ok()
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let copy = CopyImage(
+            HANDLE(hbmp.0),
+            IMAGE_BITMAP,
+            MENU_ICON_PX,
+            MENU_ICON_PX,
+            LR_COPYRETURNORG,
+        )
+        .ok()?;
+        bitmap_to_png(HBITMAP(copy.0)).ok()
+    }))
+    .ok()
+    .flatten()
 }
 
 /// Opens the system «Open with» dialog for a file (same as Explorer).
@@ -648,8 +673,20 @@ pub fn show_shell_context_menu_fallback(paths: &[PathBuf]) -> anyhow::Result<()>
     Ok(())
 }
 
-#[cfg(all(windows, test))]
+#[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn format_shell_menu_label_strips_mnemonics() {
+        assert_eq!(format_shell_menu_label("Open &with..."), "Open with...");
+        assert_eq!(format_shell_menu_label("Copy && paste"), "Copy & paste");
+        assert_eq!(format_shell_menu_label("Pr&operties"), "Properties");
+    }
+}
+
+#[cfg(all(windows, test))]
+mod windows_tests {
     use super::*;
     use std::fs;
 

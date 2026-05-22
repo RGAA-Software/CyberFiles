@@ -51,8 +51,8 @@ pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 pub use volume::{DriveKind, VolumeDetails, volume_details};
 #[cfg(windows)]
 pub use shell::{
-    clear_shell_menu_session, invoke_shell_context_menu_item, invoke_shell_properties,
-    load_lazy_submenu, open_in_new_explorer_window, open_item_properties,
+    clear_shell_menu_session, format_shell_menu_label, invoke_shell_context_menu_item,
+    invoke_shell_properties, load_lazy_submenu, open_in_new_explorer_window, open_item_properties,
     query_shell_context_menu_items, show_open_with_dialog, show_shell_context_menu,
     warm_up_query_context_menu, ShellContextMenuEntry,
 };
@@ -116,6 +116,10 @@ mod stubs {
     }
 
     pub fn warm_up_query_context_menu() {}
+
+    pub fn format_shell_menu_label(raw: &str) -> String {
+        raw.to_string()
+    }
 
     pub fn query_shell_context_menu_items(
         _paths: &[PathBuf],
