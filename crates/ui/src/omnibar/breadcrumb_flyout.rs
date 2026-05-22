@@ -16,13 +16,10 @@ use gpui::{
     Styled, Subscription, Window,
 };
 use cyberfiles_fs::BreadcrumbDropdownResult;
-use gpui_component::{
-    button::{Button, ButtonVariants as _},
-    menu::PopupMenu,
-    IconName, Selectable, Sizable as _,
-};
+use gpui_component::{menu::PopupMenu, IconName, Selectable};
 
 use crate::icons::inline_icon;
+use crate::toolbar_button::{toolbar_icon_button, TOOLBAR_BUTTON_PX};
 
 /// Chevron trigger; rotates 90° while flyout is open (Files `ChevronNormalOn`).
 #[derive(IntoElement)]
@@ -35,17 +32,14 @@ struct BreadcrumbChevronTrigger {
 impl RenderOnce for BreadcrumbChevronTrigger {
     fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
         div()
-            .h(px(28.))
-            .w(px(28.))
+            .h(TOOLBAR_BUTTON_PX)
+            .w(TOOLBAR_BUTTON_PX)
             .flex()
             .flex_none()
             .items_center()
             .justify_center()
             .child(
-                Button::new(self.id)
-                    .xsmall()
-                    .compact()
-                    .ghost()
+                toolbar_icon_button(self.id)
                     .tooltip(self.tooltip)
                     .selected(self.open)
                     .child(

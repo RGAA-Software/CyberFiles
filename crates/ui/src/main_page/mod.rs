@@ -25,7 +25,8 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
-use crate::icons::{compact_icon, toolbar_icon};
+use crate::icons::{compact_icon, pin_icon, toolbar_icon};
+use crate::toolbar_button::toolbar_icon_button;
 use crate::info_pane::InfoPane;
 use crate::app_state::breadcrumb_navigation_target;
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
@@ -90,7 +91,7 @@ impl MainPage {
             omnibar_path_input: None,
             _omnibar_path_subscription: None,
             omnibar_breadcrumb_callbacks: None,
-            omnibar_breadcrumb_width: 10_000.,
+            omnibar_breadcrumb_width: 320.,
             breadcrumb_drag_generation: 0,
             search_input: None,
             _search_subscription: None,
@@ -547,10 +548,7 @@ impl MainPage {
             .file_browser()
             .read(cx)
             .read_options();
-        // Inner `px_2` on omnibar-bar; keep collapse math in sync with layout padding.
-        const OMNIBAR_HORIZONTAL_PADDING: f32 = 16.;
-        let breadcrumb_width =
-            (self.omnibar_breadcrumb_width - OMNIBAR_HORIZONTAL_PADDING).max(1.);
+        let breadcrumb_width = self.omnibar_breadcrumb_width.max(1.);
         let breadcrumb_callbacks = self
             .omnibar_breadcrumb_callbacks
             .as_ref()
@@ -578,15 +576,29 @@ impl MainPage {
             .relative()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .when(show_breadcrumbs, |bar| {
-                bar.child(
+                bar.child({
+                    let page = cx.entity();
                     h_flex()
                         .id("omnibar-breadcrumb-host")
                         .w_full()
                         .min_w_0()
                         .flex_1()
+                        .overflow_x_hidden()
                         .items_center()
-                        .child(breadcrumb_bar),
-                )
+                        .on_prepaint(move |bounds, _, cx| {
+                            let w = f32::from(bounds.size.width);
+                            if w < 1.0 {
+                                return;
+                            }
+                            let _ = page.update(cx, |page, cx| {
+                                if (page.omnibar_breadcrumb_width - w).abs() > 1.5 {
+                                    page.omnibar_breadcrumb_width = w;
+                                    cx.notify();
+                                }
+                            });
+                        })
+                        .child(breadcrumb_bar)
+                })
             })
             .when(!show_breadcrumbs, |bar| {
                 bar.child(
@@ -599,7 +611,8 @@ impl MainPage {
                             row.child(
                                 Input::new(input)
                                     .w_full()
-                                    .with_size(Size::Medium),
+                                    .with_size(Size::Medium)
+                                    .appearance(false),
                             )
                         }),
                 )
@@ -847,9 +860,7 @@ impl MainPage {
                     .gap_1()
                     .pr_1()
                     .child(
-                        Button::new("main-new-tab")
-                            .xsmall()
-                            .ghost()
+                        toolbar_icon_button("main-new-tab")
                             .icon(compact_icon(IconName::Plus))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.add_tab(
@@ -876,10 +887,8 @@ impl MainPage {
                             .child(Label::new(title).text_left().truncate()),
                     )
                     .suffix(
-                        Button::new(format!("main-tab-close-{}", tab.id))
+                        toolbar_icon_button(format!("main-tab-close-{}", tab.id))
                             .mr(TITLE_TAB_CLOSE_RIGHT_INSET)
-                            .xsmall()
-                            .ghost()
                             .icon(compact_icon(IconName::Close))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
@@ -943,9 +952,7 @@ impl MainPage {
                             .px_2()
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .child(
-                                Button::new("theme-toggle")
-                                    .small()
-                                    .ghost()
+                                toolbar_icon_button("theme-toggle")
                                     .icon(toolbar_icon(theme_icon))
                                     .on_click(move |_, _, cx| {
                                         let mode = if cx.theme().mode.is_dark() {
@@ -957,10 +964,8 @@ impl MainPage {
                                     }),
                             )
                             .child(
-                                Button::new("github")
+                                toolbar_icon_button("github")
                                     .icon(toolbar_icon(IconName::Github))
-                                    .small()
-                                    .ghost()
                                     .on_click(|_, _, cx| {
                                         cx.open_url("https://github.com/RGAA-Software/CyberFiles")
                                     }),
@@ -968,10 +973,7 @@ impl MainPage {
                             .child(
                                 div().relative().child(
                                     Badge::new().count(notifications_count).max(99).child(
-                                        Button::new("bell")
-                                            .small()
-                                            .ghost()
-                                            .compact()
+                                        toolbar_icon_button("bell")
                                             .icon(toolbar_icon(IconName::Bell)),
                                     ),
                                 ),
@@ -1008,8 +1010,6 @@ impl MainPage {
                 | NavigationTarget::FileTag(_)
         );
 
-        let page = cx.entity();
-
         h_flex()
             .id("navigation-toolbar")
             .w_full()
@@ -1031,9 +1031,7 @@ impl MainPage {
                     .gap_1()
                     .items_center()
                     .child(
-                        Button::new("nav-sidebar-toggle")
-                            .small()
-                            .ghost()
+                        toolbar_icon_button("nav-sidebar-toggle")
                             .icon(toolbar_icon(if sidebar_collapsed {
                                 IconName::PanelLeftOpen
                             } else {
@@ -1044,9 +1042,7 @@ impl MainPage {
                             })),
                     )
                     .child(
-                        Button::new("nav-back")
-                            .small()
-                            .ghost()
+                        toolbar_icon_button("nav-back")
                             .icon(toolbar_icon(IconName::ArrowLeft))
                             .disabled(!can_back)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -1056,9 +1052,7 @@ impl MainPage {
                             })),
                     )
                     .child(
-                        Button::new("nav-forward")
-                            .small()
-                            .ghost()
+                        toolbar_icon_button("nav-forward")
                             .icon(toolbar_icon(IconName::ArrowRight))
                             .disabled(!can_forward)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -1068,9 +1062,7 @@ impl MainPage {
                             })),
                     )
                     .child(
-                        Button::new("nav-up")
-                            .small()
-                            .ghost()
+                        toolbar_icon_button("nav-up")
                             .icon(toolbar_icon(IconName::ArrowUp))
                             .disabled(!can_up)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -1080,9 +1072,7 @@ impl MainPage {
                             })),
                     )
                     .child(
-                        Button::new("nav-refresh")
-                            .small()
-                            .ghost()
+                        toolbar_icon_button("nav-refresh")
                             .icon(toolbar_icon(IconName::Redo2))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let pane = this.active_pane(cx);
@@ -1103,20 +1093,6 @@ impl MainPage {
                     .flex_1()
                     .min_w_0()
                     .h(OMNIBAR_BAR_HEIGHT)
-                    .on_prepaint({
-                        move |bounds, window, cx| {
-                            let mut w = f32::from(bounds.size.width);
-                            if w < 1.0 {
-                                w = f32::from(window.viewport_size().width) * 0.45;
-                            }
-                            let _ = page.update(cx, |page, cx| {
-                                if (page.omnibar_breadcrumb_width - w).abs() > 1.5 {
-                                    page.omnibar_breadcrumb_width = w;
-                                    cx.notify();
-                                }
-                            });
-                        }
-                    })
                     .child(self.render_omnibar(window, cx)),
             )
             // Files col 2: split, info pane, pin, search
@@ -1127,9 +1103,7 @@ impl MainPage {
                     .gap_1()
                     .items_center()
                     .child(
-                        Button::new("nav-split-pane")
-                            .small()
-                            .ghost()
+                        toolbar_icon_button("nav-split-pane")
                             .icon(toolbar_icon(IconName::LayoutDashboard))
                             .tooltip(t!("nav.split_pane"))
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -1137,9 +1111,7 @@ impl MainPage {
                             })),
                     )
                     .child(
-                        Button::new("nav-toggle-info")
-                            .small()
-                            .ghost()
+                        toolbar_icon_button("nav-toggle-info")
                             .icon(toolbar_icon(if show_info_pane {
                                 IconName::PanelRightClose
                             } else {
@@ -1153,10 +1125,8 @@ impl MainPage {
                     let search_input = self.ensure_search_input(window, cx);
                     trailing = trailing
                         .child(
-                            Button::new("nav-pin-folder")
-                                .small()
-                                .outline()
-                                .icon(toolbar_icon(IconName::Star))
+                            toolbar_icon_button("nav-pin-folder")
+                                .icon(pin_icon())
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.pin_current_folder(cx);
                                 })),

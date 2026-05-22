@@ -8,6 +8,14 @@ pub const CARD_MIN_HEIGHT: Pixels = px(72.);
 pub const FOLDER_CARD_WIDTH: Pixels = px(120.);
 pub const FOLDER_CARD_HEIGHT: Pixels = px(88.);
 
+/// Stop the Home page “show/hide widgets” menu from opening (bubble phase).
+pub fn block_home_page_context_menu<T>(element: T) -> T
+where
+    T: InteractiveElement,
+{
+    element.on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+}
+
 pub fn card_grid(children: impl IntoIterator<Item = AnyElement>) -> impl IntoElement {
     div()
         .id("home-card-grid")

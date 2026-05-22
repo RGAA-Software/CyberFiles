@@ -291,11 +291,13 @@ pub struct BreadcrumbVisibleLayout {
 }
 
 const ROOT_BLOCK_WIDTH: f32 = 72.0;
-const ELLIPSIS_BLOCK_WIDTH: f32 = 36.0;
-const SEGMENT_PADDING: f32 = 16.0;
-/// Matches omnibar segment `Button::xsmall()` / `text_xs()` (~12px): one terminal cell ≈ 7px.
-const SEGMENT_CELL_WIDTH: f32 = 7.0;
-const CHEVRON_WIDTH: f32 = 28.0;
+const ELLIPSIS_BLOCK_WIDTH: f32 = 40.0;
+const SEGMENT_PADDING: f32 = 24.0;
+/// Conservative estimate for `text_sm()` (~14px) when pixel metrics are unavailable.
+const SEGMENT_CELL_WIDTH: f32 = 8.5;
+const CHEVRON_WIDTH: f32 = 32.0;
+/// `path-breadcrumb-bar` `gap(px(2.))` between blocks.
+pub const BREADCRUMB_BLOCK_GAP: f32 = 2.0;
 
 fn segment_text_width_px(label: &str) -> f32 {
     let units: u32 = label
@@ -311,13 +313,42 @@ fn segment_width_px(label: &str, has_chevron: bool) -> f32 {
         + if has_chevron { CHEVRON_WIDTH } else { 0.0 }
 }
 
-/// Files-style collapse: hide the **prefix** when the trail does not fit (keep tail visible).
-pub fn breadcrumb_visible_layout_for_width(
-    segments: &[PathBreadcrumb],
+fn breadcrumb_trail_width_px(
+    segment_widths: &[f32],
+    first_visible: usize,
+    show_root: bool,
+    root_width: f32,
+    ellipsis_width: f32,
+    block_gap: f32,
+) -> f32 {
+    let n = segment_widths.len();
+    let mut blocks: Vec<f32> = Vec::new();
+    if show_root {
+        blocks.push(root_width);
+    }
+    if first_visible > 0 {
+        blocks.push(ellipsis_width);
+    }
+    blocks.extend_from_slice(&segment_widths[first_visible..n]);
+    let sum: f32 = blocks.iter().sum();
+    let gaps = if blocks.len() > 1 {
+        block_gap * (blocks.len() - 1) as f32
+    } else {
+        0.0
+    };
+    sum + gaps
+}
+
+/// Files-style collapse using pre-measured block widths (preferred in UI).
+pub fn breadcrumb_visible_layout_for_widths(
+    segment_widths: &[f32],
     available_width: f32,
     show_root: bool,
+    root_width: f32,
+    ellipsis_width: f32,
+    block_gap: f32,
 ) -> BreadcrumbVisibleLayout {
-    let n = segments.len();
+    let n = segment_widths.len();
     if n == 0 {
         return BreadcrumbVisibleLayout {
             hidden_prefix_len: 0,
@@ -325,22 +356,17 @@ pub fn breadcrumb_visible_layout_for_width(
         };
     }
 
-    let widths: Vec<f32> = segments
-        .iter()
-        .enumerate()
-        .map(|(i, s)| segment_width_px(&s.label, i + 1 < n))
-        .collect();
+    let root = if show_root { root_width } else { 0.0 };
 
-    let root = if show_root { ROOT_BLOCK_WIDTH } else { 0.0 };
-
-    for first_visible in 0..=n {
-        let mut total = root;
-        if first_visible > 0 {
-            total += ELLIPSIS_BLOCK_WIDTH;
-        }
-        for i in first_visible..n {
-            total += widths[i];
-        }
+    for first_visible in 0..n {
+        let total = breadcrumb_trail_width_px(
+            segment_widths,
+            first_visible,
+            show_root,
+            root,
+            ellipsis_width,
+            block_gap,
+        );
         if total <= available_width {
             return BreadcrumbVisibleLayout {
                 hidden_prefix_len: first_visible,
@@ -353,6 +379,28 @@ pub fn breadcrumb_visible_layout_for_width(
         hidden_prefix_len: n.saturating_sub(1),
         visible_indices: vec![n - 1],
     }
+}
+
+/// Files-style collapse: hide the **prefix** when the trail does not fit (keep tail visible).
+pub fn breadcrumb_visible_layout_for_width(
+    segments: &[PathBreadcrumb],
+    available_width: f32,
+    show_root: bool,
+) -> BreadcrumbVisibleLayout {
+    let n = segments.len();
+    let widths: Vec<f32> = segments
+        .iter()
+        .enumerate()
+        .map(|(i, s)| segment_width_px(&s.label, i + 1 < n))
+        .collect();
+    breadcrumb_visible_layout_for_widths(
+        &widths,
+        available_width,
+        show_root,
+        ROOT_BLOCK_WIDTH,
+        ELLIPSIS_BLOCK_WIDTH,
+        BREADCRUMB_BLOCK_GAP,
+    )
 }
 
 /// Back-compat helper when width is unknown (assume a wide bar).
@@ -414,6 +462,41 @@ mod tests {
             "last segment stays visible"
         );
         assert!(layout.visible_indices.windows(2).all(|w| w[0] + 1 == w[1]));
+    }
+
+    #[test]
+    fn breadcrumb_visible_layout_collapses_deep_trail_when_measured_wide() {
+        let labels = [
+            "C:\\",
+            "Users",
+            "developer",
+            "Documents",
+            "Projects",
+            "CyberFiles",
+            "crates",
+            "ui",
+        ];
+        let n = labels.len();
+        let widths: Vec<f32> = labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| segment_width_px(label, i + 1 < n))
+            .collect();
+        let layout = breadcrumb_visible_layout_for_widths(
+            &widths,
+            420.0,
+            true,
+            ROOT_BLOCK_WIDTH,
+            ELLIPSIS_BLOCK_WIDTH,
+            BREADCRUMB_BLOCK_GAP,
+        );
+        assert!(
+            layout.hidden_prefix_len >= 4,
+            "deep paths should hide more than two prefix segments, got hidden_prefix_len={}",
+            layout.hidden_prefix_len
+        );
+        assert!(!layout.visible_indices.is_empty());
+        assert_eq!(*layout.visible_indices.last().unwrap(), n - 1);
     }
 
     #[test]

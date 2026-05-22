@@ -11,6 +11,7 @@ mod settings_view;
 mod shell;
 mod shell_icon;
 mod sidebar;
+mod toolbar_button;
 
 rust_i18n::i18n!("locales", fallback = "en");
 

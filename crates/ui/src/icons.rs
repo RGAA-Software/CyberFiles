@@ -25,3 +25,10 @@ pub fn inline_icon(icon: IconName) -> Icon {
 pub fn compact_icon(icon: IconName) -> Icon {
     sized_icon(icon)
 }
+
+/// Pinned folder / push pin (`icons/pin.svg`, Material `push_pin`).
+pub fn pin_icon() -> Icon {
+    Icon::new(IconName::Folder)
+        .path("icons/pin.svg")
+        .with_size(APP_ICON_PX)
+}

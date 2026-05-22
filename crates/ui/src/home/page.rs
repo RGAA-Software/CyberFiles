@@ -3,9 +3,12 @@ use cyberfiles_fs::{
     file_tag_previews, list_drives, list_quick_access_entries, list_recent_files,
     load_home_file_tags, DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
 };
-use gpui::{prelude::*, *};
+use gpui::{
+    anchored, deferred, div, prelude::*, px, Anchor, App, DismissEvent, Entity,
+    MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window,
+};
 use gpui_component::{
-    menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem},
+    menu::{PopupMenu, PopupMenuItem},
     v_flex,
 };
 use rust_i18n::t;
@@ -36,11 +39,18 @@ impl HomeSnapshot {
     }
 }
 
+struct WidgetPrefsMenuState {
+    position: Point<Pixels>,
+    menu: Entity<PopupMenu>,
+    _subscription: Subscription,
+}
+
 pub struct HomePage {
     pub(super) prefs: HomeWidgetPrefs,
     snapshot: Option<HomeSnapshot>,
     loading: bool,
     load_generation: u64,
+    widget_prefs_menu: Option<WidgetPrefsMenuState>,
 }
 
 impl HomePage {
@@ -50,6 +60,7 @@ impl HomePage {
             snapshot: None,
             loading: false,
             load_generation: 0,
+            widget_prefs_menu: None,
         };
         page.schedule_load(cx);
         page
@@ -100,19 +111,52 @@ impl HomePage {
         cx.notify();
     }
 
-    fn toggle_widget_visible(&mut self, key: &str, cx: &mut Context<Self>) {
-        match key {
-            "quick_access" => self.prefs.show_quick_access = !self.prefs.show_quick_access,
-            "drives" => self.prefs.show_drives = !self.prefs.show_drives,
-            "network" => self.prefs.show_network = !self.prefs.show_network,
-            "file_tags" => self.prefs.show_file_tags = !self.prefs.show_file_tags,
-            "recent" => self.prefs.show_recent = !self.prefs.show_recent,
-            _ => {}
-        }
-        let _ = save_home_widget_prefs(&self.prefs);
+    fn close_widget_prefs_menu(&mut self) {
+        self.widget_prefs_menu = None;
+    }
+
+    fn open_widget_prefs_menu(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_widget_prefs_menu();
+
+        let page = cx.entity();
+        let menu = PopupMenu::build(window, cx, |menu, _window, _cx| {
+            build_page_context_menu(menu, &home_widget_prefs())
+        });
+
+        let subscription = window.subscribe(&menu, cx, {
+            move |_, _: &DismissEvent, window, cx| {
+                let _ = page.update(cx, |page, cx| {
+                    page.close_widget_prefs_menu();
+                    cx.notify();
+                });
+                window.refresh();
+            }
+        });
+
+        self.widget_prefs_menu = Some(WidgetPrefsMenuState {
+            position,
+            menu,
+            _subscription: subscription,
+        });
         cx.notify();
     }
 
+    fn on_blank_right_click(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if event.button != MouseButton::Right {
+            return;
+        }
+        self.open_widget_prefs_menu(event.position, window, cx);
+    }
 }
 
 fn build_page_context_menu(menu: PopupMenu, prefs: &HomeWidgetPrefs) -> PopupMenu {
@@ -170,37 +214,65 @@ impl Render for HomePage {
         let show_network = self.prefs.show_network;
         let show_tags = self.prefs.show_file_tags;
         let show_recent = self.prefs.show_recent;
-        let menu_prefs = self.prefs.clone();
 
-        v_flex()
+        let menu_overlay = self.widget_prefs_menu.as_ref().map(|state| {
+            let position = state.position;
+            let menu = state.menu.clone();
+            deferred(
+                anchored()
+                    .position(position)
+                    .anchor(Anchor::TopLeft)
+                    .snap_to_window_with_margin(px(8.))
+                    .child(menu),
+            )
+            .with_priority(1)
+        });
+
+        // NOTE: Do not use `.context_menu()` on this column — it wraps all descendants and
+        // stacks the widget-visibility menu on top of drive/file item menus.
+        div()
             .id("home-page")
+            .relative()
             .size_full()
             .min_h_0()
-            .overflow_y_scroll()
-            .p_4()
-            .gap_3()
-            .context_menu(move |menu, _window, _cx| build_page_context_menu(menu, &menu_prefs))
-            .when(self.loading && self.snapshot.is_none(), |page| {
-                page.child(div().child(t!("home.loading")))
-            })
-            .when(show_qa, |page| {
-                page.child(self.render_quick_access_widget(
-                    window,
-                    cx,
-                    &snapshot.quick_access,
-                ))
-            })
-            .when(show_drives, |page| {
-                page.child(self.render_drives_widget(window, cx, &snapshot.drives))
-            })
-            .when(show_network, |page| {
-                page.child(self.render_network_widget(window, cx, &snapshot.network))
-            })
-            .when(show_tags, |page| {
-                page.child(self.render_file_tags_widget(window, cx, &snapshot.tag_previews))
-            })
-            .when(show_recent, |page| {
-                page.child(self.render_recent_widget(window, cx, &snapshot.recent))
-            })
+            .when_some(menu_overlay, |page, overlay| page.child(overlay))
+            .child(
+                v_flex()
+                    .id("home-page-scroll")
+                    .size_full()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_4()
+                    .gap_3()
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(|page, event: &MouseDownEvent, window, cx| {
+                            page.on_blank_right_click(event, window, cx);
+                        }),
+                    )
+                    .when(self.loading && self.snapshot.is_none(), |page| {
+                        page.child(div().child(t!("home.loading")))
+                    })
+                    .when(show_qa, |page| {
+                        page.child(self.render_quick_access_widget(
+                            window,
+                            cx,
+                            &snapshot.quick_access,
+                        ))
+                    })
+                    .when(show_drives, |page| {
+                        page.child(self.render_drives_widget(window, cx, &snapshot.drives))
+                    })
+                    .when(show_network, |page| {
+                        page.child(self.render_network_widget(window, cx, &snapshot.network))
+                    })
+                    .when(show_tags, |page| {
+                        page.child(self.render_file_tags_widget(window, cx, &snapshot.tag_previews))
+                    })
+                    .when(show_recent, |page| {
+                        page.child(self.render_recent_widget(window, cx, &snapshot.recent))
+                    })
+                    .child(div().w_full().flex_1().min_h(px(64.))),
+            )
     }
 }

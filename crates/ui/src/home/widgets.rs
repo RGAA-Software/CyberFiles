@@ -20,10 +20,11 @@ use gpui_component::{
 use rust_i18n::t;
 
 use crate::app_state::AppNavigation;
-use crate::icons::{compact_icon, inline_icon};
+use crate::icons::{compact_icon, inline_icon, pin_icon};
 use crate::home::page::HomePage;
 use crate::home::widget_shell::{
-    card_grid, space_progress_bar, CARD_MIN_HEIGHT, CARD_WIDTH, FOLDER_CARD_HEIGHT, FOLDER_CARD_WIDTH,
+    block_home_page_context_menu, card_grid, space_progress_bar, CARD_MIN_HEIGHT, CARD_WIDTH,
+    FOLDER_CARD_HEIGHT, FOLDER_CARD_WIDTH,
 };
 use crate::shell_icon::shell_icon_for_path;
 
@@ -59,7 +60,7 @@ impl HomePage {
     fn section_header(
         &self,
         id: impl Into<ElementId>,
-        icon: IconName,
+        icon: impl IntoElement,
         title: impl Into<SharedString>,
         expanded: bool,
         section_key: &'static str,
@@ -80,7 +81,7 @@ impl HomePage {
                     .gap_2()
                     .items_center()
                     .child(inline_icon(chevron))
-                    .child(inline_icon(icon))
+                    .child(icon)
                     .child(
                         Label::new(title)
                             .text_sm()
@@ -99,32 +100,34 @@ impl HomePage {
         entries: &[QuickAccessEntry],
     ) -> impl IntoElement {
         let expanded = self.prefs.quick_access_expanded;
-        v_flex()
-            .id("home-widget-quick-access")
-            .w_full()
-            .gap_1()
-            .child(self.section_header(
-                "home-qa-header",
-                IconName::Star,
-                t!("home.widget.quick_access"),
-                expanded,
-                "quick_access",
-                cx,
-            ))
-            .when(expanded, |body| {
-                body.when(entries.is_empty(), |b| {
-                    b.child(Alert::info(
-                        "home-quick-access-empty",
-                        t!("home.widget.quick_access.empty").to_string(),
-                    ))
-                })
-                .when(!entries.is_empty(), |b| {
-                    b.child(card_grid(entries.iter().enumerate().map(|(index, entry)| {
-                        self.folder_card(window, index, "home-qa", entry, cx)
-                            .into_any_element()
-                    })))
-                })
-            })
+        block_home_page_context_menu(
+            v_flex()
+                .id("home-widget-quick-access")
+                .w_full()
+                .gap_1()
+                .child(self.section_header(
+                    "home-qa-header",
+                    pin_icon(),
+                    t!("home.widget.quick_access"),
+                    expanded,
+                    "quick_access",
+                    cx,
+                ))
+                .when(expanded, |body| {
+                    body.when(entries.is_empty(), |b| {
+                        b.child(Alert::info(
+                            "home-quick-access-empty",
+                            t!("home.widget.quick_access.empty").to_string(),
+                        ))
+                    })
+                    .when(!entries.is_empty(), |b| {
+                        b.child(card_grid(entries.iter().enumerate().map(|(index, entry)| {
+                            self.folder_card(window, index, "home-qa", entry, cx)
+                                .into_any_element()
+                        })))
+                    })
+                }),
+        )
     }
 
     pub(super) fn render_drives_widget(
@@ -134,24 +137,26 @@ impl HomePage {
         drives: &[DriveInfo],
     ) -> impl IntoElement {
         let expanded = self.prefs.drives_expanded;
-        v_flex()
-            .id("home-widget-drives")
-            .w_full()
-            .gap_1()
-            .child(self.section_header(
-                "home-drives-header",
-                IconName::HardDrive,
-                t!("home.widget.drives"),
-                expanded,
-                "drives",
-                cx,
-            ))
-            .when(expanded, |body| {
-                body.child(card_grid(drives.iter().enumerate().map(|(index, drive)| {
-                    self.drive_card(window, index, "home-drive", drive, cx)
-                        .into_any_element()
-                })))
-            })
+        block_home_page_context_menu(
+            v_flex()
+                .id("home-widget-drives")
+                .w_full()
+                .gap_1()
+                .child(self.section_header(
+                    "home-drives-header",
+                    inline_icon(IconName::HardDrive),
+                    t!("home.widget.drives"),
+                    expanded,
+                    "drives",
+                    cx,
+                ))
+                .when(expanded, |body| {
+                    body.child(card_grid(drives.iter().enumerate().map(|(index, drive)| {
+                        self.drive_card(window, index, "home-drive", drive, cx)
+                            .into_any_element()
+                    })))
+                }),
+        )
     }
 
     pub(super) fn render_network_widget(
@@ -161,41 +166,43 @@ impl HomePage {
         entries: &[NetworkEntry],
     ) -> impl IntoElement {
         let expanded = self.prefs.network_expanded;
-        v_flex()
-            .id("home-widget-network")
-            .w_full()
-            .gap_1()
-            .child(self.section_header(
-                "home-network-header",
-                IconName::Globe,
-                t!("home.widget.network"),
-                expanded,
-                "network",
-                cx,
-            ))
-            .when(expanded, |body| {
-                body.when(entries.is_empty(), |b| {
-                    b.child(Alert::info(
-                        "home-network-empty",
-                        t!("home.widget.network.empty").to_string(),
-                    ))
-                })
-                .when(!entries.is_empty(), |b| {
-                    b.child(card_grid(entries.iter().enumerate().map(|(index, entry)| {
-                        let drive = DriveInfo {
-                            path: entry.path.clone(),
-                            label: entry.label.clone(),
-                            volume_label: None,
-                            total_bytes: None,
-                            free_bytes: None,
-                            is_removable: false,
-                            is_network: true,
-                        };
-                        self.drive_card(window, index, "home-network", &drive, cx)
-                            .into_any_element()
-                    })))
-                })
-            })
+        block_home_page_context_menu(
+            v_flex()
+                .id("home-widget-network")
+                .w_full()
+                .gap_1()
+                .child(self.section_header(
+                    "home-network-header",
+                    inline_icon(IconName::Globe),
+                    t!("home.widget.network"),
+                    expanded,
+                    "network",
+                    cx,
+                ))
+                .when(expanded, |body| {
+                    body.when(entries.is_empty(), |b| {
+                        b.child(Alert::info(
+                            "home-network-empty",
+                            t!("home.widget.network.empty").to_string(),
+                        ))
+                    })
+                    .when(!entries.is_empty(), |b| {
+                        b.child(card_grid(entries.iter().enumerate().map(|(index, entry)| {
+                            let drive = DriveInfo {
+                                path: entry.path.clone(),
+                                label: entry.label.clone(),
+                                volume_label: None,
+                                total_bytes: None,
+                                free_bytes: None,
+                                is_removable: false,
+                                is_network: true,
+                            };
+                            self.drive_card(window, index, "home-network", &drive, cx)
+                                .into_any_element()
+                        })))
+                    })
+                }),
+        )
     }
 
     pub(super) fn render_file_tags_widget(
@@ -205,31 +212,33 @@ impl HomePage {
         previews: &[FileTagPreview],
     ) -> impl IntoElement {
         let expanded = self.prefs.file_tags_expanded;
-        v_flex()
-            .id("home-widget-tags")
-            .w_full()
-            .gap_1()
-            .child(self.section_header(
-                "home-tags-header",
-                IconName::Inbox,
-                t!("home.widget.tags"),
-                expanded,
-                "file_tags",
-                cx,
-            ))
-            .when(expanded, |body| {
-                body.when(previews.is_empty(), |b| {
-                    b.child(Alert::info(
-                        "home-tags-empty",
-                        t!("home.widget.tags.empty").to_string(),
-                    ))
-                })
-                .when(!previews.is_empty(), |b| {
-                    b.child(card_grid(previews.iter().enumerate().map(|(index, preview)| {
-                        self.tag_container(window, index, preview, cx).into_any_element()
-                    })))
-                })
-            })
+        block_home_page_context_menu(
+            v_flex()
+                .id("home-widget-tags")
+                .w_full()
+                .gap_1()
+                .child(self.section_header(
+                    "home-tags-header",
+                    inline_icon(IconName::Inbox),
+                    t!("home.widget.tags"),
+                    expanded,
+                    "file_tags",
+                    cx,
+                ))
+                .when(expanded, |body| {
+                    body.when(previews.is_empty(), |b| {
+                        b.child(Alert::info(
+                            "home-tags-empty",
+                            t!("home.widget.tags.empty").to_string(),
+                        ))
+                    })
+                    .when(!previews.is_empty(), |b| {
+                        b.child(card_grid(previews.iter().enumerate().map(|(index, preview)| {
+                            self.tag_container(window, index, preview, cx).into_any_element()
+                        })))
+                    })
+                }),
+        )
     }
 
     pub(super) fn render_recent_widget(
@@ -239,40 +248,42 @@ impl HomePage {
         recent: &[RecentItem],
     ) -> impl IntoElement {
         let expanded = self.prefs.recent_expanded;
-        v_flex()
-            .id("home-widget-recent")
-            .w_full()
-            .gap_1()
-            .child(self.section_header(
-                "home-recent-header",
-                IconName::Calendar,
-                t!("home.widget.recent"),
-                expanded,
-                "recent",
-                cx,
-            ))
-            .when(expanded, |body| {
-                body.when(recent.is_empty(), |b| {
-                    b.child(Alert::info(
-                        "home-recent-empty",
-                        t!("home.widget.recent.empty").to_string(),
-                    ))
-                })
-                .when(!recent.is_empty(), |b| {
-                    b.child(
-                        v_flex()
-                            .w_full()
-                            .rounded(cx.theme().radius)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .overflow_hidden()
-                            .child(self.recent_table_header(cx))
-                            .children(recent.iter().enumerate().map(|(index, item)| {
-                                self.recent_row(window, index, item, cx).into_any_element()
-                            })),
-                    )
-                })
-            })
+        block_home_page_context_menu(
+            v_flex()
+                .id("home-widget-recent")
+                .w_full()
+                .gap_1()
+                .child(self.section_header(
+                    "home-recent-header",
+                    inline_icon(IconName::Calendar),
+                    t!("home.widget.recent"),
+                    expanded,
+                    "recent",
+                    cx,
+                ))
+                .when(expanded, |body| {
+                    body.when(recent.is_empty(), |b| {
+                        b.child(Alert::info(
+                            "home-recent-empty",
+                            t!("home.widget.recent.empty").to_string(),
+                        ))
+                    })
+                    .when(!recent.is_empty(), |b| {
+                        b.child(
+                            v_flex()
+                                .w_full()
+                                .rounded(cx.theme().radius)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .overflow_hidden()
+                                .child(self.recent_table_header(cx))
+                                .children(recent.iter().enumerate().map(|(index, item)| {
+                                    self.recent_row(window, index, item, cx).into_any_element()
+                                })),
+                        )
+                    })
+                }),
+        )
     }
 
     fn folder_card(
@@ -305,7 +316,7 @@ impl HomePage {
                                         .absolute()
                                         .top_0()
                                         .right_0()
-                                        .child(compact_icon(IconName::Star)),
+                                        .child(crate::icons::pin_icon()),
                                 )
                             }),
                     )
@@ -317,6 +328,7 @@ impl HomePage {
                     open_path(&path, event, window, cx);
                 }
             }))
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .context_menu({
                 let path = path.clone();
                 let pinned = pinned;
@@ -378,6 +390,7 @@ impl HomePage {
                     open_path(&path, event, window, cx);
                 }
             }))
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .context_menu({
                 let path = path.clone();
                 move |menu, window, cx| {
@@ -429,6 +442,7 @@ impl HomePage {
                     open_path(&path, event, window, cx);
                 }
             }))
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .context_menu({
                 let path = path.clone();
                 move |menu, window, cx| file_context_menu(menu, &path, window, cx)
@@ -518,7 +532,10 @@ impl HomePage {
                                             view_more.clone(),
                                             cx,
                                         );
-                                    })),
+                                    }))
+                                    .on_mouse_down(MouseButton::Right, |_, _, cx| {
+                                        cx.stop_propagation()
+                                    }),
                             ),
                     )
                     .child(
@@ -561,6 +578,9 @@ impl HomePage {
                                                     open_path(&open, event, window, cx);
                                                 }
                                             }))
+                                            .on_mouse_down(MouseButton::Right, |_, _, cx| {
+                                                cx.stop_propagation()
+                                            })
                                             .context_menu({
                                                 let open = open.clone();
                                                 move |menu, window, cx| {

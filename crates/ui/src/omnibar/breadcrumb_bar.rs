@@ -2,23 +2,29 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use cyberfiles_fs::{
-    breadcrumb_dropdown_entries, breadcrumb_visible_layout_for_width, BreadcrumbDropdownResult,
-    BreadcrumbMenuSection, DirectoryReadOptions, OmnibarPathSuggestion, PathBreadcrumb,
+    breadcrumb_dropdown_entries, breadcrumb_visible_layout_for_widths, BreadcrumbDropdownResult,
+    BreadcrumbMenuSection, BREADCRUMB_BLOCK_GAP, DirectoryReadOptions, OmnibarPathSuggestion,
+    PathBreadcrumb,
 };
 use gpui::{prelude::*, *};
 use gpui_component::plot::label::measure_text_width;
 use gpui_component::{
-    button::{Button, ButtonVariants as _},
     h_flex,
     menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
-    ActiveTheme as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, IconName,
 };
 use rust_i18n::t;
 
 use super::breadcrumb_flyout::BreadcrumbFlyout;
 use crate::app_state::AppNavigation;
-use crate::icons::toolbar_icon;
 use crate::file_browser::DraggedFilePaths;
+use crate::icons::toolbar_icon;
+use crate::toolbar_button::{toolbar_icon_button, toolbar_labeled_button, TOOLBAR_BUTTON_PX};
+
+/// Segment label `text_sm()` (matches menu rows).
+const BREADCRUMB_SEGMENT_FONT_SIZE: Pixels = px(14.);
+/// Horizontal inset on medium ghost labeled buttons (label + padding).
+const BREADCRUMB_LABELED_BUTTON_PADDING: f32 = 24.;
 
 /// Breadcrumb dropdown outer width (Files-style flyout).
 const BREADCRUMB_DROPDOWN_MIN_WIDTH: Pixels = px(220.);
@@ -83,12 +89,49 @@ impl PathBreadcrumbBar {
     }
 }
 
+fn breadcrumb_labeled_block_width(label: &str, window: &mut Window) -> f32 {
+    let text = measure_text_width(
+        &SharedString::from(label),
+        BREADCRUMB_SEGMENT_FONT_SIZE,
+        window,
+    );
+    text + BREADCRUMB_LABELED_BUTTON_PADDING
+}
+
+fn breadcrumb_segment_block_width(
+    label: &str,
+    has_chevron: bool,
+    window: &mut Window,
+) -> f32 {
+    let mut w = breadcrumb_labeled_block_width(label, window);
+    if has_chevron {
+        w += f32::from(TOOLBAR_BUTTON_PX);
+    }
+    w
+}
+
 impl RenderOnce for PathBreadcrumbBar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let layout = breadcrumb_visible_layout_for_width(
-            &self.segments,
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let n = self.segments.len();
+        let segment_widths: Vec<f32> = self
+            .segments
+            .iter()
+            .enumerate()
+            .map(|(i, s)| breadcrumb_segment_block_width(&s.label, i + 1 < n, window))
+            .collect();
+        let root_width = if self.show_root {
+            f32::from(TOOLBAR_BUTTON_PX) * 2.0 + f32::from(px(2.))
+        } else {
+            0.0
+        };
+        let ellipsis_width = breadcrumb_labeled_block_width("…", window);
+        let layout = breadcrumb_visible_layout_for_widths(
+            &segment_widths,
             self.available_width,
             self.show_root,
+            root_width,
+            ellipsis_width,
+            BREADCRUMB_BLOCK_GAP,
         );
         let on_navigate = self.on_navigate.clone();
         let on_navigate_new_tab = self.on_navigate_new_tab.clone();
@@ -105,6 +148,7 @@ impl RenderOnce for PathBreadcrumbBar {
             .flex_1()
             .w_full()
             .min_w_0()
+            .overflow_x_hidden()
             .gap(px(2.))
             .items_center()
             .cursor_pointer()
@@ -193,10 +237,7 @@ fn render_root_item(
         .hover(|s| s.bg(cx.theme().secondary))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(
-            Button::new("breadcrumb-root-home")
-                .xsmall()
-                .compact()
-                .ghost()
+            toolbar_icon_button("breadcrumb-root-home")
                 .icon(toolbar_icon(IconName::LayoutDashboard))
                 .tooltip(home_tip)
                 .on_click(move |_, window, cx| on_home(window, cx)),
@@ -222,10 +263,7 @@ fn render_ellipsis_item(
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
         .child(
-            Button::new("breadcrumb-ellipsis-button")
-                .xsmall()
-                .compact()
-                .ghost()
+            toolbar_labeled_button("breadcrumb-ellipsis-button")
                 .label("…")
                 .tooltip(tip)
                 .dropdown_menu_with_anchor(Anchor::BottomLeft, {
@@ -279,10 +317,7 @@ fn render_path_segment(
         })
         .child({
             let navigate = navigate.clone();
-            Button::new(("breadcrumb-segment-label", index))
-                .xsmall()
-                .compact()
-                .ghost()
+            toolbar_labeled_button(("breadcrumb-segment-label", index))
                 .label(label)
                 .tooltip(tooltip)
                 .on_click(move |_, window, cx| {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download Google Material Symbols (Rounded, 24px) into gpui IconName SVG paths.
+"""Download Google Material Symbols (Rounded, default 24px) into gpui IconName SVG paths.
 
 Source: https://fonts.google.com/icons?icon.style=Rounded
 """
@@ -27,7 +27,7 @@ MATERIAL_ICON_MAP: dict[str, str] = {
     "panel-right-close": "right_panel_close",
     "panel-left": "dock_to_left",
     "layout-dashboard": "dashboard",
-    "star": "star",
+    "pin": "push_pin",
     "plus": "add",
     "folder": "folder",
     "file": "description",
@@ -126,7 +126,7 @@ def main() -> None:
     else:
         print(f"Warning: gpui-component icons not found at {GPUI_COMPONENT_ICONS}")
 
-    print(f"Synced {len(MATERIAL_ICON_MAP)} Material Rounded icons -> {OUT_ICONS}")
+    print(f"Synced {len(MATERIAL_ICON_MAP)} Material Rounded icons (default) -> {OUT_ICONS}")
 
 
 if __name__ == "__main__":

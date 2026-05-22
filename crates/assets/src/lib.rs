@@ -1,7 +1,7 @@
 //! Embedded icon assets for CyberFiles.
 //!
 //! Toolbar and navigation icons use [Google Material Symbols](https://fonts.google.com/icons?icon.style=Rounded)
-//! (Rounded, 24px) synced into `assets/icons/`. Window chrome, theme toggle, GitHub, and tab
+//! (Rounded, default 24px) synced into `assets/icons/`. Window chrome, theme toggle, GitHub, and tab
 //! close icons stay on gpui-component (Lucide) artwork.
 //!
 //! Run `python scripts/sync_material_icons.py` to refresh Material SVGs.
