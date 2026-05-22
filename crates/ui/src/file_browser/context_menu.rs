@@ -1,7 +1,7 @@
 //! Files-style content page context flyout (`ContentPageContextFlyoutFactory` layout).
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use cyberfiles_commands::{
     CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, NewFile, NewFolder, OpenItem,
@@ -21,8 +21,9 @@ use rust_i18n::t;
 
 use super::{
     BrowseLocation, CreateFolderFromSelection, CreateShortcut, FileBrowser, OpenInNewPane,
-    OpenInNewWindow, OpenInTerminal, OpenWithDialog, SortByCreated, SortByModified, SortByName,
-    SortBySize, SortByType, ToggleShowHidden, ToggleSortDirection, ViewMode,
+    OpenInNewWindow, OpenInTerminal, OpenWithDialog, ShellSubmenuSnapshot, SortByCreated,
+    SortByModified, SortByName, SortBySize, SortByType, ToggleShowHidden, ToggleSortDirection,
+    ViewMode, shell_submenu_snapshot,
 };
 use crate::app_state::{AppFileClipboard, AppNavigation};
 use crate::icons::toolbar_icon;
@@ -307,7 +308,15 @@ fn build_directory_item_menu(
         .separator();
 
     if has_selection {
-        menu = append_show_more_options(menu, paths, extended, browser, window, cx);
+        menu = append_show_more_options(
+            menu,
+            paths,
+            extended,
+            state.shell_menu_cache.clone(),
+            browser,
+            window,
+            cx,
+        );
     }
 
     menu
@@ -395,24 +404,11 @@ fn quick_toolbar_button(
         .into_any_element()
 }
 
-fn shell_entries_for_paths(
-    browser: &Entity<FileBrowser>,
-    paths: &[PathBuf],
-    cx: &gpui::App,
-) -> Vec<ShellContextMenuEntry> {
-    browser
-        .read(cx)
-        .shell_menu_cache
-        .as_ref()
-        .filter(|cache| cache.paths == paths)
-        .map(|cache| cache.entries.clone())
-        .unwrap_or_default()
-}
-
 fn append_show_more_options(
     menu: PopupMenu,
     paths: Vec<PathBuf>,
     extended_verbs: bool,
+    shell_menu_cache: Arc<RwLock<Option<super::ShellMenuCache>>>,
     browser: Entity<FileBrowser>,
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
@@ -424,22 +420,22 @@ fn append_show_more_options(
         window,
         cx,
         move |sub, window, cx| {
-            let entries = shell_entries_for_paths(&browser, &paths_for_sub, cx);
-            if entries.is_empty() {
-                sub.item(
-                    PopupMenuItem::new(t!("files.menu.shell_loading"))
-                        .disabled(true),
-                )
-            } else {
-                append_shell_entries(
-                    sub,
-                    &entries,
-                    &paths_for_sub,
-                    extended_verbs,
-                    browser.clone(),
-                    window,
-                    cx,
-                )
+            match shell_submenu_snapshot(&shell_menu_cache, &paths_for_sub, extended_verbs) {
+            ShellSubmenuSnapshot::Loading => sub.item(
+                PopupMenuItem::new(t!("files.menu.shell_loading")).disabled(true),
+            ),
+            ShellSubmenuSnapshot::Empty => sub.item(
+                PopupMenuItem::new(t!("files.menu.shell_empty")).disabled(true),
+            ),
+            ShellSubmenuSnapshot::Ready(entries) => append_shell_entries(
+                sub,
+                &entries,
+                &paths_for_sub,
+                extended_verbs,
+                browser.clone(),
+                window,
+                cx,
+            ),
             }
         },
     )
@@ -458,24 +454,31 @@ fn placeholder_item(
         })
 }
 
+fn shell_menu_item_is_properties(command_string: Option<&str>, label: &str) -> bool {
+    if command_string.is_some_and(|v| v.eq_ignore_ascii_case("properties")) {
+        return true;
+    }
+    let lower = label.to_ascii_lowercase();
+    lower.contains("properties") || lower.contains("属性")
+}
+
 fn shell_popup_item(
     label: String,
     icon_png: Option<Vec<u8>>,
     paths: Vec<PathBuf>,
     command_offset: u32,
+    command_string: Option<String>,
     extended_verbs: bool,
 ) -> PopupMenuItem {
-    let invoke = move |window: &mut Window, cx: &mut gpui::App| {
-        if let Err(error) =
+    let is_properties = shell_menu_item_is_properties(command_string.as_deref(), &label);
+    let invoke = move |_window: &mut Window, _cx: &mut gpui::App| {
+        let result = if is_properties {
+            platform::invoke_shell_properties(&paths)
+        } else {
             platform::invoke_shell_context_menu_item(&paths, command_offset, extended_verbs)
-        {
-            window.push_notification(
-                Notification::error(format!(
-                    "{}: {error}",
-                    t!("files.context_menu.error")
-                )),
-                cx,
-            );
+        };
+        if let Err(error) = result {
+            eprintln!("[shell-menu] menu invoke failed: {error:#}");
         }
     };
 
@@ -517,6 +520,7 @@ fn append_shell_entries(
             ShellContextMenuEntry::Item {
                 label,
                 command_offset,
+                command_string,
                 icon_png,
                 ..
             } => {
@@ -525,6 +529,7 @@ fn append_shell_entries(
                     icon_png.clone(),
                     paths.to_vec(),
                     *command_offset,
+                    command_string.clone(),
                     extended_verbs,
                 ));
             }
@@ -644,12 +649,16 @@ impl FileBrowser {
 
     pub(crate) fn set_context_menu_extended_verbs(&mut self, extended: bool) {
         self.context_menu_extended_verbs = extended;
-        if self
+        let mismatch = self
             .shell_menu_cache
-            .as_ref()
-            .is_some_and(|c| c.extended_verbs != extended)
-        {
-            self.shell_menu_cache = None;
+            .read()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|c| c.extended_verbs != extended))
+            .unwrap_or(false);
+        if mismatch {
+            if let Ok(mut guard) = self.shell_menu_cache.write() {
+                *guard = None;
+            }
             self.shell_menu_revision = self.shell_menu_revision.wrapping_add(1);
         }
     }

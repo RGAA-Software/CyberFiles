@@ -491,6 +491,10 @@ files.menu.shell_loading:
   en: Loading Shell extensions…
   zh-CN: 正在加载 Shell 扩展…
   zh-HK: 正在載入 Shell 擴充功能…
+files.menu.shell_empty:
+  en: No Shell extensions for this selection
+  zh-CN: 当前所选没有可用的 Shell 扩展
+  zh-HK: 目前所選沒有可用的 Shell 擴充功能
 files.menu.open_with:
   en: Open with
   zh-CN: 打开方式

@@ -9,6 +9,7 @@ mod main_page;
 mod omnibar;
 mod settings_view;
 mod shell;
+mod list_icon_cache;
 mod shell_icon;
 mod shell_menu_icon;
 mod sidebar;

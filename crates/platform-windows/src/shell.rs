@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use windows::core::{w, PCWSTR};
 use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_INVOKEIDLIST, SHELLEXECUTEINFOW};
@@ -29,10 +29,25 @@ pub fn open_item_properties(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Opens the system properties sheet without blocking the GPUI thread.
+pub fn invoke_shell_properties(paths: &[PathBuf]) -> anyhow::Result<()> {
+    if paths.len() != 1 {
+        anyhow::bail!("properties requires a single path");
+    }
+    let path = paths[0].clone();
+    std::thread::spawn(move || {
+        if let Err(error) = open_item_properties(&path) {
+            eprintln!("[shell-menu] properties err: {error:#}");
+        }
+    });
+    Ok(())
+}
+
 pub use crate::context_menu::{
     invoke_shell_context_menu_item, open_in_new_explorer_window, query_shell_context_menu_items,
     show_open_with_dialog, ShellContextMenuEntry,
 };
+pub use crate::shell_menu_session::clear_session as clear_shell_menu_session;
 
 /// Optional Explorer-style popup at the cursor (not the default Files parity UX).
 pub fn show_shell_context_menu(paths: &[std::path::PathBuf]) -> anyhow::Result<()> {

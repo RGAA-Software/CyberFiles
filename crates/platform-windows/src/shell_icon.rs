@@ -11,18 +11,26 @@ use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC,
     SelectObject, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP,
 };
+use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
+use windows::Win32::UI::Controls::{IImageList, ILD_TRANSPARENT};
 use windows::Win32::UI::Shell::{
-    IShellItem, IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_ICONONLY,
-    SIIGBF_SCALEUP,
+    IShellItem, IShellItemImageFactory, SHCreateItemFromParsingName, SHGetFileInfoW, SHGetImageList,
+    SHFILEINFOW, SHGFI_SYSICONINDEX, SHGFI_USEFILEATTRIBUTES, SIIGBF_ICONONLY,
+    SIIGBF_SCALEUP, SHIL_EXTRALARGE, SHIL_JUMBO, SHIL_LARGE, SHIL_SMALL,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    DestroyIcon, GetIconInfo, HICON, ICONINFO,
 };
 
-use crate::com::ensure_com_apartment;
+use crate::com::run_sta_task;
+use crate::icons::shell_dummy_icon_path;
 use crate::paths::{is_recycle_bin_path, SHELL_RECYCLE_BIN_PATH};
 
 /// Maximum Shell icon dimension we request (matches Files `ShellIconSizes.Jumbo`).
 const MAX_ICON_SIZE: u32 = 256;
 
 static ICON_CACHE: Mutex<Option<HashMap<(PathBuf, u32), Vec<u8>>>> = Mutex::new(None);
+static LIST_KEY_CACHE: Mutex<Option<HashMap<(String, u32), Vec<u8>>>> = Mutex::new(None);
 
 /// Physical pixel size for a logical UI size at the given display scale (Files: `size * DPI`).
 pub fn shell_icon_pixel_size(logical_px: f32, scale_factor: f32) -> u32 {
@@ -37,6 +45,15 @@ fn path_to_wide(path: &Path) -> Vec<u16> {
         .collect()
 }
 
+/// Returns cached PNG bytes without loading from Shell (safe on the UI thread).
+pub fn shell_icon_png_from_cache(path: &Path, size: u32) -> Option<Vec<u8>> {
+    let size = size.max(16);
+    let key = (path.to_path_buf(), size);
+    let guard = ICON_CACHE.lock().ok()?;
+    let cache = guard.as_ref()?;
+    cache.get(&key).cloned()
+}
+
 /// PNG bytes for the Shell icon of `path` (same source as Files `FileThumbnailHelper`).
 pub fn shell_icon_png(path: &Path, size: u32) -> anyhow::Result<Vec<u8>> {
     let size = size.max(16);
@@ -46,7 +63,23 @@ pub fn shell_icon_png(path: &Path, size: u32) -> anyhow::Result<Vec<u8>> {
     if let Some(bytes) = cache.get(&key) {
         return Ok(bytes.clone());
     }
-    let png = shell_icon_png_uncached(path, size)?;
+    let png = shell_icon_png_uncached(path, size, false)?;
+    cache.insert(key, png.clone());
+    Ok(png)
+}
+
+/// List row icon by Files `IconCacheService` key (`:folder:`, `.zip`, …).
+pub fn shell_icon_png_for_list_key(cache_key: &str, size: u32) -> anyhow::Result<Vec<u8>> {
+    let size = size.max(16);
+    let key = (cache_key.to_string(), size);
+    let mut guard = LIST_KEY_CACHE.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let cache = guard.get_or_insert_with(HashMap::new);
+    if let Some(bytes) = cache.get(&key) {
+        return Ok(bytes.clone());
+    }
+    let path = shell_dummy_icon_path(cache_key);
+    let is_folder = cache_key == ":folder:";
+    let png = shell_icon_png_uncached(&path, size, is_folder)?;
     cache.insert(key, png.clone());
     Ok(png)
 }
@@ -60,9 +93,13 @@ pub fn shell_icon_png_scaled(
     shell_icon_png(path, shell_icon_pixel_size(logical_px, scale_factor))
 }
 
-fn shell_icon_png_uncached(path: &Path, size: u32) -> anyhow::Result<Vec<u8>> {
-    ensure_com_apartment()?;
-    unsafe { shell_icon_png_inner(path, size) }
+fn shell_icon_png_uncached(path: &Path, size: u32, is_folder: bool) -> anyhow::Result<Vec<u8>> {
+    let path = path.to_path_buf();
+    let folder = is_folder;
+    run_sta_task(move || unsafe {
+        shell_icon_png_inner(&path, size, folder)
+            .or_else(|_| shell_icon_via_shgetfileinfo(&path, folder, size))
+    })
 }
 
 /// Path string passed to `SHCreateItemFromParsingName` (Files uses `Shell:RecycleBinFolder` for the bin icon).
@@ -78,7 +115,7 @@ fn shell_icon_parsing_path(path: &Path) -> PathBuf {
     }
 }
 
-unsafe fn shell_icon_png_inner(path: &Path, size: u32) -> anyhow::Result<Vec<u8>> {
+unsafe fn shell_icon_png_inner(path: &Path, size: u32, _is_folder: bool) -> anyhow::Result<Vec<u8>> {
     let parsing = shell_icon_parsing_path(path);
     let wide = path_to_wide(&parsing);
     let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)?;
@@ -91,6 +128,58 @@ unsafe fn shell_icon_png_inner(path: &Path, size: u32) -> anyhow::Result<Vec<u8>
         SIIGBF_ICONONLY | SIIGBF_SCALEUP,
     )?;
     hbitmap_to_png(hbitmap)
+}
+
+/// Fallback when the dummy path does not exist (Files `SHGetFileInfo` + `USEFILEATTRIBUTES`).
+unsafe fn shell_icon_via_shgetfileinfo(
+    path: &Path,
+    is_folder: bool,
+    size: u32,
+) -> anyhow::Result<Vec<u8>> {
+    let wide = path_to_wide(path);
+    let mut shfi = SHFILEINFOW::default();
+    let attrs = if is_folder {
+        FILE_FLAGS_AND_ATTRIBUTES(0x10) // FILE_ATTRIBUTE_DIRECTORY
+    } else {
+        FILE_FLAGS_AND_ATTRIBUTES(0x80) // FILE_ATTRIBUTE_NORMAL
+    };
+    let flags = SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES;
+    let ret = SHGetFileInfoW(
+        PCWSTR(wide.as_ptr()),
+        attrs,
+        Some(&mut shfi),
+        std::mem::size_of::<SHFILEINFOW>() as u32,
+        flags,
+    );
+    if ret == 0 {
+        anyhow::bail!("SHGetFileInfoW failed for {}", path.display());
+    }
+
+    let icon_idx = (shfi.iIcon & 0x00FF_FFFF) as i32;
+    let shil = match size {
+        0..=16 => SHIL_SMALL,
+        17..=32 => SHIL_LARGE,
+        33..=48 => SHIL_EXTRALARGE,
+        _ => SHIL_JUMBO,
+    };
+    let image_list: IImageList = SHGetImageList(shil as i32)?;
+    let hicon = image_list.GetIcon(icon_idx, ILD_TRANSPARENT.0)?;
+    let png = hicon_to_png(hicon)?;
+    let _ = DestroyIcon(hicon);
+    Ok(png)
+}
+
+unsafe fn hicon_to_png(hicon: HICON) -> anyhow::Result<Vec<u8>> {
+    let mut info = ICONINFO::default();
+    GetIconInfo(hicon, &mut info)?;
+    let png = hbitmap_to_png(info.hbmColor);
+    if !info.hbmColor.is_invalid() {
+        let _ = DeleteObject(info.hbmColor);
+    }
+    if !info.hbmMask.is_invalid() {
+        let _ = DeleteObject(info.hbmMask);
+    }
+    png
 }
 
 /// Converts a GDI bitmap to PNG (used for Shell context menu row icons).
@@ -168,4 +257,19 @@ unsafe fn hbitmap_to_png(hbitmap: HBITMAP) -> anyhow::Result<Vec<u8>> {
     let mut cursor = std::io::Cursor::new(&mut png);
     img.write_to(&mut cursor, image::ImageFormat::Png)?;
     Ok(png)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_key_icons_load_via_shgetfileinfo() {
+        for key in [":folder:", ".txt", ".exe", ":noext:"] {
+            let png = shell_icon_png_for_list_key(key, 32).unwrap_or_else(|e| {
+                panic!("list key {key}: {e:#}");
+            });
+            assert!(!png.is_empty(), "list key {key}");
+        }
+    }
 }

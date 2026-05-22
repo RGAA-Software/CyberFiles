@@ -7,6 +7,8 @@ mod clipboard;
 #[cfg(windows)]
 mod context_menu;
 #[cfg(windows)]
+mod shell_menu_session;
+#[cfg(windows)]
 mod icons;
 #[cfg(windows)]
 mod shell_icon;
@@ -26,9 +28,14 @@ mod volume;
 #[cfg(windows)]
 pub use clipboard::read_clipboard_file_paths;
 #[cfg(windows)]
-pub use icons::{icon_hint_for_path, ShellIconHint};
+pub use icons::{
+    icon_hint_for_path, icon_hint_from_extension, shell_dummy_icon_path, ShellIconHint,
+};
 #[cfg(windows)]
-pub use shell_icon::{shell_icon_pixel_size, shell_icon_png, shell_icon_png_scaled};
+pub use shell_icon::{
+    shell_icon_pixel_size, shell_icon_png, shell_icon_png_for_list_key, shell_icon_png_from_cache,
+    shell_icon_png_scaled,
+};
 #[cfg(windows)]
 pub use paths::{is_recycle_bin_path, recycle_bin_folder, SHELL_RECYCLE_BIN_PATH};
 #[cfg(windows)]
@@ -44,9 +51,9 @@ pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 pub use volume::{DriveKind, VolumeDetails, volume_details};
 #[cfg(windows)]
 pub use shell::{
-    invoke_shell_context_menu_item, open_in_new_explorer_window, open_item_properties,
-    query_shell_context_menu_items, show_open_with_dialog, show_shell_context_menu,
-    ShellContextMenuEntry,
+    clear_shell_menu_session, invoke_shell_context_menu_item, invoke_shell_properties,
+    open_in_new_explorer_window, open_item_properties, query_shell_context_menu_items,
+    show_open_with_dialog, show_shell_context_menu, ShellContextMenuEntry,
 };
 
 #[cfg(not(windows))]
@@ -56,7 +63,7 @@ pub use stubs::*;
 mod stubs {
     use std::path::{Path, PathBuf};
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ShellIconHint {
         Folder,
         File,
@@ -116,6 +123,8 @@ mod stubs {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+
+    pub fn clear_shell_menu_session() {}
 
     #[derive(Debug, Clone)]
     pub struct RecycleBinEntry {

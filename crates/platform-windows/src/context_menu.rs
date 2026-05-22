@@ -1,22 +1,22 @@
+use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-
-use windows::core::{Interface, PCSTR, PCWSTR};
+use windows::core::{PCSTR, PCWSTR};
 use windows::Win32::Foundation::{BOOL, HANDLE, HWND, POINT};
 use crate::com::ensure_com_apartment;
+use crate::shell_menu_session;
 use windows::Win32::UI::Shell::{
-    CMINVOKECOMMANDINFO, CMF_EXTENDEDVERBS, CMF_NORMAL, IContextMenu, IContextMenu3,
-    ILFree, IShellFolder, SHBindToParent, SHCreateDefaultContextMenu, DEFCONTEXTMENU,
-    SHParseDisplayName,
+    CMINVOKECOMMANDINFO, CMF_EXTENDEDVERBS, CMF_NORMAL, CMF_OPTIMIZEFORINVOKE, GCS_VERBA, IContextMenu,
+    ILClone, ILFree, IShellFolder, SHBindToParent, SHParseDisplayName,
 };
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::Graphics::Gdi::HBITMAP;
 use windows::Win32::UI::WindowsAndMessaging::{
     CopyImage, CreatePopupMenu, DestroyMenu, GetCursorPos, GetForegroundWindow, GetMenuItemCount,
     GetMenuItemInfoW, GetSubMenu, SetForegroundWindow, TrackPopupMenu, HMENU, IMAGE_BITMAP,
-    LR_COPYRETURNORG, MENUITEMINFOW, MFT_SEPARATOR, MFT_STRING, MF_POPUP, MIIM_BITMAP, MIIM_FTYPE,
-    MIIM_ID, MIIM_STRING, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    LR_COPYRETURNORG, MENUITEMINFOW, MFT_SEPARATOR, MIIM_BITMAP, MIIM_FTYPE, MIIM_ID, MIIM_STRING,
+    MIIM_SUBMENU, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON,
 };
 
 use crate::shell_icon::bitmap_to_png;
@@ -24,7 +24,17 @@ use crate::shell_icon::bitmap_to_png;
 const CMD_FIRST: u32 = 1;
 const CMD_LAST: u32 = 0x7fff;
 const MAX_SHELL_MENU_ITEMS: usize = 96;
+const MAX_SUBMENU_DEPTH: u32 = 8;
 const MENU_ICON_PX: i32 = 16;
+/// Shell menu bitmap → PNG is disabled until icon extraction is hardened (was crashing on some rows).
+const SHELL_MENU_ICONS_ENABLED: bool = false;
+
+/// Debug logging for Shell context menu merge (stderr → `cargo run` terminal).
+macro_rules! shell_log {
+    ($($t:tt)*) => {
+        eprintln!("[shell-menu] {}", format_args!($($t)*));
+    };
+}
 
 /// One row in a Files-style merged context flyout (not a native `TrackPopupMenu` surface).
 #[derive(Debug, Clone)]
@@ -68,8 +78,13 @@ unsafe fn bind_parent_and_relative(path: &Path) -> anyhow::Result<(IShellFolder,
 
     let mut relative: *mut ITEMIDLIST = std::ptr::null_mut();
     let parent: IShellFolder = SHBindToParent(full_pidl, Some(&mut relative))?;
+    // `relative` points into `full_pidl` memory; clone before freeing the full PIDL.
+    let relative_owned = ILClone(relative);
     ILFree(Some(full_pidl));
-    Ok((parent, relative))
+    if relative_owned.is_null() {
+        anyhow::bail!("ILClone failed for {}", path.display());
+    }
+    Ok((parent, relative_owned))
 }
 
 unsafe fn free_pidl(pidl: *mut ITEMIDLIST) {
@@ -116,10 +131,67 @@ struct ContextMenuHandle {
     child_pidls: Vec<*mut ITEMIDLIST>,
 }
 
+thread_local! {
+    static PREPARED_MENU: RefCell<Option<ContextMenuHandle>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn release_prepared_menu() {
+    PREPARED_MENU.with(|slot| {
+        if let Some(handle) = slot.borrow_mut().take() {
+            unsafe {
+                handle.release();
+            }
+        }
+    });
+}
+
+/// Build menu and enumerate on the current STA thread (Files: single `PostMethod` job).
+pub(crate) fn prepare_and_enumerate(
+    paths: &[PathBuf],
+    extended_verbs: bool,
+) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    release_prepared_menu();
+    unsafe {
+        let handle = create_context_menu(paths, extended_verbs)?;
+        PREPARED_MENU.with(|slot| *slot.borrow_mut() = Some(handle));
+    }
+    enumerate_prepared_menu()
+}
+
+pub(crate) fn enumerate_prepared_menu() -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    PREPARED_MENU.with(|slot| {
+        let guard = slot.borrow();
+        let Some(handle) = guard.as_ref() else {
+            anyhow::bail!("no prepared shell context menu");
+        };
+        unsafe { enumerate_popup_menu(handle.popup, &handle.menu, 0) }
+    })
+}
+
+pub(crate) fn invoke_prepared_menu(command_offset: u32) -> anyhow::Result<()> {
+    unsafe {
+        let Some(menu) = PREPARED_MENU.with(|slot| slot.borrow().as_ref().map(|h| h.menu.clone())) else {
+            anyhow::bail!("no prepared shell context menu for invoke");
+        };
+        let mut info = CMINVOKECOMMANDINFO::default();
+        info.cbSize = std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32;
+        info.lpVerb = PCSTR::from_raw(command_offset as usize as *const u8);
+        info.nShow = 1;
+        menu.InvokeCommand(&info)?;
+        Ok(())
+    }
+}
+
 impl ContextMenuHandle {
     unsafe fn release(self) {
-        let _ = DestroyMenu(self.popup);
-        for pidl in self.child_pidls {
+        let ContextMenuHandle {
+            menu,
+            popup,
+            child_pidls,
+        } = self;
+        drop(menu);
+        let _ = DestroyMenu(popup);
+        for pidl in child_pidls {
             free_pidl(pidl);
         }
     }
@@ -134,34 +206,30 @@ unsafe fn create_context_menu(paths: &[PathBuf], extended_verbs: bool) -> anyhow
         child_pidls.push(relative);
     }
 
-    let hwnd = GetForegroundWindow();
     let apidl: Vec<*const ITEMIDLIST> = child_pidls
         .iter()
         .map(|p| *p as *const ITEMIDLIST)
         .collect();
 
-    let dcm = DEFCONTEXTMENU {
-        hwnd,
-        pcmcb: Default::default(),
-        pidlFolder: std::ptr::null_mut(),
-        psf: std::mem::ManuallyDrop::new(Some(parent_sf.clone())),
-        cidl: apidl.len() as u32,
-        apidl: apidl.as_ptr() as *mut *mut ITEMIDLIST,
-        punkAssociationInfo: Default::default(),
-        cKeys: 0,
-        aKeys: std::ptr::null(),
-    };
+    shell_log!("create_context_menu: IShellFolder::GetUIObjectOf (Files)");
+    let menu: IContextMenu = parent_sf.GetUIObjectOf(HWND::default(), &apidl, None)?;
 
-    let menu: IContextMenu = SHCreateDefaultContextMenu(&dcm)?;
-    let _menu3: IContextMenu3 = menu.cast()?;
-
+    shell_log!("create_context_menu: CreatePopupMenu");
     let popup = CreatePopupMenu()?;
     let flags = if extended_verbs {
-        CMF_NORMAL | CMF_EXTENDEDVERBS
+        CMF_NORMAL | CMF_EXTENDEDVERBS | CMF_OPTIMIZEFORINVOKE
     } else {
-        CMF_NORMAL
+        CMF_NORMAL | CMF_OPTIMIZEFORINVOKE
     };
+    shell_log!("create_context_menu: QueryContextMenu");
     menu.QueryContextMenu(popup, 0, CMD_FIRST, CMD_LAST, flags)?;
+    let raw_count = GetMenuItemCount(popup);
+    shell_log!(
+        "QueryContextMenu ok: paths={} extended={} raw_menu_items={}",
+        paths.len(),
+        extended_verbs,
+        raw_count
+    );
 
     Ok(ContextMenuHandle {
         menu,
@@ -170,16 +238,54 @@ unsafe fn create_context_menu(paths: &[PathBuf], extended_verbs: bool) -> anyhow
     })
 }
 
-unsafe fn enumerate_popup_menu(popup: HMENU) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+unsafe fn command_verb(context_menu: &IContextMenu, command_offset: u32) -> Option<String> {
+    let id = CMD_FIRST.saturating_add(command_offset) as usize;
+    let mut buf = [0u8; 256];
+    buf.fill(0);
+    if context_menu
+        .GetCommandString(
+            id,
+            GCS_VERBA,
+            None,
+            windows::core::PSTR(buf.as_mut_ptr()),
+            buf.len() as u32,
+        )
+        .is_err()
+    {
+        return None;
+    }
+    let len = buf.iter().position(|&c| c == 0).unwrap_or(0);
+    if len == 0 {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&buf[..len]).into_owned())
+}
+
+unsafe fn enumerate_popup_menu(
+    popup: HMENU,
+    context_menu: &IContextMenu,
+    depth: u32,
+) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    if depth >= MAX_SUBMENU_DEPTH {
+        shell_log!("enumerate: max submenu depth {}", depth);
+        return Ok(Vec::new());
+    }
+
     let count = GetMenuItemCount(popup);
     if count == 0 {
+        shell_log!("enumerate: empty HMENU");
         return Ok(Vec::new());
     }
 
     let mut entries = Vec::new();
+    let mut skipped_getinfo = 0u32;
+    let mut skipped_empty_label = 0u32;
+    let mut skipped_bad_id = 0u32;
+    let mut skipped_verb = 0u32;
+    let mut skipped_submenu_empty = 0u32;
     let mut info = MENUITEMINFOW {
         cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
-        fMask: MIIM_FTYPE | MIIM_ID | MIIM_STRING | MIIM_BITMAP,
+        fMask: MIIM_FTYPE | MIIM_ID | MIIM_STRING | MIIM_BITMAP | MIIM_SUBMENU,
         ..Default::default()
     };
 
@@ -191,8 +297,10 @@ unsafe fn enumerate_popup_menu(popup: HMENU) -> anyhow::Result<Vec<ShellContextM
         let mut label_buf = [0u16; 512];
         info.dwTypeData = windows::core::PWSTR(label_buf.as_mut_ptr());
         info.cch = label_buf.len() as u32;
+        info.hSubMenu = Default::default();
 
         if GetMenuItemInfoW(popup, index, true, &mut info).is_err() {
+            skipped_getinfo += 1;
             continue;
         }
 
@@ -201,49 +309,70 @@ unsafe fn enumerate_popup_menu(popup: HMENU) -> anyhow::Result<Vec<ShellContextM
             continue;
         }
 
-        if info.fType.0 & MF_POPUP.0 != 0 {
+        let submenu = if !info.hSubMenu.is_invalid() {
+            info.hSubMenu
+        } else {
+            GetSubMenu(popup, index as i32)
+        };
+        if !submenu.is_invalid() {
             let label_len = label_buf.iter().position(|&c| c == 0).unwrap_or(0);
             let label = String::from_utf16_lossy(&label_buf[..label_len]);
-            let submenu = GetSubMenu(popup, index as i32);
-            if !submenu.is_invalid() {
-                if let Ok(children) = enumerate_popup_menu(submenu) {
-                    if !children.is_empty() {
-                        entries.push(ShellContextMenuEntry::Submenu {
-                            label,
-                            children,
-                            icon_png: menu_item_icon_png(info.hbmpItem),
-                        });
-                    }
+            if let Ok(children) = enumerate_popup_menu(submenu, context_menu, depth + 1) {
+                if !children.is_empty() {
+                    entries.push(ShellContextMenuEntry::Submenu {
+                        label,
+                        children,
+                        icon_png: menu_item_icon_png(info.hbmpItem),
+                    });
+                } else {
+                    skipped_submenu_empty += 1;
                 }
             }
             continue;
         }
 
-        if info.fType.0 & MFT_STRING.0 == 0 {
+        let label_len = label_buf.iter().position(|&c| c == 0).unwrap_or(0);
+        if label_len == 0 {
+            skipped_empty_label += 1;
+            continue;
+        }
+        let label = String::from_utf16_lossy(&label_buf[..label_len]);
+        let command_offset = info.wID.saturating_sub(CMD_FIRST);
+        if command_offset > CMD_LAST.saturating_sub(CMD_FIRST) {
+            skipped_bad_id += 1;
             continue;
         }
 
-        let label_len = label_buf.iter().position(|&c| c == 0).unwrap_or(0);
-        let label = String::from_utf16_lossy(&label_buf[..label_len]);
-        let command_offset = info.wID.saturating_sub(CMD_FIRST);
-
-        if should_skip_shell_verb(None, &label) {
+        let verb = command_verb(context_menu, command_offset);
+        if should_skip_shell_verb(verb.as_deref(), &label) {
+            skipped_verb += 1;
             continue;
         }
 
         entries.push(ShellContextMenuEntry::Item {
             label,
             command_offset,
-            command_string: None,
+            command_string: verb,
             icon_png: menu_item_icon_png(info.hbmpItem),
         });
     }
+
+    shell_log!(
+        "enumerate done: raw={} kept={} sep+items+submenus, skipped getinfo={} empty_label={} bad_id={} verb={} submenu_empty={}",
+        count,
+        entries.len(),
+        skipped_getinfo,
+        skipped_empty_label,
+        skipped_bad_id,
+        skipped_verb,
+        skipped_submenu_empty
+    );
 
     Ok(entries)
 }
 
 unsafe fn menu_item_icon_png(hbmp: HBITMAP) -> Option<Vec<u8>> {
-    if hbmp.is_invalid() {
+    if !SHELL_MENU_ICONS_ENABLED || hbmp.is_invalid() {
         return None;
     }
     let copy = CopyImage(
@@ -294,47 +423,43 @@ pub fn open_in_new_explorer_window(path: &Path) -> anyhow::Result<()> {
     }
 }
 
-/// Enumerates Shell context menu entries for merging into a GPUI flyout (Files-style).
+/// Enumerates Shell entries on a dedicated STA thread (Files `ThreadWithMessageQueue`).
 pub fn query_shell_context_menu_items(
     paths: &[PathBuf],
     extended_verbs: bool,
 ) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
-    if paths.is_empty() || !same_parent(paths) {
+    shell_log!(
+        "query start: n_paths={} extended={} paths={:?}",
+        paths.len(),
+        extended_verbs,
+        paths
+    );
+    if paths.is_empty() {
+        shell_log!("query abort: no paths");
         return Ok(Vec::new());
     }
-
-    ensure_com_apartment()?;
-    unsafe {
-        let handle = create_context_menu(paths, extended_verbs)?;
-        let entries = enumerate_popup_menu(handle.popup)?;
-        handle.release();
-        Ok(entries)
+    if !same_parent(paths) {
+        shell_log!("query abort: not same_parent");
+        return Ok(Vec::new());
     }
+    let entries = shell_menu_session::query_with_session(paths, extended_verbs)?;
+    shell_log!("query ok: entries={}", entries.len());
+    Ok(entries)
 }
 
 /// Invokes one Shell menu command by offset (from [`query_shell_context_menu_items`]).
 pub fn invoke_shell_context_menu_item(
-    paths: &[PathBuf],
+    _paths: &[PathBuf],
     command_offset: u32,
-    extended_verbs: bool,
+    _extended_verbs: bool,
 ) -> anyhow::Result<()> {
-    if paths.is_empty() || !same_parent(paths) {
-        anyhow::bail!("invalid paths for shell menu invoke");
-    }
-
-    ensure_com_apartment()?;
-    unsafe {
-        let handle = create_context_menu(paths, extended_verbs)?;
-        let hwnd = GetForegroundWindow();
-        let mut info = CMINVOKECOMMANDINFO::default();
-        info.cbSize = std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32;
-        info.hwnd = hwnd;
-        info.lpVerb = PCSTR::from_raw(command_offset as usize as *const u8);
-        info.nShow = 1;
-        handle.menu.InvokeCommand(&info)?;
-        handle.release();
-        Ok(())
-    }
+    let offset = command_offset;
+    std::thread::spawn(move || {
+        if let Err(error) = shell_menu_session::invoke_on_session(offset) {
+            eprintln!("[shell-menu] invoke err: {error:#}");
+        }
+    });
+    Ok(())
 }
 
 /// Optional Explorer-style popup (not the default Files parity UX).
@@ -425,4 +550,35 @@ pub fn show_shell_context_menu_fallback(paths: &[PathBuf]) -> anyhow::Result<()>
         ShellExecuteExW(&mut info)?;
     }
     Ok(())
+}
+
+#[cfg(all(windows, test))]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// Smoke test for `[shell-menu]` logging (`cargo test -p cyberfiles-platform-windows query_shell -- --nocapture`).
+    #[test]
+    fn query_shell_context_menu_items_smoke() {
+        let dir = std::env::temp_dir();
+        let file = dir.join("cyberfiles_shell_menu_test.txt");
+        fs::write(&file, b"test").expect("write temp file");
+        let subdir = dir.join("cyberfiles_shell_menu_test_dir");
+        fs::create_dir_all(&subdir).expect("create temp dir");
+
+        for (label, paths) in [
+            ("file", vec![file.clone()]),
+            ("directory", vec![subdir.clone()]),
+        ] {
+            let normal =
+                query_shell_context_menu_items(&paths, false).unwrap_or_else(|e| {
+                    panic!("query normal ({label}): {e:#}");
+                });
+            eprintln!("[shell-menu] smoke {label}: entries={}", normal.len());
+            assert!(!normal.is_empty(), "expected Shell entries for {label}");
+        }
+
+        let _ = fs::remove_file(file);
+        let _ = fs::remove_dir(subdir);
+    }
 }

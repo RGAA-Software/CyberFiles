@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use std::{
     path::{Path, PathBuf},
@@ -29,6 +30,7 @@ use crate::icons::{compact_icon, toolbar_icon};
 use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry, ShellIconHint};
 use crate::app_state::AppFileClipboard;
+use crate::list_icon_cache;
 use gpui::{
     actions, anchored, deferred, prelude::*, ClipboardItem, ClickEvent, DismissEvent, Entity,
     FocusHandle, Focusable, ParentElement, ScrollStrategy, Subscription, Window, *,
@@ -131,6 +133,72 @@ pub(crate) struct ShellMenuCache {
     entries: Vec<ShellContextMenuEntry>,
 }
 
+/// Stable cache key for multi-select (order-independent).
+pub(crate) fn normalize_paths_for_shell_cache(paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut normalized: Vec<PathBuf> = paths.to_vec();
+    normalized.sort();
+    normalized
+}
+
+pub(crate) fn shell_cache_matches_selection(cache_paths: &[PathBuf], selection: &[PathBuf]) -> bool {
+    normalize_paths_for_shell_cache(cache_paths) == normalize_paths_for_shell_cache(selection)
+}
+
+/// Shell submenu content snapshot (built when the flyout is created — no `FileBrowser::read` in submenu callbacks).
+#[derive(Clone, Debug)]
+pub(crate) enum ShellSubmenuSnapshot {
+    Loading,
+    Empty,
+    Ready(Vec<platform::ShellContextMenuEntry>),
+}
+
+pub(crate) fn shell_submenu_snapshot(
+    cache: &Arc<RwLock<Option<ShellMenuCache>>>,
+    paths: &[PathBuf],
+    extended_verbs: bool,
+) -> ShellSubmenuSnapshot {
+    let Ok(guard) = cache.read() else {
+        return ShellSubmenuSnapshot::Loading;
+    };
+    let Some(cache) = guard.as_ref() else {
+        eprintln!(
+            "[shell-menu] submenu build: Loading (no cache) selection={paths:?}",
+            paths = paths
+        );
+        return ShellSubmenuSnapshot::Loading;
+    };
+    if !shell_cache_matches_selection(&cache.paths, paths) {
+        eprintln!(
+            "[shell-menu] submenu build: Loading (path mismatch) cache={cache:?} selection={paths:?}",
+            cache = cache.paths,
+            paths = paths
+        );
+        return ShellSubmenuSnapshot::Loading;
+    }
+    if cache.extended_verbs != extended_verbs {
+        eprintln!(
+            "[shell-menu] submenu build: Loading (extended mismatch) cache={} ui={extended_verbs}",
+            cache.extended_verbs,
+            extended_verbs = extended_verbs
+        );
+        return ShellSubmenuSnapshot::Loading;
+    }
+    if cache.entries.is_empty() {
+        eprintln!(
+            "[shell-menu] submenu build: Empty (cache matched, 0 entries) selection={paths:?}",
+            paths = paths
+        );
+        ShellSubmenuSnapshot::Empty
+    } else {
+        eprintln!(
+            "[shell-menu] submenu build: Ready {n} entries selection={paths:?}",
+            n = cache.entries.len(),
+            paths = paths
+        );
+        ShellSubmenuSnapshot::Ready(cache.entries.clone())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BrowseLocation {
     Directory,
@@ -165,8 +233,9 @@ pub struct FileBrowser {
     _directory_watcher: Option<DirectoryWatcher>,
     _watcher_task: Option<Task<()>>,
     watched_dir: Option<PathBuf>,
-    shell_menu_cache: Option<ShellMenuCache>,
+    shell_menu_cache: Arc<RwLock<Option<ShellMenuCache>>>,
     _shell_menu_task: Option<Task<()>>,
+    shell_menu_fetch_generation: u64,
     context_menu_extended_verbs: bool,
     context_menu_open: bool,
     context_menu_position: Point<Pixels>,
@@ -175,6 +244,9 @@ pub struct FileBrowser {
     /// Bumped when Shell entries finish loading; drives menu rebuild while open.
     shell_menu_revision: u64,
     context_menu_built_revision: u64,
+    /// Bumped on each `refresh`; list icons warm once per bump (not per scroll).
+    list_icon_warm_token: u64,
+    list_icon_warm_scheduled: u64,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -243,8 +315,9 @@ impl FileBrowser {
             _directory_watcher: None,
             _watcher_task: None,
             watched_dir: None,
-            shell_menu_cache: None,
+            shell_menu_cache: Arc::new(RwLock::new(None)),
             _shell_menu_task: None,
+            shell_menu_fetch_generation: 0,
             context_menu_extended_verbs: false,
             context_menu_open: false,
             context_menu_position: Point::default(),
@@ -252,6 +325,8 @@ impl FileBrowser {
             _context_menu_subscription: None,
             shell_menu_revision: 0,
             context_menu_built_revision: 0,
+            list_icon_warm_token: 0,
+            list_icon_warm_scheduled: u64::MAX,
             _subscriptions: Vec::new(),
         }
     }
@@ -310,8 +385,8 @@ impl FileBrowser {
         );
     }
 
-    /// Prefetch Shell context menu entries off the UI thread (Files-style flyout merge).
-    fn request_shell_menu_fetch(&mut self, cx: &mut Context<Self>) {
+    /// Prefetch Shell context menu on the dedicated Shell STA worker (non-blocking for GPUI).
+    fn request_shell_menu_fetch(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if self.browse_location != BrowseLocation::Directory {
             return;
         }
@@ -322,29 +397,87 @@ impl FileBrowser {
         }
 
         let extended = self.context_menu_extended_verbs;
-        if self.shell_menu_cache.as_ref().is_some_and(|cache| {
-            cache.paths == paths && cache.extended_verbs == extended
-        }) {
+        let paths_key = normalize_paths_for_shell_cache(&paths);
+        if self
+            .shell_menu_cache
+            .read()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|cache| {
+                cache.paths == paths_key && cache.extended_verbs == extended
+            }))
+            .unwrap_or(false)
+        {
             return;
         }
 
         self._shell_menu_task.take();
-        self._shell_menu_task = Some(cx.spawn(async move |browser, cx| {
-            let paths_for_query = paths.clone();
-            let entries = cx.background_spawn(async move {
-                platform::query_shell_context_menu_items(&paths_for_query, extended)
-                    .unwrap_or_default()
-            }).await;
+        self.shell_menu_fetch_generation = self.shell_menu_fetch_generation.wrapping_add(1);
+        let fetch_generation = self.shell_menu_fetch_generation;
+        let browser_handle = cx.weak_entity();
 
-            let _ = browser.update(cx, |browser, cx| {
-                browser.shell_menu_cache = Some(ShellMenuCache {
-                    paths,
-                    extended_verbs: extended,
-                    entries,
+        let paths_for_query = paths_key.clone();
+        self._shell_menu_task = Some(cx.spawn(async move |this, cx| {
+            let query_result = cx
+                .background_spawn(async move {
+                    platform::query_shell_context_menu_items(&paths_for_query, extended)
+                })
+                .await;
+
+            let menu_open = this
+                .update(cx, |browser, cx| {
+                    if fetch_generation != browser.shell_menu_fetch_generation {
+                        return false;
+                    }
+                    match query_result {
+                        Ok(entries) => {
+                            eprintln!(
+                                "[shell-menu] fetch ok: paths={:?} extended={} entries={}",
+                                paths_key,
+                                extended,
+                                entries.len()
+                            );
+                            if let Ok(mut guard) = browser.shell_menu_cache.write() {
+                                *guard = Some(ShellMenuCache {
+                                    paths: paths_key,
+                                    extended_verbs: extended,
+                                    entries,
+                                });
+                            }
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "[shell-menu] fetch err: paths={:?} extended={} error={error:#}",
+                                paths_key, extended
+                            );
+                            if let Ok(mut guard) = browser.shell_menu_cache.write() {
+                                *guard = Some(ShellMenuCache {
+                                    paths: paths_key,
+                                    extended_verbs: extended,
+                                    entries: Vec::new(),
+                                });
+                            }
+                        }
+                    }
+                    browser.shell_menu_revision = browser.shell_menu_revision.wrapping_add(1);
+                    let open = browser.context_menu_open;
+                    cx.notify();
+                    open
+                })
+                .unwrap_or(false);
+
+            if menu_open {
+                let handle = browser_handle.clone();
+                let _ = this.update(cx, |_, cx| {
+                    cx.defer(move |cx| {
+                        let Some(window) = cx.active_window() else {
+                            return;
+                        };
+                        let _ = window.update(cx, |_, window, cx| {
+                            FileBrowser::install_context_menu_flyout(&handle, window, cx, false);
+                        });
+                    });
                 });
-                browser.shell_menu_revision = browser.shell_menu_revision.wrapping_add(1);
-                cx.notify();
-            });
+            }
         }));
     }
 
@@ -360,35 +493,76 @@ impl FileBrowser {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        eprintln!(
+            "[shell-menu] open_context_menu: selection={:?} extended={}",
+            self.selected_paths_vec(),
+            self.context_menu_extended_verbs
+        );
         self.context_menu_position = position;
         self.context_menu_open = true;
-        self.request_shell_menu_fetch(cx);
-        self.rebuild_context_menu(window, cx);
+        self.request_shell_menu_fetch(window, cx);
+        self.schedule_context_menu_rebuild(window, cx);
         cx.notify();
     }
 
-    fn rebuild_context_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Rebuild flyout after the current `FileBrowser` update finishes (avoids `double_lease_panic`).
+    fn schedule_context_menu_rebuild(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.context_menu_open {
             return;
         }
+        let browser_handle = cx.weak_entity();
+        window.defer(cx, move |window, cx| {
+            Self::install_context_menu_flyout(&browser_handle, window, cx, false);
+        });
+    }
 
-        let browser = cx.entity();
-        let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-            context_menu::build_context_menu(menu, browser.clone(), window, cx)
+    /// Build `PopupMenu` outside any `FileBrowser::update`, then attach it in a short update.
+    fn install_context_menu_flyout(
+        browser_handle: &WeakEntity<Self>,
+        window: &mut Window,
+        cx: &mut App,
+        only_if_revision_changed: bool,
+    ) {
+        let Some(browser_entity) = browser_handle.upgrade() else {
+            return;
+        };
+        let (open, needs_rebuild) = {
+            let browser = browser_entity.read(cx);
+            (
+                browser.context_menu_open,
+                browser.context_menu_built_revision != browser.shell_menu_revision,
+            )
+        };
+        if !open || (only_if_revision_changed && !needs_rebuild) {
+            return;
+        }
+
+        let menu = PopupMenu::build(window, cx, {
+            let browser_entity = browser_entity.clone();
+            move |menu, window, cx| {
+                context_menu::build_context_menu(menu, browser_entity, window, cx)
+            }
         });
 
-        let browser_weak = cx.weak_entity();
-        self._context_menu_subscription = Some(window.subscribe(&menu, cx, {
-            move |_, _: &DismissEvent, window, cx| {
-                let _ = browser_weak.update(cx, |browser, cx| {
-                    browser.dismiss_context_menu();
-                    cx.notify();
-                });
-                window.refresh();
+        let browser_weak = browser_entity.downgrade();
+        let _ = browser_weak.update(cx, |browser, cx| {
+            if !browser.context_menu_open {
+                return;
             }
-        }));
-        self.context_menu_view = Some(menu);
-        self.context_menu_built_revision = self.shell_menu_revision;
+            let dismiss_weak = browser_weak.clone();
+            browser._context_menu_subscription = Some(window.subscribe(&menu, cx, {
+                move |_, _: &DismissEvent, window, cx| {
+                    let _ = dismiss_weak.update(cx, |browser, cx| {
+                        browser.dismiss_context_menu();
+                        cx.notify();
+                    });
+                    window.refresh();
+                }
+            }));
+            browser.context_menu_view = Some(menu);
+            browser.context_menu_built_revision = browser.shell_menu_revision;
+            cx.notify();
+        });
     }
 
     fn render_context_menu_overlay(
@@ -592,6 +766,7 @@ impl FileBrowser {
         }
         self.reconcile_selection();
         self.clamp_focused_index();
+        self.list_icon_warm_token = self.list_icon_warm_token.wrapping_add(1);
     }
 
     fn handle_drop(&mut self, paths: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
@@ -655,7 +830,10 @@ impl FileBrowser {
     }
 
     fn clear_shell_menu_cache(&mut self) {
-        self.shell_menu_cache = None;
+        platform::clear_shell_menu_session();
+        if let Ok(mut guard) = self.shell_menu_cache.write() {
+            *guard = None;
+        }
         self._shell_menu_task.take();
     }
 
@@ -746,7 +924,6 @@ impl FileBrowser {
         }
 
         self.focused_index = Some(index);
-        self.request_shell_menu_fetch(cx);
     }
 
     fn open_item(&mut self, path: PathBuf, kind: FileItemKind, cx: &mut Context<Self>) {
@@ -784,6 +961,54 @@ impl FileBrowser {
                 self.focused_index = None;
             }
         }
+    }
+
+    fn file_item_kind_icon(kind: FileItemKind) -> gpui_component::Icon {
+        compact_icon(match kind {
+            FileItemKind::Folder => IconName::Folder,
+            FileItemKind::Symlink => IconName::ExternalLink,
+            FileItemKind::File | FileItemKind::Other => IconName::File,
+        })
+    }
+
+    /// List row icon: GPUI fallback always visible; Shell PNG when type cache is warm.
+    fn row_list_icon(item: &FileItem, logical_size: Pixels, window: &Window) -> impl IntoElement {
+        let px = platform::shell_icon_pixel_size(logical_size.as_f32(), window.scale_factor());
+        let key = list_icon_cache::list_icon_key(item);
+        if let Some(png) = list_icon_cache::list_icon_png_cached(&key, px) {
+            if !png.is_empty() {
+                return img(std::sync::Arc::new(Image::from_bytes(ImageFormat::Png, (*png).clone())))
+                    .size(logical_size)
+                    .object_fit(ObjectFit::Contain)
+                    .into_any_element();
+            }
+        }
+        div()
+            .size(logical_size)
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(Self::file_item_kind_icon(item.kind))
+            .into_any_element()
+    }
+
+    /// After directory refresh: load at most one Shell icon per category (folder, zip, exe, …).
+    fn schedule_list_icon_warm(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if self.list_icon_warm_scheduled == self.list_icon_warm_token {
+            return;
+        }
+        self.list_icon_warm_scheduled = self.list_icon_warm_token;
+        let keys = list_icon_cache::list_icon_keys_for_items(&self.display_items);
+        let px = platform::shell_icon_pixel_size(16., window.scale_factor());
+        cx.spawn(async move |this, cx| {
+            let _ = cx
+                .background_spawn(async move {
+                    list_icon_cache::warm_list_icons(keys, px);
+                })
+                .await;
+            let _ = this.update(cx, |_, cx| cx.notify());
+        })
+        .detach();
     }
 
     fn clamp_focused_index(&mut self) {
@@ -1129,7 +1354,8 @@ impl FileBrowser {
         format!("{field} {arrow}")
     }
 
-    fn file_list(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn file_list(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.schedule_list_icon_warm(window, cx);
         match self.view_mode {
             ViewMode::Details => self.details_table(window, cx).into_any_element(),
             ViewMode::Grid => self.grid_view(window, cx).into_any_element(),
@@ -1260,11 +1486,7 @@ impl FileBrowser {
                 div()
                     .w(px(20.))
                     .flex_none()
-                    .child(crate::shell_icon::shell_icon_for_path(
-                        &item.path,
-                        px(16.),
-                        window,
-                    )),
+                    .child(Self::row_list_icon(&item, px(16.), window)),
             )
             .child(
                 div()
@@ -1414,6 +1636,7 @@ impl FileBrowser {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
                     this.open_context_menu(event.position, window, cx);
@@ -1429,11 +1652,7 @@ impl FileBrowser {
                     .w(px(28.))
                     .flex_none()
                     .text_color(cx.theme().muted_foreground)
-                    .child(crate::shell_icon::shell_icon_for_path(
-                        &item.path,
-                        px(16.),
-                        window,
-                    )),
+                    .child(Self::row_list_icon(&item, px(16.), window)),
             )
             .child(
                 div()
@@ -1522,6 +1741,7 @@ impl FileBrowser {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
                     this.open_context_menu(event.position, window, cx);
@@ -1532,11 +1752,7 @@ impl FileBrowser {
                     label: drag_preview_label(&paths.0).into(),
                 })
             })
-            .child(crate::shell_icon::shell_icon_for_path(
-                &item.path,
-                px(16.),
-                window,
-            ))
+            .child(Self::row_list_icon(&item, px(16.), window))
             .child(
                 div()
                     .w_full()
@@ -1612,7 +1828,6 @@ impl FileBrowser {
 
     fn on_select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.select_all();
-        self.request_shell_menu_fetch(cx);
         cx.notify();
     }
 
@@ -1957,12 +2172,6 @@ impl Render for FileBrowser {
         let show_hidden = self.read_options.show_hidden_items;
         let sort_label = self.sort_label();
         let in_recycle_bin = self.browse_location == BrowseLocation::RecycleBin;
-
-        if self.context_menu_open
-            && self.context_menu_built_revision != self.shell_menu_revision
-        {
-            self.rebuild_context_menu(window, cx);
-        }
 
         let page_gap = if self.show_content_toolbar && !self.show_toolbar {
             px(0.)
