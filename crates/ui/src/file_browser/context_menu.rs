@@ -536,22 +536,42 @@ fn append_shell_entries(
             ShellContextMenuEntry::Submenu {
                 label,
                 children,
+                lazy_parent_index,
                 ..
             } => {
                 let paths = paths.to_vec();
-                let children = children.clone();
                 let label = label.clone();
                 let browser_sub = browser.clone();
+                let lazy_index = *lazy_parent_index;
+                let children = children.clone();
                 menu = menu.submenu(label, window, cx, move |sub, window, cx| {
-                    append_shell_entries(
-                        sub,
-                        &children,
-                        &paths,
-                        extended_verbs,
-                        browser_sub.clone(),
-                        window,
-                        cx,
-                    )
+                    let entries = if let Some(index) = lazy_index {
+                        match std::thread::spawn(move || platform::load_lazy_submenu(index)).join() {
+                            Ok(Ok(items)) => items,
+                            Ok(Err(error)) => {
+                                eprintln!("[shell-menu] lazy submenu err: {error:#}");
+                                Vec::new()
+                            }
+                            Err(_) => Vec::new(),
+                        }
+                    } else {
+                        children.clone()
+                    };
+                    if entries.is_empty() {
+                        sub.item(
+                            PopupMenuItem::new(t!("files.menu.shell_empty")).disabled(true),
+                        )
+                    } else {
+                        append_shell_entries(
+                            sub,
+                            &entries,
+                            &paths,
+                            extended_verbs,
+                            browser_sub.clone(),
+                            window,
+                            cx,
+                        )
+                    }
                 });
             }
         }

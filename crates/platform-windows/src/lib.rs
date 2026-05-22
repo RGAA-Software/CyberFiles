@@ -52,8 +52,9 @@ pub use volume::{DriveKind, VolumeDetails, volume_details};
 #[cfg(windows)]
 pub use shell::{
     clear_shell_menu_session, invoke_shell_context_menu_item, invoke_shell_properties,
-    open_in_new_explorer_window, open_item_properties, query_shell_context_menu_items,
-    show_open_with_dialog, show_shell_context_menu, ShellContextMenuEntry,
+    load_lazy_submenu, open_in_new_explorer_window, open_item_properties,
+    query_shell_context_menu_items, show_open_with_dialog, show_shell_context_menu,
+    warm_up_query_context_menu, ShellContextMenuEntry,
 };
 
 #[cfg(not(windows))]
@@ -106,8 +107,15 @@ mod stubs {
             label: String,
             children: Vec<ShellContextMenuEntry>,
             icon_png: Option<Vec<u8>>,
+            lazy_parent_index: Option<u32>,
         },
     }
+
+    pub fn load_lazy_submenu(_parent_index: u32) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+        Ok(Vec::new())
+    }
+
+    pub fn warm_up_query_context_menu() {}
 
     pub fn query_shell_context_menu_items(
         _paths: &[PathBuf],

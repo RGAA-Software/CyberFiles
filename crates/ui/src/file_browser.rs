@@ -235,6 +235,8 @@ pub struct FileBrowser {
     watched_dir: Option<PathBuf>,
     shell_menu_cache: Arc<RwLock<Option<ShellMenuCache>>>,
     _shell_menu_task: Option<Task<()>>,
+    /// Selection key for an in-flight Shell fetch (dedupe rapid right-clicks).
+    shell_menu_fetch_paths: Option<Vec<PathBuf>>,
     shell_menu_fetch_generation: u64,
     context_menu_extended_verbs: bool,
     context_menu_open: bool,
@@ -317,6 +319,7 @@ impl FileBrowser {
             watched_dir: None,
             shell_menu_cache: Arc::new(RwLock::new(None)),
             _shell_menu_task: None,
+            shell_menu_fetch_paths: None,
             shell_menu_fetch_generation: 0,
             context_menu_extended_verbs: false,
             context_menu_open: false,
@@ -386,7 +389,7 @@ impl FileBrowser {
     }
 
     /// Prefetch Shell context menu on the dedicated Shell STA worker (non-blocking for GPUI).
-    fn request_shell_menu_fetch(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn request_shell_menu_fetch(&mut self, cx: &mut Context<Self>) {
         if self.browse_location != BrowseLocation::Directory {
             return;
         }
@@ -403,28 +406,38 @@ impl FileBrowser {
             .read()
             .ok()
             .and_then(|guard| guard.as_ref().map(|cache| {
-                cache.paths == paths_key && cache.extended_verbs == extended
+                cache.paths == paths_key
+                    && cache.extended_verbs == extended
+                    && !cache.entries.is_empty()
             }))
             .unwrap_or(false)
         {
             return;
         }
 
+        if self.shell_menu_fetch_paths.as_ref() == Some(&paths_key) {
+            return;
+        }
+
         self._shell_menu_task.take();
+        self.shell_menu_fetch_paths = Some(paths_key.clone());
         self.shell_menu_fetch_generation = self.shell_menu_fetch_generation.wrapping_add(1);
         let fetch_generation = self.shell_menu_fetch_generation;
         let browser_handle = cx.weak_entity();
 
         let paths_for_query = paths_key.clone();
+        let paths_for_retry = paths_key.clone();
         self._shell_menu_task = Some(cx.spawn(async move |this, cx| {
             let query_result = cx
                 .background_spawn(async move {
                     platform::query_shell_context_menu_items(&paths_for_query, extended)
                 })
                 .await;
+            let retry_after_err = query_result.is_err();
 
             let menu_open = this
                 .update(cx, |browser, cx| {
+                    browser.shell_menu_fetch_paths = None;
                     if fetch_generation != browser.shell_menu_fetch_generation {
                         return false;
                     }
@@ -446,15 +459,11 @@ impl FileBrowser {
                         }
                         Err(error) => {
                             eprintln!(
-                                "[shell-menu] fetch err: paths={:?} extended={} error={error:#}",
+                                "[shell-menu] fetch err: paths={:?} extended={} error={error:#} (not cached; will retry)",
                                 paths_key, extended
                             );
                             if let Ok(mut guard) = browser.shell_menu_cache.write() {
-                                *guard = Some(ShellMenuCache {
-                                    paths: paths_key,
-                                    extended_verbs: extended,
-                                    entries: Vec::new(),
-                                });
+                                *guard = None;
                             }
                         }
                     }
@@ -477,6 +486,44 @@ impl FileBrowser {
                         });
                     });
                 });
+                if retry_after_err {
+                    let paths_retry = paths_for_retry.clone();
+                    let retry_handle = browser_handle.clone();
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_secs(2))
+                        .await;
+                    let _ = this.update(cx, |browser, cx| {
+                        if !browser.context_menu_open {
+                            return;
+                        }
+                        let selection =
+                            normalize_paths_for_shell_cache(&browser.selected_paths_vec());
+                        if selection != paths_retry {
+                            return;
+                        }
+                        let cache_hit = browser
+                            .shell_menu_cache
+                            .read()
+                            .ok()
+                            .map(|g| g.is_some())
+                            .unwrap_or(false);
+                        if cache_hit {
+                            return;
+                        }
+                        browser.request_shell_menu_fetch(cx);
+                        cx.notify();
+                    });
+                    let _ = this.update(cx, |_, cx| {
+                        cx.defer(move |cx| {
+                            let Some(window) = cx.active_window() else {
+                                return;
+                            };
+                            let _ = window.update(cx, |_, window, cx| {
+                                FileBrowser::install_context_menu_flyout(&retry_handle, window, cx, false);
+                            });
+                        });
+                    });
+                }
             }
         }));
     }
@@ -500,7 +547,7 @@ impl FileBrowser {
         );
         self.context_menu_position = position;
         self.context_menu_open = true;
-        self.request_shell_menu_fetch(window, cx);
+        self.request_shell_menu_fetch(cx);
         self.schedule_context_menu_rebuild(window, cx);
         cx.notify();
     }
@@ -835,6 +882,7 @@ impl FileBrowser {
             *guard = None;
         }
         self._shell_menu_task.take();
+        self.shell_menu_fetch_paths = None;
     }
 
     fn navigate_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {

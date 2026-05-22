@@ -41,6 +41,9 @@ pub fn init(cx: &mut App) {
         shell::preferences::apply_config(cfg, cx);
     }
 
+    #[cfg(windows)]
+    cyberfiles_platform_windows::warm_up_query_context_menu();
+
     cx.on_action(|_: &shell::Quit, cx| {
         shell::preferences::persist_window_bounds(cx);
         cx.quit();

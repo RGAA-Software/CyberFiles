@@ -45,9 +45,9 @@ pub fn invoke_shell_properties(paths: &[PathBuf]) -> anyhow::Result<()> {
 
 pub use crate::context_menu::{
     invoke_shell_context_menu_item, open_in_new_explorer_window, query_shell_context_menu_items,
-    show_open_with_dialog, ShellContextMenuEntry,
+    show_open_with_dialog, warm_up_query_context_menu, ShellContextMenuEntry,
 };
-pub use crate::shell_menu_session::clear_session as clear_shell_menu_session;
+pub use crate::shell_menu_session::{clear_session as clear_shell_menu_session, load_lazy_submenu};
 
 /// Optional Explorer-style popup at the cursor (not the default Files parity UX).
 pub fn show_shell_context_menu(paths: &[std::path::PathBuf]) -> anyhow::Result<()> {

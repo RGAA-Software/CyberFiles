@@ -2,13 +2,13 @@ use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use windows::core::{PCSTR, PCWSTR};
-use windows::Win32::Foundation::{BOOL, HANDLE, HWND, POINT};
+use windows::core::{Interface, PCSTR, PCWSTR};
+use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, POINT, WPARAM};
 use crate::com::ensure_com_apartment;
 use crate::shell_menu_session;
 use windows::Win32::UI::Shell::{
     CMINVOKECOMMANDINFO, CMF_EXTENDEDVERBS, CMF_NORMAL, CMF_OPTIMIZEFORINVOKE, GCS_VERBA, IContextMenu,
-    ILClone, ILFree, IShellFolder, SHBindToParent, SHParseDisplayName,
+    IContextMenu2, ILClone, ILFree, IShellFolder, SHBindToParent, SHParseDisplayName,
 };
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::Graphics::Gdi::HBITMAP;
@@ -31,9 +31,9 @@ const SHELL_MENU_ICONS_ENABLED: bool = false;
 
 /// Debug logging for Shell context menu merge (stderr → `cargo run` terminal).
 macro_rules! shell_log {
-    ($($t:tt)*) => {
+    ($($t:tt)*) => {{
         eprintln!("[shell-menu] {}", format_args!($($t)*));
-    };
+    }};
 }
 
 /// One row in a Files-style merged context flyout (not a native `TrackPopupMenu` surface).
@@ -47,13 +47,17 @@ pub enum ShellContextMenuEntry {
         /// PNG bytes (16×16) from the Shell menu bitmap, when present.
         icon_png: Option<Vec<u8>>,
     },
-    /// Nested Shell popup (merged into flyout as submenu or flattened).
+    /// Nested Shell popup; `lazy_parent_index` is set when children load on expand (Files).
     Submenu {
         label: String,
         children: Vec<ShellContextMenuEntry>,
         icon_png: Option<Vec<u8>>,
+        /// Parent HMENU index for [`expand_lazy_submenu`]; `None` if `children` are populated.
+        lazy_parent_index: Option<u32>,
     },
 }
+
+const WM_INITMENUPOPUP: u32 = 0x0117;
 
 fn path_to_wide(path: &Path) -> Vec<u16> {
     OsStr::new(path)
@@ -145,27 +149,81 @@ pub(crate) fn release_prepared_menu() {
     });
 }
 
-/// Build menu and enumerate on the current STA thread (Files: single `PostMethod` job).
-pub(crate) fn prepare_and_enumerate(
+/// Build menu and enumerate top-level only (Files: `EnumMenuItems(..., loadSubmenus: false)`).
+pub(crate) fn prepare_and_enumerate_top_level(
     paths: &[PathBuf],
     extended_verbs: bool,
 ) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    shell_log!(
+        "prepare_and_enumerate_top_level: paths={:?} extended={}",
+        paths,
+        extended_verbs
+    );
     release_prepared_menu();
     unsafe {
         let handle = create_context_menu(paths, extended_verbs)?;
         PREPARED_MENU.with(|slot| *slot.borrow_mut() = Some(handle));
     }
-    enumerate_prepared_menu()
+    enumerate_prepared_menu_top_level()
 }
 
-pub(crate) fn enumerate_prepared_menu() -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+pub(crate) fn enumerate_prepared_menu_top_level() -> anyhow::Result<Vec<ShellContextMenuEntry>> {
     PREPARED_MENU.with(|slot| {
         let guard = slot.borrow();
         let Some(handle) = guard.as_ref() else {
             anyhow::bail!("no prepared shell context menu");
         };
-        unsafe { enumerate_popup_menu(handle.popup, &handle.menu, 0) }
+        unsafe { enumerate_popup_menu(handle.popup, &handle.menu, 0, false) }
     })
+}
+
+/// Files `LoadSubMenu`: `HandleMenuMsg(WM_INITMENUPOPUP)` then enumerate that HMENU.
+pub(crate) fn expand_lazy_submenu(parent_index: u32) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    PREPARED_MENU.with(|slot| {
+        let guard = slot.borrow();
+        let Some(handle) = guard.as_ref() else {
+            anyhow::bail!("no prepared shell context menu");
+        };
+        unsafe { expand_lazy_submenu_inner(handle.popup, &handle.menu, parent_index) }
+    })
+}
+
+unsafe fn expand_lazy_submenu_inner(
+    popup: HMENU,
+    menu: &IContextMenu,
+    parent_index: u32,
+) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
+    let mut info = MENUITEMINFOW {
+        cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
+        fMask: MIIM_FTYPE | MIIM_ID | MIIM_STRING | MIIM_BITMAP | MIIM_SUBMENU,
+        ..Default::default()
+    };
+    let mut label_buf = [0u16; 512];
+    info.dwTypeData = windows::core::PWSTR(label_buf.as_mut_ptr());
+    info.cch = label_buf.len() as u32;
+
+    if GetMenuItemInfoW(popup, parent_index, true, &mut info).is_err() {
+        anyhow::bail!("GetMenuItemInfoW failed for submenu index {parent_index}");
+    }
+
+    let submenu = if !info.hSubMenu.is_invalid() {
+        info.hSubMenu
+    } else {
+        GetSubMenu(popup, parent_index as i32)
+    };
+    if submenu.is_invalid() {
+        return Ok(Vec::new());
+    }
+
+    if let Ok(cmenu2) = menu.cast::<IContextMenu2>() {
+        let _ = cmenu2.HandleMenuMsg(
+            WM_INITMENUPOPUP,
+            WPARAM(submenu.0 as usize),
+            LPARAM(parent_index as isize),
+        );
+    }
+
+    enumerate_popup_menu(submenu, menu, 1, true)
 }
 
 pub(crate) fn invoke_prepared_menu(command_offset: u32) -> anyhow::Result<()> {
@@ -265,6 +323,7 @@ unsafe fn enumerate_popup_menu(
     popup: HMENU,
     context_menu: &IContextMenu,
     depth: u32,
+    expand_submenus: bool,
 ) -> anyhow::Result<Vec<ShellContextMenuEntry>> {
     if depth >= MAX_SUBMENU_DEPTH {
         shell_log!("enumerate: max submenu depth {}", depth);
@@ -317,16 +376,26 @@ unsafe fn enumerate_popup_menu(
         if !submenu.is_invalid() {
             let label_len = label_buf.iter().position(|&c| c == 0).unwrap_or(0);
             let label = String::from_utf16_lossy(&label_buf[..label_len]);
-            if let Ok(children) = enumerate_popup_menu(submenu, context_menu, depth + 1) {
-                if !children.is_empty() {
-                    entries.push(ShellContextMenuEntry::Submenu {
-                        label,
-                        children,
-                        icon_png: menu_item_icon_png(info.hbmpItem),
-                    });
-                } else {
-                    skipped_submenu_empty += 1;
+            if expand_submenus {
+                if let Ok(children) = enumerate_popup_menu(submenu, context_menu, depth + 1, true) {
+                    if !children.is_empty() {
+                        entries.push(ShellContextMenuEntry::Submenu {
+                            label,
+                            children,
+                            icon_png: menu_item_icon_png(info.hbmpItem),
+                            lazy_parent_index: None,
+                        });
+                    } else {
+                        skipped_submenu_empty += 1;
+                    }
                 }
+            } else {
+                entries.push(ShellContextMenuEntry::Submenu {
+                    label,
+                    children: Vec::new(),
+                    icon_png: menu_item_icon_png(info.hbmpItem),
+                    lazy_parent_index: Some(index),
+                });
             }
             continue;
         }
@@ -421,6 +490,33 @@ pub fn open_in_new_explorer_window(path: &Path) -> anyhow::Result<()> {
     } else {
         anyhow::bail!("explorer exited with {status}")
     }
+}
+
+/// Preloads Shell `QueryContextMenu` on a background thread (Files `WarmUpQueryContextMenuAsync`).
+pub fn warm_up_query_context_menu() {
+    std::thread::Builder::new()
+        .name("cyberfiles-shell-warmup".into())
+        .spawn(|| {
+            let path = std::env::temp_dir().join("cyberfiles_shell_warmup.txt");
+            shell_log!("warm_up start: {}", path.display());
+            let result: anyhow::Result<Vec<ShellContextMenuEntry>> = (|| {
+                std::fs::write(&path, b"")?;
+                let entries = shell_menu_session::query_with_session(&[path.clone()], false)?;
+                let _ = std::fs::remove_file(&path);
+                Ok(entries)
+            })();
+            match result {
+                Ok(entries) => {
+                    shell_log!("warm_up ok: entries={}", entries.len());
+                }
+                Err(error) => {
+                    shell_log!("warm_up err: {error:#}");
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+            shell_menu_session::clear_session();
+        })
+        .ok();
 }
 
 /// Enumerates Shell entries on a dedicated STA thread (Files `ThreadWithMessageQueue`).
