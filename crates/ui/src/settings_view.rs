@@ -1,12 +1,16 @@
 use cyberfiles_core::{load_config, APP_NAME};
-use gpui::{prelude::FluentBuilder, App, InteractiveElement, ParentElement, SharedString, Styled};
+use gpui::{
+    prelude::FluentBuilder, App, AppContext, Entity, IntoElement, InteractiveElement,
+    ParentElement, SharedString, Styled, Window,
+};
 use gpui_component::{
     button::Button,
     h_flex,
-    ActiveTheme as _, IconName, Size, Sizable as _, ThemeMode,
+    input::{Input, InputEvent, InputState},
+    ActiveTheme as _, AxisExt as _, IconName, Size, Sizable as _, ThemeMode,
     group_box::GroupBoxVariant,
     label::Label,
-    setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
+    setting::{RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     v_flex,
 };
 use rust_i18n::t;
@@ -28,7 +32,7 @@ use crate::shell::preferences::{
     apply_sidebar_section_pinned, apply_sidebar_section_wsl, apply_theme_mode, apply_theme_name,
     context_menu_shell_submenu, current_locale,
     home_widget_drives, home_widget_file_tags, home_widget_network, home_widget_quick_access,
-    home_widget_recent, add_file_tag, new_file_tag_name, remove_file_tag, scrollbar_show_from_key,
+    add_file_tag, home_widget_recent, remove_file_tag, scrollbar_show_from_key,
     scrollbar_show_key,
     set_list_active_highlight, sidebar_display_mode, sidebar_section_cloud, sidebar_section_drives,
     sidebar_section_file_tags, sidebar_section_library, sidebar_section_network,
@@ -110,6 +114,63 @@ fn folders_settings_group() -> SettingGroup {
         }))
 }
 
+fn render_new_tag_name_input(
+    options: &RenderOptions,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement {
+    struct TagNameInputState {
+        input: Entity<InputState>,
+        _subscription: gpui::Subscription,
+    }
+
+    let state = window
+        .use_keyed_state(
+            SharedString::from(format!(
+                "tag-name-input-{}-{}-{}",
+                options.page_ix, options.group_ix, options.item_ix
+            )),
+            cx,
+            |window, cx| {
+                let input = cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .placeholder(SharedString::from(t!("settings.tags.add.placeholder")))
+                });
+                let subscription = cx.subscribe(&input, {
+                    move |_, input, event: &InputEvent, cx| {
+                        if let InputEvent::PressEnter { .. } = event {
+                            add_file_tag(input.read(cx).value(), cx);
+                            if let Some(window) = cx.active_window() {
+                                let input = input.clone();
+                                let _ = window.update(cx, |_, window, cx| {
+                                    input.update(cx, |state, cx| {
+                                        state.set_value("", window, cx);
+                                    });
+                                });
+                            }
+                        }
+                    }
+                });
+                TagNameInputState {
+                    input,
+                    _subscription: subscription,
+                }
+            },
+        )
+        .read(cx);
+
+    Input::new(&state.input)
+        .disabled(options.disabled)
+        .with_size(options.size)
+        .map(|this| {
+            if options.layout.is_horizontal() {
+                this.w_64()
+            } else {
+                this.w_full()
+            }
+        })
+}
+
 fn tags_settings_group() -> SettingGroup {
     SettingGroup::new()
         .title(ts(t!("settings.group.tags")))
@@ -164,7 +225,9 @@ fn tags_settings_group() -> SettingGroup {
         .item(
             SettingItem::new(
                 ts(t!("settings.tags.add")),
-                SettingField::input(new_file_tag_name, add_file_tag),
+                SettingField::render(|options, window, cx| {
+                    render_new_tag_name_input(options, window, cx)
+                }),
             )
             .description(ts(t!("settings.tags.add.description"))),
         )

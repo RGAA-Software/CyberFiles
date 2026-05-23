@@ -220,10 +220,6 @@ pub fn add_file_tag(name: SharedString, cx: &mut App) {
     refresh_home_if_active(cx);
 }
 
-pub fn new_file_tag_name(_cx: &App) -> SharedString {
-    String::new().into()
-}
-
 pub fn assign_paths_to_file_tag(tag_name: &str, paths: &[PathBuf], cx: &mut App) {
     if paths.is_empty() {
         return;
