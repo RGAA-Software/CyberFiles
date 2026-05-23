@@ -219,7 +219,7 @@ MainWindow                             AppShell + open_main_window
 ### 第一梯队（进行中 / 当前迭代）
 
 1. **文件传输反馈** — `file_ops.rs` 后台传输 + 冲突五键对话框 + 状态栏提示 🟡。
-2. **右键菜单阶段 B** — Open with / Send to（含冷启动 Shell 查询）🟡；压缩项、可配置显示项 ⬜。
+2. **右键菜单阶段 B** — Open with / Send to（含冷启动 Shell 查询）🟡；压缩项 🟡、可配置显示项 ⬜。
 3. **子菜单行高** — PopupMenu Submenu 与 Item 统一 32px hover ✅。
 4. **工具栏 tooltip i18n** — 全 icon button ✅。
 

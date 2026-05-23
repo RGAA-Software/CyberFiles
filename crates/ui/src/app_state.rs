@@ -202,6 +202,7 @@ impl AppNavigation {
         let nav = cx.borrow_mut().global::<Self>().0.clone();
         nav.update(cx, |page, cx| page.refresh_home_widgets(cx));
     }
+
 }
 
 pub fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget {

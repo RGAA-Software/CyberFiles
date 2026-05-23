@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc};
 
 use cyberfiles_fs::{
-    compress_paths_to_zip, paths_conflict, transfer_one_cancellable, ClipboardOperation,
-    ConflictResolution, FileClipboard, TransferCancelled, TransferOutcome,
+    compress_paths_to_zip_cancellable, paths_conflict, transfer_one_cancellable,
+    ClipboardOperation, CompressCancelled, ConflictResolution, FileClipboard, TransferCancelled,
+    TransferOutcome,
 };
 use gpui::{AppContext, Context, Entity, ParentElement, SharedString, Styled, WeakEntity, Window};
 use gpui_component::{
@@ -224,10 +225,13 @@ pub fn spawn_compress(
         }
         let sources_for_task = sources.clone();
         let dest = destination.clone();
+        let cancel_for_task = cancel.clone();
         let result = cx
-            .background_spawn(async move { compress_paths_to_zip(&sources_for_task, &dest) })
+            .background_spawn(async move {
+                compress_paths_to_zip_cancellable(&sources_for_task, &dest, &cancel_for_task)
+            })
             .await;
-        let ok = result.is_ok();
+        let done_ok = matches!(&result, Ok(_));
         set_transfer_progress(1, cx);
         end_transfer_status(cx);
 
@@ -240,6 +244,12 @@ pub fn spawn_compress(
                 Ok(_) => {
                     window.push_notification(Notification::success(t!("files.compress.done")), cx);
                 }
+                Err(error) if error.is::<CompressCancelled>() => {
+                    window.push_notification(
+                        Notification::info(t!("files.transfer.cancelled")),
+                        cx,
+                    );
+                }
                 Err(error) => {
                     window.push_notification(
                         Notification::error(format!("{}: {error}", t!("files.compress.failed"))),
@@ -247,7 +257,7 @@ pub fn spawn_compress(
                     );
                 }
             });
-            if ok && *browser.current_directory() == dest_for_reload {
+            if done_ok && *browser.current_directory() == dest_for_reload {
                 browser.reload();
             }
             cx.notify();

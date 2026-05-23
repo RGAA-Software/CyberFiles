@@ -1,11 +1,47 @@
 //! Create zip archives (Windows: Compress-Archive; aligns with Files «Compress»).
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+/// Returned when the user cancels during compression.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompressCancelled;
+
+impl std::fmt::Display for CompressCancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "compress cancelled")
+    }
+}
+
+impl std::error::Error for CompressCancelled {}
 
 /// Builds `destination_dir / {name}.zip` containing all `sources`.
-#[cfg(windows)]
 pub fn compress_paths_to_zip(sources: &[PathBuf], destination_dir: &Path) -> anyhow::Result<PathBuf> {
+    compress_paths_to_zip_cancellable(sources, destination_dir, &AtomicBool::new(false))
+}
+
+/// Like [`compress_paths_to_zip`], but polls `cancel` and kills the compressor process.
+pub fn compress_paths_to_zip_cancellable(
+    sources: &[PathBuf],
+    destination_dir: &Path,
+    cancel: &AtomicBool,
+) -> anyhow::Result<PathBuf> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(CompressCancelled.into());
+    }
+    compress_paths_to_zip_impl(sources, destination_dir, cancel)
+}
+
+#[cfg(windows)]
+use std::process::{Command, Stdio};
+
+#[cfg(windows)]
+fn compress_paths_to_zip_impl(
+    sources: &[PathBuf],
+    destination_dir: &Path,
+    cancel: &AtomicBool,
+) -> anyhow::Result<PathBuf> {
     if sources.is_empty() {
         anyhow::bail!("no paths to compress");
     }
@@ -29,7 +65,7 @@ pub fn compress_paths_to_zip(sources: &[PathBuf], destination_dir: &Path) -> any
         .collect();
     script.push_str(&literals.join(","));
 
-    let status = Command::new("powershell")
+    let mut child = Command::new("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -38,16 +74,38 @@ pub fn compress_paths_to_zip(sources: &[PathBuf], destination_dir: &Path) -> any
             "-Command",
             &script,
         ])
-        .status()?;
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
 
-    if !status.success() {
-        anyhow::bail!("Compress-Archive failed ({status})");
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            let _ = child.kill();
+            let _ = child.wait();
+            if zip_path.exists() {
+                let _ = std::fs::remove_file(&zip_path);
+            }
+            return Err(CompressCancelled.into());
+        }
+        match child.try_wait()? {
+            Some(status) => {
+                if !status.success() {
+                    anyhow::bail!("Compress-Archive failed ({status})");
+                }
+                return Ok(zip_path);
+            }
+            None => std::thread::sleep(Duration::from_millis(200)),
+        }
     }
-    Ok(zip_path)
 }
 
 #[cfg(not(windows))]
-pub fn compress_paths_to_zip(_sources: &[PathBuf], _destination_dir: &Path) -> anyhow::Result<PathBuf> {
+fn compress_paths_to_zip_impl(
+    _sources: &[PathBuf],
+    _destination_dir: &Path,
+    _cancel: &AtomicBool,
+) -> anyhow::Result<PathBuf> {
     anyhow::bail!("compress is only supported on Windows")
 }
 

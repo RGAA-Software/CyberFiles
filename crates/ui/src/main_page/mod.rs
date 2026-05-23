@@ -137,6 +137,28 @@ impl MainPage {
         self.ensure_sidebar_cache(cx);
     }
 
+    /// Reload file browsers that are browsing `tag_name` (all tabs / dual panes).
+    pub fn reload_file_tag_browsers(&mut self, tag_name: &str, cx: &mut Context<Self>) {
+        for tab in &self.tabs {
+            let shell = tab.shell.clone();
+            shell.update(cx, |shell, cx| {
+                shell.for_each_pane(|pane| {
+                    pane.update(cx, |pane, cx| {
+                        if matches!(
+                            pane.target(),
+                            NavigationTarget::FileTag(name) if name == tag_name
+                        ) {
+                            pane.file_browser().update(cx, |browser, cx| {
+                                browser.reload();
+                                cx.notify();
+                            });
+                        }
+                    });
+                });
+            });
+        }
+    }
+
     fn ensure_sidebar_cache(&mut self, cx: &mut Context<Self>) {
         let config = load_config().unwrap_or_default();
         let key = sidebar_cache_key(&config);

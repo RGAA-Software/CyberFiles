@@ -243,10 +243,7 @@ pub fn assign_paths_to_file_tag(tag_name: &str, paths: &[PathBuf], cx: &mut App)
         }
     });
     refresh_home_if_active(cx);
-    if let Some(nav) = cx.try_global::<crate::app_state::AppNavigation>() {
-        let page = nav.main_page();
-        let _ = page.update(cx, |page, cx| page.refresh_sidebar_cache(cx));
-    }
+    refresh_file_tag_ui(tag_name, cx);
 }
 
 pub fn remove_file_tag(name: &str, cx: &mut App) {
@@ -271,9 +268,17 @@ pub fn remove_paths_from_file_tag(tag_name: &str, paths: &[PathBuf], cx: &mut Ap
         tag.paths.retain(|p| !path_strings.iter().any(|s| s == p));
     });
     refresh_home_if_active(cx);
+    refresh_file_tag_ui(tag_name, cx);
+}
+
+fn refresh_file_tag_ui(tag_name: &str, cx: &mut App) {
     if let Some(nav) = cx.try_global::<crate::app_state::AppNavigation>() {
         let page = nav.main_page();
-        let _ = page.update(cx, |page, cx| page.refresh_sidebar_cache(cx));
+        let name = tag_name.to_string();
+        let _ = page.update(cx, |page, cx| {
+            page.refresh_sidebar_cache(cx);
+            page.reload_file_tag_browsers(&name, cx);
+        });
     }
 }
 

@@ -99,6 +99,20 @@ impl ShellPanes {
         self.secondary.clone()
     }
 
+    pub fn primary(&self) -> Entity<PaneShell> {
+        self.primary.clone()
+    }
+
+    pub fn for_each_pane<F>(&self, mut visit: F)
+    where
+        F: FnMut(Entity<PaneShell>),
+    {
+        visit(self.primary.clone());
+        if self.dual_pane {
+            visit(self.secondary.clone());
+        }
+    }
+
     pub fn navigate_active(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
         self.active_pane().update(cx, |shell, cx| {
             shell.navigate(target, cx);
