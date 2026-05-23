@@ -99,10 +99,6 @@ impl ShellPanes {
         self.secondary.clone()
     }
 
-    pub fn primary(&self) -> Entity<PaneShell> {
-        self.primary.clone()
-    }
-
     pub fn for_each_pane<F>(&self, mut visit: F)
     where
         F: FnMut(Entity<PaneShell>),

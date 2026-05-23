@@ -5,7 +5,11 @@ use rust_i18n::t;
 
 use cyberfiles_commands::ReopenClosedTab;
 
+use super::actions::ReopenClosedTabAt;
+use cyberfiles_core::load_config;
+
 use super::actions::{About, Quit};
+use super::navigation::NavigationTarget;
 
 struct AppMenuState {
     menu_bar: Entity<AppMenuBar>,
@@ -55,6 +59,32 @@ fn update_app_menu(cx: &mut App) {
     });
 }
 
+fn build_view_menu_items() -> Vec<MenuItem> {
+    let closed = load_config()
+        .map(|c| c.session_closed_tabs)
+        .unwrap_or_default();
+
+    let mut items = vec![
+        MenuItem::action(t!("nav.reopen_closed_tab"), ReopenClosedTab)
+            .disabled(closed.is_empty()),
+    ];
+
+    if closed.is_empty() {
+        return items;
+    }
+
+    items.push(MenuItem::separator());
+    for (index, session) in closed.iter().enumerate() {
+        let label = NavigationTarget::label_for_session_tab(&session.tab);
+        items.push(MenuItem::action(
+            label,
+            ReopenClosedTabAt { index },
+        ));
+    }
+
+    items
+}
+
 fn build_menus(title: impl Into<SharedString>) -> Vec<Menu> {
     vec![
         Menu {
@@ -68,10 +98,7 @@ fn build_menus(title: impl Into<SharedString>) -> Vec<Menu> {
         },
         Menu {
             name: t!("menu.view").into(),
-            items: vec![MenuItem::action(
-                t!("nav.reopen_closed_tab"),
-                ReopenClosedTab,
-            )],
+            items: build_view_menu_items(),
             disabled: false,
         },
     ]

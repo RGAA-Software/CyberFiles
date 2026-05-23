@@ -103,7 +103,7 @@ MainWindow                             AppShell + open_main_window
 | 应用级 TabBar | `main_page` | 🟡 |
 | 新建/关闭/切换标签 | Tab +/- + tooltip i18n | 🟡 |
 | 标签标题随路径更新 | `tab_title` | 🟡 |
-| 会话恢复 / 最近关闭标签 | `session_tabs` + `session_closed_tabs`（Ctrl+Shift+T） | 🟡 |
+| 会话恢复 / 最近关闭标签 | `session_tabs` + `session_closed_tabs`（Ctrl+Shift+T、View 菜单列表） | 🟡 |
 | NavigationToolbar | `navigation-toolbar` | 🟡 |
 | InnerNavigationToolbar | `file_browser` `content-toolbar` | 🟡 |
 | 地址栏 / Omnibar | 面包屑 + 路径编辑 + 右侧 `search_input` 过滤 | ✅ |
@@ -227,7 +227,7 @@ MainWindow                             AppShell + open_main_window
 
 5. **ShelfPane** 剪切暂存条。🟡
 6. 设置扩展：Folders、Tags、Actions（热键列表）。🟡。
-7. 会话恢复增强：双栏状态 + 最近关闭标签。🟡。
+7. 会话恢复增强：双栏状态 + 最近关闭标签（View 菜单列表）。🟡。
 8. StatusCenter：进度条、逐项/大文件取消。🟡。
 
 ### 第三梯队

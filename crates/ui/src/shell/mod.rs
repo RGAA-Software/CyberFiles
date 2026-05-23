@@ -1,4 +1,6 @@
 mod actions;
+
+pub use actions::ReopenClosedTabAt;
 pub(crate) mod app_menus;
 mod app_shell;
 pub mod navigation;

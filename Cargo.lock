@@ -1380,6 +1380,7 @@ dependencies = [
  "gpui",
  "gpui-component",
  "rust-i18n",
+ "schemars",
  "serde",
  "serde_json",
  "smallvec",

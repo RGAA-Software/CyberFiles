@@ -37,6 +37,7 @@ use crate::app_state::{breadcrumb_navigation_target, AppFileClipboard, TransferS
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
 use crate::omnibar::{OmnibarBreadcrumbCallbacks, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::app_menus;
+use crate::shell::ReopenClosedTabAt;
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::preferences::{apply_theme_mode, persist_window_bounds};
 use crate::shell::{PaneShell, ShellPanes};
@@ -435,26 +436,7 @@ impl MainPage {
     }
 
     fn decode_session_target(value: &str) -> NavigationTarget {
-        if value == "home" {
-            return NavigationTarget::Home;
-        }
-        if value == "recycle" {
-            return NavigationTarget::RecycleBin;
-        }
-        if value == "settings" {
-            return NavigationTarget::Settings;
-        }
-        if let Some(name) = value.strip_prefix("tag:") {
-            return NavigationTarget::FileTag(name.to_string());
-        }
-        let path = PathBuf::from(value);
-        if path.is_dir() {
-            NavigationTarget::Path(path)
-        } else if path.parent().is_some_and(|p| p.is_dir()) {
-            NavigationTarget::Path(path.parent().unwrap().to_path_buf())
-        } else {
-            NavigationTarget::Home
-        }
+        NavigationTarget::decode_session_tab(value)
     }
 
     fn capture_tab_session(&self, index: usize, cx: &App) -> ClosedTabSession {
@@ -481,11 +463,15 @@ impl MainPage {
     }
 
     pub fn reopen_closed_tab(&mut self, cx: &mut Context<Self>) {
+        self.reopen_closed_tab_at(0, cx);
+    }
+
+    pub fn reopen_closed_tab_at(&mut self, index: usize, cx: &mut Context<Self>) {
         let mut config = load_config().unwrap_or_default();
-        let Some(closed) = config.session_closed_tabs.first().cloned() else {
+        if index >= config.session_closed_tabs.len() {
             return;
-        };
-        config.session_closed_tabs.remove(0);
+        }
+        let closed = config.session_closed_tabs.remove(index);
         let _ = save_config(&config);
 
         let target = Self::decode_session_target(&closed.tab);
@@ -500,6 +486,7 @@ impl MainPage {
         self.tabs.push(TabEntry { id, shell });
         self.active_tab = self.tabs.len() - 1;
         self.persist_session(cx);
+        app_menus::reload(cx);
         cx.notify();
     }
 
@@ -933,6 +920,7 @@ impl MainPage {
         }
         let closed = self.capture_tab_session(index, cx);
         self.record_closed_tab(closed);
+        app_menus::reload(cx);
         self.tabs.remove(index);
         if self.active_tab >= self.tabs.len() {
             self.active_tab = self.tabs.len() - 1;
@@ -1572,6 +1560,9 @@ impl Render for MainPage {
             }))
             .on_action(cx.listener(|this, _: &ReopenClosedTab, _, cx| {
                 this.reopen_closed_tab(cx);
+            }))
+            .on_action(cx.listener(|this, action: &ReopenClosedTabAt, _, cx| {
+                this.reopen_closed_tab_at(action.index, cx);
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 if event.keystroke.key.as_str() == "escape" {
