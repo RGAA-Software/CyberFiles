@@ -44,7 +44,8 @@
 - **Shell 缓存热更新**：菜单打开期间预取完成会重建 `PopupMenu`（`shell_menu_revision`）
 - **Open with 子菜单**：缓存命中或冷启动 `query_shell_context_menu_items` 提取 `openas`；底部「选择其他应用…」
 - **Send to 子菜单**：同上提取 `sendto` /「发送到」；无子项时占位
-- 待做：压缩/文件标签/分享、可配置显示项（阶段 C）、毛玻璃样式、`IContextMenu2`
+- **压缩到 ZIP**：右键 / `CompressItems`（Windows `Compress-Archive`）
+- 待做：文件标签/分享、可配置显示项（阶段 C）、毛玻璃样式、`IContextMenu2`
 
 ### 阶段 C
 

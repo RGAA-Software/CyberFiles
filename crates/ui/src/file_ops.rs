@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc};
 
 use cyberfiles_fs::{
-    paths_conflict, transfer_one, ClipboardOperation, ConflictResolution, FileClipboard,
-    TransferOutcome,
+    compress_paths_to_zip, paths_conflict, transfer_one, ClipboardOperation, ConflictResolution,
+    FileClipboard, TransferOutcome,
 };
 use gpui::{AppContext, Context, Entity, ParentElement, SharedString, Styled, WeakEntity, Window};
 use gpui_component::{
@@ -34,8 +34,20 @@ fn operation_for_kind(kind: FileTransferKind) -> ClipboardOperation {
     }
 }
 
-fn set_transfer_status(message: Option<SharedString>, cx: &mut gpui::AsyncApp) {
-    let _ = cx.update(|cx| TransferStatusGlobal::set(message, cx));
+fn begin_transfer_status(
+    message: SharedString,
+    total: u32,
+    cx: &mut gpui::AsyncApp,
+) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+    cx.update(|cx| TransferStatusGlobal::begin(message, total, cx))
+}
+
+fn set_transfer_progress(completed: u32, cx: &mut gpui::AsyncApp) {
+    let _ = cx.update(|cx| TransferStatusGlobal::set_progress(completed, cx));
+}
+
+fn end_transfer_status(cx: &mut gpui::AsyncApp) {
+    let _ = cx.update(|cx| TransferStatusGlobal::end(cx));
 }
 
 /// Run copy/move off the UI thread; show in-progress and result notifications.
@@ -60,11 +72,13 @@ pub fn spawn_file_transfer(
     window.push_notification(Notification::info(progress), cx);
 
     let dest_for_reload = destination.clone();
+    let total = count as u32;
     let weak = browser.downgrade();
     cx.spawn(async move |this, cx| {
-        set_transfer_status(Some(progress_status), cx);
-        let result = run_transfer_with_conflicts(weak, cx, kind, sources, destination).await;
-        set_transfer_status(None, cx);
+        let cancel = begin_transfer_status(progress_status, total, cx);
+        let result =
+            run_transfer_with_conflicts(weak, cx, kind, sources, destination, cancel).await;
+        end_transfer_status(cx);
 
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
@@ -127,11 +141,13 @@ pub fn spawn_paste_from_clipboard(
         cx,
     );
 
+    let total = paths_for_clipboard.len() as u32;
     let weak = browser.downgrade();
     cx.spawn(async move |this, cx| {
-        set_transfer_status(Some(progress_status), cx);
-        let result = run_transfer_with_conflicts(weak, cx, kind, paths, destination).await;
-        set_transfer_status(None, cx);
+        let cancel = begin_transfer_status(progress_status, total, cx);
+        let result =
+            run_transfer_with_conflicts(weak, cx, kind, paths, destination, cancel).await;
+        end_transfer_status(cx);
 
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
@@ -182,19 +198,81 @@ pub fn spawn_paste_from_clipboard(
     .detach();
 }
 
+/// Compress selected paths into a zip in `destination` (parent folder of selection).
+pub fn spawn_compress(
+    _browser: Entity<FileBrowser>,
+    window: &mut Window,
+    cx: &mut Context<FileBrowser>,
+    sources: Vec<PathBuf>,
+    destination: PathBuf,
+) {
+    if sources.is_empty() {
+        return;
+    }
+    let count = sources.len();
+    let message: SharedString = t!("files.transfer.compressing", count = count).into();
+    window.push_notification(
+        Notification::info(t!("files.transfer.compressing", count = count)),
+        cx,
+    );
+    let dest_for_reload = destination.clone();
+    cx.spawn(async move |this, cx| {
+        let cancel = begin_transfer_status(message, 1, cx);
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            end_transfer_status(cx);
+            return;
+        }
+        let sources_for_task = sources.clone();
+        let dest = destination.clone();
+        let result = cx
+            .background_spawn(async move { compress_paths_to_zip(&sources_for_task, &dest) })
+            .await;
+        let ok = result.is_ok();
+        set_transfer_progress(1, cx);
+        end_transfer_status(cx);
+
+        let _ = this.update(cx, |browser, cx| {
+            let Some(window) = cx.active_window() else {
+                cx.notify();
+                return;
+            };
+            let _ = window.update(cx, |_, window, cx| match &result {
+                Ok(_) => {
+                    window.push_notification(Notification::success(t!("files.compress.done")), cx);
+                }
+                Err(error) => {
+                    window.push_notification(
+                        Notification::error(format!("{}: {error}", t!("files.compress.failed"))),
+                        cx,
+                    );
+                }
+            });
+            if ok && *browser.current_directory() == dest_for_reload {
+                browser.reload();
+            }
+            cx.notify();
+        });
+    })
+    .detach();
+}
+
 async fn run_transfer_with_conflicts(
     _browser: WeakEntity<FileBrowser>,
     cx: &mut gpui::AsyncApp,
     kind: FileTransferKind,
     sources: Vec<PathBuf>,
     destination: PathBuf,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> anyhow::Result<TransferOutcome> {
     let operation = operation_for_kind(kind);
     let mut skip_all = false;
     let mut replace_all = false;
     let mut outcome = TransferOutcome::default();
-
-    for source in sources {
+    for (index, source) in sources.into_iter().enumerate() {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            outcome.cancelled = true;
+            return Ok(outcome);
+        }
         let file_name = source
             .file_name()
             .ok_or_else(|| anyhow::anyhow!("invalid source path {}", source.display()))?;
@@ -230,6 +308,7 @@ async fn run_transfer_with_conflicts(
         })
         .await?;
         outcome.transferred += 1;
+        set_transfer_progress((index + 1) as u32, cx);
     }
 
     Ok(outcome)

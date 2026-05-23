@@ -499,6 +499,38 @@ files.transfer.cancelled:
   en: Operation cancelled
   zh-CN: 操作已取消
   zh-HK: 操作已取消
+files.transfer.cancel:
+  en: Cancel
+  zh-CN: 取消
+  zh-HK: 取消
+files.transfer.progress:
+  en: "%{completed} / %{total}"
+  zh-CN: "%{completed} / %{total}"
+  zh-HK: "%{completed} / %{total}"
+files.transfer.compressing:
+  en: Compressing %{count} items…
+  zh-CN: 正在压缩 %{count} 个项目…
+  zh-HK: 正在壓縮 %{count} 個項目…
+files.compress.done:
+  en: Archive created
+  zh-CN: 已创建压缩包
+  zh-HK: 已建立壓縮檔
+files.compress.failed:
+  en: Compress failed
+  zh-CN: 压缩失败
+  zh-HK: 壓縮失敗
+files.shelf.copying:
+  en: "%{count} items copied to shelf"
+  zh-CN: 剪贴板中有 %{count} 个已复制项目
+  zh-HK: 剪貼簿中有 %{count} 個已複製項目
+files.shelf.cutting:
+  en: "%{count} items on shelf (cut)"
+  zh-CN: 剪贴板中有 %{count} 个已剪切项目
+  zh-HK: 剪貼簿中有 %{count} 個已剪下項目
+files.shelf.clear:
+  en: Clear shelf
+  zh-CN: 清空剪贴板
+  zh-HK: 清空剪貼簿
 files.conflict.title:
   en: File already exists
   zh-CN: 文件已存在

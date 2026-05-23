@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use cyberfiles_commands::{
-    CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, NewFile, NewFolder, OpenItem,
+    CompressItems, CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, NewFile,
+    NewFolder, OpenItem,
     PasteItems, RefreshDirectory, RenameItem, ShellProperties, ViewColumns, ViewDetails, ViewGrid,
 };
 use cyberfiles_core::load_config;
@@ -786,12 +787,14 @@ fn build_directory_item_menu(
         );
     }
 
-    let not_implemented: SharedString = t!("files.menu.not_implemented").into();
-    menu = menu.item(menu_notice_item(
+    menu = menu_action(
+        menu,
         t!("files.menu.compress"),
         IconName::Folder,
-        not_implemented.clone(),
-    ));
+        Box::new(CompressItems),
+    );
+
+    let not_implemented: SharedString = t!("files.menu.not_implemented").into();
 
     if single {
         let send_to_children = shell_feature_entries(

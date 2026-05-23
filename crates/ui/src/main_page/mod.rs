@@ -13,9 +13,11 @@ use cyberfiles_commands::{
 use gpui::{prelude::*, *};
 use gpui_component::{
     badge::Badge,
+    button::Button,
     h_flex,
     label::Label,
     input::{Input, InputEvent, InputState},
+    progress::Progress,
     resizable::{h_resizable, resizable_panel},
     tab::{Tab, TabBar},
     v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Size, ThemeMode,
@@ -27,7 +29,7 @@ use crate::file_ops::{spawn_file_transfer, FileTransferKind};
 use crate::icons::{compact_icon, pin_icon, toolbar_icon};
 use crate::toolbar_button::toolbar_icon_button;
 use crate::info_pane::InfoPane;
-use crate::app_state::breadcrumb_navigation_target;
+use crate::app_state::{breadcrumb_navigation_target, AppFileClipboard, TransferStatusGlobal};
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
 use crate::omnibar::{OmnibarBreadcrumbCallbacks, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::app_menus;
@@ -865,7 +867,51 @@ impl MainPage {
                     .overflow_hidden()
                     .child(active_shell),
             )
+            .child(self.render_shelf_pane(cx))
             .child(self.render_status_bar(cx))
+    }
+
+    /// Files `ShelfPane`: shows in-app clipboard staging above the status bar.
+    fn render_shelf_pane(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(clipboard) = AppFileClipboard::peek(cx) else {
+            return div().id("shelf-pane");
+        };
+        if clipboard.is_empty() {
+            return div().id("shelf-pane");
+        }
+
+        let count = clipboard.paths.len();
+        let label = match clipboard.operation {
+            cyberfiles_fs::ClipboardOperation::Copy => {
+                t!("files.shelf.copying", count = count).to_string()
+            }
+            cyberfiles_fs::ClipboardOperation::Cut => {
+                t!("files.shelf.cutting", count = count).to_string()
+            }
+        };
+
+        h_flex()
+            .id("shelf-pane")
+            .h(px(32.))
+            .px_3()
+            .gap_2()
+            .items_center()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().muted)
+            .child(
+                Label::new(label)
+                    .text_xs()
+                    .text_color(cx.theme().foreground),
+            )
+            .child(
+                Button::new("shelf-clear")
+                    .label(t!("files.shelf.clear"))
+                    .with_size(Size::Small)
+                    .on_click(|_, _, cx| {
+                        AppFileClipboard::clear(cx);
+                    }),
+            )
     }
 
     fn render_shell_layout_row(
@@ -1275,9 +1321,7 @@ impl MainPage {
             t!("files.status.selected")
         );
 
-        let transfer_hint = cx
-            .try_global::<crate::app_state::TransferStatusGlobal>()
-            .and_then(|g| g.0.read().ok().and_then(|m| m.clone()));
+        let transfer = TransferStatusGlobal::active(cx);
 
         let mut bar = h_flex()
             .id("status-bar")
@@ -1285,6 +1329,7 @@ impl MainPage {
             .px_3()
             .items_center()
             .justify_between()
+            .gap_3()
             .border_t_1()
             .border_color(cx.theme().border)
             .child(
@@ -1293,11 +1338,39 @@ impl MainPage {
                     .text_color(cx.theme().muted_foreground),
             );
 
-        if let Some(message) = transfer_hint {
+        if let Some(job) = transfer {
+            let progress_label = t!(
+                "files.transfer.progress",
+                completed = job.completed(),
+                total = job.total
+            );
             bar = bar.child(
-                Label::new(message)
-                    .text_xs()
-                    .text_color(cx.theme().accent_foreground),
+                h_flex()
+                    .id("status-center")
+                    .flex_1()
+                    .min_w_0()
+                    .gap_2()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Progress::new("status-transfer-progress")
+                            .w(px(140.))
+                            .h(px(4.))
+                            .value(job.fraction() * 100.),
+                    )
+                    .child(
+                        Label::new(format!("{} · {progress_label}", job.message))
+                            .text_xs()
+                            .text_color(cx.theme().accent_foreground),
+                    )
+                    .child(
+                        Button::new("status-transfer-cancel")
+                            .label(t!("files.transfer.cancel"))
+                            .with_size(Size::Small)
+                            .on_click(|_, _, cx| {
+                                TransferStatusGlobal::request_cancel(cx);
+                            }),
+                    ),
             );
         }
 

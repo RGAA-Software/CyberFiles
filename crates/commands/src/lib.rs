@@ -26,6 +26,7 @@ actions!(
         ViewGrid,
         ViewColumns,
         ShellProperties,
+        CompressItems,
     ]
 );
 

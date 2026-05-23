@@ -1,3 +1,4 @@
+mod archive;
 mod clipboard;
 mod columns;
 mod drives;
@@ -14,6 +15,7 @@ mod search;
 mod sort;
 mod watcher;
 
+pub use archive::compress_paths_to_zip;
 pub use clipboard::{
     copy_items, move_items, transfer_items, transfer_one, ClipboardOperation, ConflictResolution,
     FileClipboard, TransferConflict, TransferOutcome, paths_conflict,

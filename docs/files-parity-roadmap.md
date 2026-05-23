@@ -114,7 +114,7 @@ MainWindow                             AppShell + open_main_window
 | 单栏 Shell | `PaneShell` | 🟡 |
 | 双栏 ShellPanesPage | `ShellPanes` | ✅ |
 | InfoPane | Details + 文本/图片预览 | 🟡 |
-| ShelfPane | — | ⬜ |
+| ShelfPane | 剪贴板暂存条（复制/剪切）+ 清空 | 🟡 |
 | StatusBar | `status_bar` | 🟡 |
 | 设置全页 | General / Sidebar / Home / About | 🟡 |
 
@@ -163,7 +163,7 @@ MainWindow                             AppShell + open_main_window
 | 粘贴（资源管理器 CF_HDROP） | 读取 + 后台粘贴 | 🟡 |
 | 回收站删除 / 永久删除 | ✅ |
 | 拖拽 | GPUI 拖放 + 后台传输通知 | 🟡 |
-| 冲突对话框 / StatusCenter | 替换/跳过/全部替换/全部跳过 + 状态栏传输提示 🟡 |
+| 冲突对话框 / StatusCenter | 五键冲突框 + 状态栏进度条/取消；传输可逐项取消 🟡 |
 
 实现：`crates/ui/src/file_ops.rs`（后台 `copy_items` / `move_items` + 进行中/完成通知）。
 

@@ -8,7 +8,8 @@ use std::{
 
 use chrono::{DateTime, Local};
 use cyberfiles_commands::{
-    CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch, NavigateNext,
+    CompressItems, CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch,
+    NavigateNext,
     NavigatePrevious, NewFile, NewFolder, OpenItem,
     PasteItems, RefreshDirectory, RenameItem, SelectAll, ShellProperties, ViewColumns, ViewDetails,
     ViewGrid, FILE_BROWSER,
@@ -26,7 +27,9 @@ use cyberfiles_fs::{
     SortOption, SortPreferences,
 };
 use crate::app_state::AppNavigation;
-use crate::file_ops::{spawn_file_transfer, spawn_paste_from_clipboard, FileTransferKind};
+use crate::file_ops::{
+    spawn_compress, spawn_file_transfer, spawn_paste_from_clipboard, FileTransferKind,
+};
 use crate::icons::{compact_icon, toolbar_icon};
 use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
@@ -1238,6 +1241,15 @@ impl FileBrowser {
         AppFileClipboard::store(ClipboardOperation::Cut, paths, cx);
     }
 
+    fn compress_items(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
+            return;
+        }
+        let destination = self.current_directory().clone();
+        spawn_compress(cx.entity(), window, cx, paths, destination);
+    }
+
     fn paste_items(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let clipboard = AppFileClipboard::take(cx).or_else(|| {
             let paths = platform::read_clipboard_file_paths();
@@ -1895,6 +1907,15 @@ impl FileBrowser {
         cx.notify();
     }
 
+    fn on_compress_items(
+        &mut self,
+        _: &CompressItems,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.compress_items(window, cx);
+    }
+
     fn on_paste_items(&mut self, _: &PasteItems, window: &mut Window, cx: &mut Context<Self>) {
         self.paste_items(window, cx);
     }
@@ -2248,6 +2269,7 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_copy_items))
             .on_action(cx.listener(Self::on_cut_items))
             .on_action(cx.listener(Self::on_paste_items))
+            .on_action(cx.listener(Self::on_compress_items))
             .on_action(cx.listener(Self::on_navigate_previous))
             .on_action(cx.listener(Self::on_navigate_next))
             .on_action(cx.listener(Self::on_sort_name))

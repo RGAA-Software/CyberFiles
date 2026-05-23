@@ -1,5 +1,6 @@
 use std::borrow::BorrowMut;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 
 use cyberfiles_fs::{ClipboardOperation, FileClipboard};
@@ -8,9 +9,49 @@ use gpui::{App, AppContext, Entity, Global, SharedString, Window};
 use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;
 
-/// Status bar message while a background file transfer runs (Files StatusCenter subset).
+/// Active background file operation shown in the status bar (Files StatusCenter subset).
+#[derive(Clone)]
+pub struct ActiveTransfer {
+    pub message: SharedString,
+    completed: Arc<AtomicU32>,
+    pub total: u32,
+    cancel: Arc<AtomicBool>,
+}
+
+impl ActiveTransfer {
+    pub fn new(message: SharedString, total: u32) -> Self {
+        Self {
+            message,
+            completed: Arc::new(AtomicU32::new(0)),
+            total: total.max(1),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        self.cancel.clone()
+    }
+
+    pub fn request_cancel(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+
+    pub fn set_completed(&self, completed: u32) {
+        self.completed.store(completed, Ordering::Relaxed);
+    }
+
+    pub fn completed(&self) -> u32 {
+        self.completed.load(Ordering::Relaxed)
+    }
+
+    pub fn fraction(&self) -> f32 {
+        (self.completed() as f32 / self.total as f32).clamp(0., 1.)
+    }
+}
+
+/// Status bar transfer progress and cancel (Files StatusCenter subset).
 #[derive(Clone, Default)]
-pub struct TransferStatusGlobal(pub Arc<RwLock<Option<SharedString>>>);
+pub struct TransferStatusGlobal(pub Arc<RwLock<Option<ActiveTransfer>>>);
 
 impl Global for TransferStatusGlobal {}
 
@@ -19,13 +60,58 @@ impl TransferStatusGlobal {
         cx.set_global(Self(Arc::new(RwLock::new(None))));
     }
 
-    pub fn set(message: Option<SharedString>, cx: &mut App) {
+    pub fn begin(message: SharedString, total: u32, cx: &mut App) -> Arc<AtomicBool> {
+        let job = ActiveTransfer::new(message, total);
+        let cancel = job.cancel_flag();
+        if let Some(global) = cx.try_global::<Self>() {
+            if let Ok(mut guard) = global.0.write() {
+                *guard = Some(job);
+            }
+        }
+        Self::notify_main_page(cx);
+        cancel
+    }
+
+    pub fn set_progress(completed: u32, cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else {
+            return;
+        };
+        if let Ok(guard) = global.0.read() {
+            if let Some(job) = guard.as_ref() {
+                job.set_completed(completed);
+            }
+        }
+        Self::notify_main_page(cx);
+    }
+
+    pub fn end(cx: &mut App) {
         let Some(global) = cx.try_global::<Self>() else {
             return;
         };
         if let Ok(mut guard) = global.0.write() {
-            *guard = message;
+            *guard = None;
         }
+        Self::notify_main_page(cx);
+    }
+
+    pub fn request_cancel(cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else {
+            return;
+        };
+        if let Ok(guard) = global.0.read() {
+            if let Some(job) = guard.as_ref() {
+                job.request_cancel();
+            }
+        }
+        Self::notify_main_page(cx);
+    }
+
+    pub fn active(cx: &App) -> Option<ActiveTransfer> {
+        cx.try_global::<Self>()
+            .and_then(|g| g.0.read().ok().and_then(|j| j.clone()))
+    }
+
+    fn notify_main_page(cx: &mut App) {
         if let Some(nav) = cx.try_global::<AppNavigation>() {
             let page = nav.main_page();
             let _ = page.update(cx, |_, cx| cx.notify());
@@ -133,7 +219,7 @@ pub fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget 
     }
 }
 
-/// In-app file clipboard for copy/cut/paste between folders.
+/// In-app file clipboard for copy/cut/paste between folders (Files ShelfPane data source).
 pub struct AppFileClipboard(Option<FileClipboard>);
 
 impl Global for AppFileClipboard {}
@@ -145,8 +231,16 @@ impl Default for AppFileClipboard {
 }
 
 impl AppFileClipboard {
+    pub fn peek(cx: &App) -> Option<FileClipboard> {
+        cx.try_global::<Self>().and_then(|c| c.0.clone())
+    }
+
     pub fn take(cx: &mut (impl AppContext + BorrowMut<App>)) -> Option<FileClipboard> {
-        cx.borrow_mut().global_mut::<Self>().0.take()
+        let taken = cx.borrow_mut().global_mut::<Self>().0.take();
+        if taken.is_some() {
+            Self::notify_main_page(cx);
+        }
+        taken
     }
 
     pub fn store(
@@ -156,10 +250,19 @@ impl AppFileClipboard {
     ) {
         cx.borrow_mut()
             .set_global(Self(Some(FileClipboard::new(operation, paths))));
+        Self::notify_main_page(cx);
     }
 
     pub fn set(clipboard: FileClipboard, cx: &mut (impl AppContext + BorrowMut<App>)) {
         cx.borrow_mut().set_global(Self(Some(clipboard)));
+        Self::notify_main_page(cx);
+    }
+
+    pub fn clear(cx: &mut (impl AppContext + BorrowMut<App>)) {
+        if cx.borrow_mut().global_mut::<Self>().0.is_some() {
+            cx.borrow_mut().global_mut::<Self>().0 = None;
+            Self::notify_main_page(cx);
+        }
     }
 
     pub fn has_items(cx: &mut (impl AppContext + BorrowMut<App>)) -> bool {
@@ -167,5 +270,16 @@ impl AppFileClipboard {
             .try_global::<Self>()
             .map(|clipboard| clipboard.0.is_some())
             .unwrap_or(false)
+    }
+
+    fn notify_main_page(cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let Some(page) = cx
+            .borrow_mut()
+            .try_global::<AppNavigation>()
+            .map(|nav| nav.main_page())
+        else {
+            return;
+        };
+        let _ = page.update(cx, |_, cx| cx.notify());
     }
 }
