@@ -25,6 +25,10 @@ mod shell;
 #[cfg(windows)]
 mod eject;
 #[cfg(windows)]
+mod recent_policy;
+#[cfg(windows)]
+mod storage;
+#[cfg(windows)]
 mod volume;
 
 #[cfg(windows)]
@@ -55,6 +59,8 @@ pub use shell_folder::{
 pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 #[cfg(windows)]
 pub use eject::eject_volume;
+pub use recent_policy::recent_documents_tracking_enabled;
+pub use storage::open_storage_sense_settings;
 pub use volume::{DriveKind, VolumeDetails, volume_details};
 #[cfg(windows)]
 pub use shell::{

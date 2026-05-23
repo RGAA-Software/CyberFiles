@@ -5,7 +5,8 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
 use cyberfiles_fs::{
-    eject_drive, DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
+    eject_drive, open_storage_sense_settings, recent_documents_enabled, DriveInfo, FileTagPreview,
+    QuickAccessEntry, RecentItem,
 };
 use cyberfiles_platform_windows::open_item_properties;
 use gpui::{prelude::*, *};
@@ -265,13 +266,19 @@ impl HomePage {
                     cx,
                 ))
                 .when(expanded, |body| {
-                    body.when(recent.is_empty(), |b| {
+                    body.when(!recent_documents_enabled(), |b| {
+                        b.child(Alert::warning(
+                            "home-recent-disabled",
+                            t!("home.widget.recent.disabled").to_string(),
+                        ))
+                    })
+                    .when(recent_documents_enabled() && recent.is_empty(), |b| {
                         b.child(Alert::info(
                             "home-recent-empty",
                             t!("home.widget.recent.empty").to_string(),
                         ))
                     })
-                    .when(!recent.is_empty(), |b| {
+                    .when(recent_documents_enabled() && !recent.is_empty(), |b| {
                         b.child(
                             v_flex()
                                 .w_full()
@@ -673,6 +680,16 @@ fn drive_context_menu(
             }
             cx.stop_propagation();
         }));
+    }
+    if !drive.is_removable && !drive.is_network && drive.total_bytes.is_some() {
+        menu = menu.item(PopupMenuItem::new(t!("home.menu.storage_sense")).on_click(
+            move |_, _, cx| {
+                if let Err(error) = open_storage_sense_settings() {
+                    eprintln!("[home] storage sense: {error:#}");
+                }
+                cx.stop_propagation();
+            },
+        ));
     }
     menu
 }

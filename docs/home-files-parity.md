@@ -16,8 +16,8 @@ CyberFiles 实现：`crates/ui/src/home/`（`page.rs`、`widgets.rs`、`widget_s
 | **H2 数据** | 卷标 + 容量（`platform-windows::volume`）、空可移动盘隐藏 | ✅ |
 | **H3 交互** | 左键打开、Ctrl+新标签、右键 Pin/属性、标签预览容器 | ✅ |
 | **H4 可配置** | 设置页开关 widget、页面右键切换显示、展开状态写入 `settings.json` | ✅ |
-| **H5 深度** | Shell 缩略图、QA FileSystemWatcher、`pintohome` 同步、Eject、Storage Sense | 🟡 |
-| **H6 打磨** | Recent 禁用检测 InfoBar、拖放、widget 重排、动画 Expander | ⬜ |
+| **H5 深度** | Shell 缩略图、QA FileSystemWatcher、`pintohome` 同步、Eject、Storage Sense | ✅ |
+| **H6 打磨** | Recent 禁用检测 InfoBar、拖放、widget 重排、动画 Expander | 🟡 |
 
 ---
 
@@ -53,3 +53,10 @@ CyberFiles 实现：`crates/ui/src/home/`（`page.rs`、`widgets.rs`、`widget_s
 2. Quick Access **AutomaticDestinations** 监听刷新 ✅
 3. **Eject** / 断开网络盘（驱动器/网络卡片右键）✅
 4. Explorer **pintohome** 固定/取消固定同步（Pin 时调用 Shell `pintohome`）✅
+
+## H6（进行中）
+
+1. Recent 隐私关闭时显示 **InfoBar** ✅
+2. 驱动器右键 **Storage Sense**（打开系统设置）✅
+3. 设置「Shell 扩展子菜单」开关接入右键菜单 ✅
+4. 拖放、widget 重排、Expander 动画 ⬜

@@ -26,7 +26,8 @@ use super::{
 use crate::app_state::{AppFileClipboard, AppNavigation};
 use crate::icons::pin_icon;
 use crate::shell::preferences::{
-    assign_paths_to_file_tag, file_tags_containing_paths, remove_paths_from_file_tag,
+    assign_paths_to_file_tag, context_menu_shell_submenu, file_tags_containing_paths,
+    remove_paths_from_file_tag,
 };
 
 const SHELL_MENU_MAX_HEIGHT: Pixels = px(620.);
@@ -942,18 +943,54 @@ fn build_directory_item_menu(
     menu = menu.separator();
 
     if has_selection {
-        menu = append_show_more_options(
-            menu,
-            paths,
-            extended,
-            shell_menu_cache,
-            browser,
-            window,
-            cx,
-        );
+        if context_menu_shell_submenu(cx) {
+            menu = append_show_more_options(
+                menu,
+                paths,
+                extended,
+                shell_menu_cache,
+                browser,
+                window,
+                cx,
+            );
+        } else {
+            menu = append_inline_shell_extensions(
+                menu,
+                paths,
+                shell_menu_cache,
+                browser,
+                window,
+                cx,
+            );
+        }
     }
 
     menu
+}
+
+fn append_inline_shell_extensions(
+    menu: PopupMenu,
+    paths: Vec<PathBuf>,
+    shell_menu_cache: Arc<RwLock<Option<super::ShellMenuCache>>>,
+    browser: Entity<FileBrowser>,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    match shell_submenu_snapshot(&shell_menu_cache, &paths, false) {
+        ShellSubmenuSnapshot::Loading => {
+            menu.item(PopupMenuItem::new(t!("files.menu.shell_loading")).disabled(true))
+        }
+        ShellSubmenuSnapshot::Empty => menu,
+        ShellSubmenuSnapshot::Ready(entries) => append_shell_entries(
+            menu,
+            &entries,
+            &paths,
+            false,
+            browser,
+            window,
+            cx,
+        ),
+    }
 }
 
 fn build_recycle_item_menu(

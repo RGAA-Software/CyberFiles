@@ -25,7 +25,7 @@ pub use columns::column_trail_for;
 pub use drives::{default_user_profile, home_navigation_path, list_drives, DriveInfo};
 pub use home::{
     eject_drive, file_tag_previews, list_quick_access_entries, load_home_file_tags,
-    quick_access_automatic_destinations_dir, sync_pin_to_shell_quick_access,
+    quick_access_automatic_destinations_dir,     open_storage_sense_settings, sync_pin_to_shell_quick_access,
     sync_unpin_from_shell_quick_access, FileTagPreview, QuickAccessEntry,
 };
 pub use file_tag::file_items_for_tag_paths;
@@ -45,6 +45,6 @@ pub use ops::{
 pub use search::filter_items_by_query;
 pub use watcher::DirectoryWatcher;
 pub use preview::{is_image_path, is_text_preview_path, read_text_preview};
-pub use recent::{list_recent_files, RecentItem};
+pub use recent::{list_recent_files, recent_documents_enabled, RecentItem};
 pub use recycle::read_recycle_bin;
 pub use sort::{sort_items, SortDirection, SortOption, SortPreferences};

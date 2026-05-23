@@ -145,6 +145,17 @@ pub fn sync_unpin_from_shell_quick_access(_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Open Windows Storage Sense settings (Home drive cards).
+#[cfg(windows)]
+pub fn open_storage_sense_settings() -> anyhow::Result<()> {
+    cyberfiles_platform_windows::open_storage_sense_settings()
+}
+
+#[cfg(not(windows))]
+pub fn open_storage_sense_settings() -> anyhow::Result<()> {
+    anyhow::bail!("storage settings are only supported on Windows")
+}
+
 fn path_key(path: &Path) -> String {
     std::fs::canonicalize(path)
         .unwrap_or_else(|_| path.to_path_buf())

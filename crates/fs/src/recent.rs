@@ -10,6 +10,18 @@ pub struct RecentItem {
 
 const RECENT_LIMIT: usize = 20;
 
+/// Whether Windows is tracking recent documents (Explorer privacy).
+pub fn recent_documents_enabled() -> bool {
+    #[cfg(windows)]
+    {
+        cyberfiles_platform_windows::recent_documents_tracking_enabled()
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
 /// Recent document shortcuts from the Windows Recent folder.
 pub fn list_recent_files() -> Vec<RecentItem> {
     #[cfg(windows)]

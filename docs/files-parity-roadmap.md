@@ -232,7 +232,7 @@ MainWindow                             AppShell + open_main_window
 
 ### 第三梯队
 
-9. Home H5（缩略图 ⬜；QA 监听、Eject ✅；pintohome ⬜）。
+9. Home H5 ✅；Home H6（Recent 提示、Storage Sense、Shell 菜单设置）🟡。
 10. 侧栏 Shell 位图、Eject、Explorer 固定同步。
 11. 新 crate：`tags`、`archive`、`git`。
 
