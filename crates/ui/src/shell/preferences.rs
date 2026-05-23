@@ -439,6 +439,7 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         home_network_expanded: prior.home_network_expanded,
         home_file_tags_expanded: prior.home_file_tags_expanded,
         home_recent_expanded: prior.home_recent_expanded,
+        home_widget_order: prior.home_widget_order,
         context_menu_shell_extensions_submenu: prior.context_menu_shell_extensions_submenu,
         session_tabs: prior.session_tabs,
         session_active_tab: prior.session_active_tab,

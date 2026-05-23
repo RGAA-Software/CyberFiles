@@ -255,6 +255,14 @@ home.widget.recent.disabled:
   en: Recent files are turned off in Windows privacy settings. Enable “Show recently opened items” in Settings → Personalization → Start to see recent files here.
   zh-CN: Windows 隐私设置已关闭最近使用的文件。请在 设置 → 个性化 → 开始 中启用“显示最近打开的项目”。
   zh-HK: Windows 隱私設定已關閉最近使用的檔案。請在 設定 → 個人化 → 開始 中啟用「顯示最近開啟的項目」。
+home.widget.move_up:
+  en: Move up
+  zh-CN: 上移
+  zh-HK: 上移
+home.widget.move_down:
+  en: Move down
+  zh-CN: 下移
+  zh-HK: 下移
 info_pane.tab.details:
   en: Details
   zh-CN: 详细信息

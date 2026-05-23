@@ -94,6 +94,9 @@ pub struct AppConfig {
     pub home_file_tags_expanded: bool,
     #[serde(default = "default_true")]
     pub home_recent_expanded: bool,
+    /// Display order of Home widgets (`quick_access`, `drives`, `network`, `file_tags`, `recent`).
+    #[serde(default = "default_home_widget_order")]
+    pub home_widget_order: Vec<String>,
     /// When true, extra Shell verbs beyond the first few appear in a «More» submenu (Files default).
     #[serde(default = "default_true")]
     pub context_menu_shell_extensions_submenu: bool,
@@ -199,6 +202,7 @@ impl Default for AppConfig {
             home_network_expanded: true,
             home_file_tags_expanded: true,
             home_recent_expanded: true,
+            home_widget_order: default_home_widget_order(),
             context_menu_shell_extensions_submenu: true,
             session_tabs: Vec::new(),
             session_active_tab: 0,
@@ -208,13 +212,39 @@ impl Default for AppConfig {
     }
 }
 
+pub fn default_home_widget_order() -> Vec<String> {
+    vec![
+        "quick_access".into(),
+        "drives".into(),
+        "network".into(),
+        "file_tags".into(),
+        "recent".into(),
+    ]
+}
+
+/// Ensures `order` contains every known widget id once, in a stable order.
+pub fn normalize_home_widget_order(order: &[String]) -> Vec<String> {
+    let known = default_home_widget_order();
+    let mut normalized: Vec<String> = order
+        .iter()
+        .filter(|id| known.iter().any(|k| k == *id))
+        .cloned()
+        .collect();
+    for id in known {
+        if !normalized.iter().any(|existing| existing == &id) {
+            normalized.push(id);
+        }
+    }
+    normalized
+}
+
 /// Home widget visibility from settings.
 pub fn home_widget_prefs() -> HomeWidgetPrefs {
     load_config().map(HomeWidgetPrefs::from).unwrap_or_default()
 }
 
 /// Persisted Home widget show/expand flags.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct HomeWidgetPrefs {
     pub show_quick_access: bool,
     pub show_drives: bool,
@@ -226,6 +256,60 @@ pub struct HomeWidgetPrefs {
     pub network_expanded: bool,
     pub file_tags_expanded: bool,
     pub recent_expanded: bool,
+    pub widget_order: Vec<String>,
+}
+
+impl Default for HomeWidgetPrefs {
+    fn default() -> Self {
+        Self {
+            show_quick_access: true,
+            show_drives: true,
+            show_network: true,
+            show_file_tags: true,
+            show_recent: true,
+            quick_access_expanded: true,
+            drives_expanded: true,
+            network_expanded: true,
+            file_tags_expanded: true,
+            recent_expanded: true,
+            widget_order: default_home_widget_order(),
+        }
+    }
+}
+
+impl HomeWidgetPrefs {
+    pub fn widget_order_normalized(&self) -> Vec<String> {
+        normalize_home_widget_order(&self.widget_order)
+    }
+
+    pub fn is_widget_visible(&self, id: &str) -> bool {
+        match id {
+            "quick_access" => self.show_quick_access,
+            "drives" => self.show_drives,
+            "network" => self.show_network,
+            "file_tags" => self.show_file_tags,
+            "recent" => self.show_recent,
+            _ => false,
+        }
+    }
+
+    pub fn move_widget(&mut self, id: &str, up: bool) {
+        let mut order = self.widget_order_normalized();
+        let Some(pos) = order.iter().position(|entry| entry == id) else {
+            return;
+        };
+        let target = if up {
+            pos.saturating_sub(1)
+        } else {
+            (pos + 1).min(order.len().saturating_sub(1))
+        };
+        if target == pos {
+            return;
+        }
+        let entry = order.remove(pos);
+        order.insert(target, entry);
+        self.widget_order = order;
+    }
 }
 
 impl From<AppConfig> for HomeWidgetPrefs {
@@ -241,6 +325,7 @@ impl From<AppConfig> for HomeWidgetPrefs {
             network_expanded: c.home_network_expanded,
             file_tags_expanded: c.home_file_tags_expanded,
             recent_expanded: c.home_recent_expanded,
+            widget_order: normalize_home_widget_order(&c.home_widget_order),
         }
     }
 }
@@ -257,6 +342,7 @@ pub fn save_home_widget_prefs(prefs: &HomeWidgetPrefs) -> anyhow::Result<()> {
     config.home_network_expanded = prefs.network_expanded;
     config.home_file_tags_expanded = prefs.file_tags_expanded;
     config.home_recent_expanded = prefs.recent_expanded;
+    config.home_widget_order = prefs.widget_order_normalized();
     save_config(&config)
 }
 

@@ -9,7 +9,7 @@ use cyberfiles_fs::{
     QuickAccessEntry, RecentItem,
 };
 use cyberfiles_platform_windows::open_item_properties;
-use gpui::{prelude::*, *};
+use gpui::{prelude::*, MouseButton, MouseDownEvent, *};
 use gpui_component::{
     alert::Alert,
     button::{Button, ButtonVariants as _},
@@ -95,6 +95,13 @@ impl HomePage {
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.toggle_expanded(section_key, cx);
             }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
+                    this.open_section_menu(section_key, event.position, window, cx);
+                }),
+            )
     }
 
     pub(super) fn render_quick_access_widget(

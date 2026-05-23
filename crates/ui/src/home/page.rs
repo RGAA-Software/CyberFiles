@@ -44,7 +44,7 @@ impl HomeSnapshot {
     }
 }
 
-struct WidgetPrefsMenuState {
+struct HomePopupMenuState {
     position: Point<Pixels>,
     menu: Entity<PopupMenu>,
     _subscription: Subscription,
@@ -55,7 +55,7 @@ pub struct HomePage {
     snapshot: Option<HomeSnapshot>,
     loading: bool,
     load_generation: u64,
-    widget_prefs_menu: Option<WidgetPrefsMenuState>,
+    popup_menu: Option<HomePopupMenuState>,
     #[cfg(windows)]
     _qa_watcher: Option<DirectoryWatcher>,
     #[cfg(windows)]
@@ -72,7 +72,7 @@ impl HomePage {
             snapshot: None,
             loading: false,
             load_generation: 0,
-            widget_prefs_menu: None,
+            popup_menu: None,
             #[cfg(windows)]
             _qa_watcher: None,
             #[cfg(windows)]
@@ -153,8 +153,36 @@ impl HomePage {
         cx.notify();
     }
 
-    fn close_widget_prefs_menu(&mut self) {
-        self.widget_prefs_menu = None;
+    fn close_popup_menu(&mut self) {
+        self.popup_menu = None;
+    }
+
+    fn open_popup_menu(
+        &mut self,
+        position: Point<Pixels>,
+        menu: Entity<PopupMenu>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_popup_menu();
+
+        let page = cx.entity();
+        let subscription = window.subscribe(&menu, cx, {
+            move |_, _: &DismissEvent, window, cx| {
+                let _ = page.update(cx, |page, cx| {
+                    page.close_popup_menu();
+                    cx.notify();
+                });
+                window.refresh();
+            }
+        });
+
+        self.popup_menu = Some(HomePopupMenuState {
+            position,
+            menu,
+            _subscription: subscription,
+        });
+        cx.notify();
     }
 
     fn open_widget_prefs_menu(
@@ -163,29 +191,63 @@ impl HomePage {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.close_widget_prefs_menu();
-
-        let page = cx.entity();
         let menu = PopupMenu::build(window, cx, |menu, _window, _cx| {
             build_page_context_menu(menu, &home_widget_prefs())
         });
+        self.open_popup_menu(position, menu, window, cx);
+    }
 
-        let subscription = window.subscribe(&menu, cx, {
-            move |_, _: &DismissEvent, window, cx| {
-                let _ = page.update(cx, |page, cx| {
-                    page.close_widget_prefs_menu();
-                    cx.notify();
-                });
-                window.refresh();
-            }
-        });
-
-        self.widget_prefs_menu = Some(WidgetPrefsMenuState {
-            position,
-            menu,
-            _subscription: subscription,
-        });
+    fn move_widget_in_order(&mut self, section: &str, up: bool, cx: &mut Context<Self>) {
+        self.prefs.move_widget(section, up);
+        let _ = save_home_widget_prefs(&self.prefs);
         cx.notify();
+    }
+
+    pub(super) fn open_section_menu(
+        &mut self,
+        section_key: &'static str,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let order = self.prefs.widget_order_normalized();
+        let pos = order
+            .iter()
+            .position(|id| id == section_key)
+            .unwrap_or(0);
+        let can_move_up = pos > 0;
+        let can_move_down = pos + 1 < order.len();
+
+        let page = cx.entity();
+        let menu = PopupMenu::build(window, cx, move |menu, _window, _cx| {
+            menu.item(
+                PopupMenuItem::new(t!("home.widget.move_up"))
+                    .disabled(!can_move_up)
+                    .on_click({
+                        let page = page.clone();
+                        move |_, _, cx| {
+                            let _ = page.update(cx, |page, cx| {
+                                page.move_widget_in_order(section_key, true, cx);
+                            });
+                            cx.stop_propagation();
+                        }
+                    }),
+            )
+            .item(
+                PopupMenuItem::new(t!("home.widget.move_down"))
+                    .disabled(!can_move_down)
+                    .on_click({
+                        let page = page.clone();
+                        move |_, _, cx| {
+                            let _ = page.update(cx, |page, cx| {
+                                page.move_widget_in_order(section_key, false, cx);
+                            });
+                            cx.stop_propagation();
+                        }
+                    }),
+            )
+        });
+        self.open_popup_menu(position, menu, window, cx);
     }
 
     fn on_blank_right_click(
@@ -251,13 +313,9 @@ impl Render for HomePage {
             recent: Vec::new(),
         });
 
-        let show_qa = self.prefs.show_quick_access;
-        let show_drives = self.prefs.show_drives;
-        let show_network = self.prefs.show_network;
-        let show_tags = self.prefs.show_file_tags;
-        let show_recent = self.prefs.show_recent;
+        let widget_order = self.prefs.widget_order_normalized();
 
-        let menu_overlay = self.widget_prefs_menu.as_ref().map(|state| {
+        let menu_overlay = self.popup_menu.as_ref().map(|state| {
             let position = state.position;
             let menu = state.menu.clone();
             deferred(
@@ -295,25 +353,29 @@ impl Render for HomePage {
                     .when(self.loading && self.snapshot.is_none(), |page| {
                         page.child(div().child(t!("home.loading")))
                     })
-                    .when(show_qa, |page| {
-                        page.child(self.render_quick_access_widget(
-                            window,
-                            cx,
-                            &snapshot.quick_access,
-                        ))
-                    })
-                    .when(show_drives, |page| {
-                        page.child(self.render_drives_widget(window, cx, &snapshot.drives))
-                    })
-                    .when(show_network, |page| {
-                        page.child(self.render_network_widget(window, cx, &snapshot.network))
-                    })
-                    .when(show_tags, |page| {
-                        page.child(self.render_file_tags_widget(window, cx, &snapshot.tag_previews))
-                    })
-                    .when(show_recent, |page| {
-                        page.child(self.render_recent_widget(window, cx, &snapshot.recent))
-                    })
+                    .children(widget_order.iter().filter_map(|widget_id| {
+                        if !self.prefs.is_widget_visible(widget_id) {
+                            return None;
+                        }
+                        Some(match widget_id.as_str() {
+                            "quick_access" => self
+                                .render_quick_access_widget(window, cx, &snapshot.quick_access)
+                                .into_any_element(),
+                            "drives" => self
+                                .render_drives_widget(window, cx, &snapshot.drives)
+                                .into_any_element(),
+                            "network" => self
+                                .render_network_widget(window, cx, &snapshot.network)
+                                .into_any_element(),
+                            "file_tags" => self
+                                .render_file_tags_widget(window, cx, &snapshot.tag_previews)
+                                .into_any_element(),
+                            "recent" => self
+                                .render_recent_widget(window, cx, &snapshot.recent)
+                                .into_any_element(),
+                            _ => return None,
+                        })
+                    }))
                     .child(div().w_full().flex_1().min_h(px(64.))),
             )
     }
