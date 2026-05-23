@@ -2,15 +2,17 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use cyberfiles_core::{
-    load_config, record_path_history, save_config, SessionPaneLayout, APP_NAME,
+    load_config, record_path_history, save_config, ClosedTabSession, SessionPaneLayout, APP_NAME,
 };
+
+const MAX_CLOSED_TABS: usize = 12;
 use cyberfiles_fs::{
     breadcrumb_root_menu_sections, home_navigation_path, list_drives,
     path_breadcrumbs, PathBreadcrumb,
 };
 use cyberfiles_platform_windows::list_shell_quick_access_folders;
 use cyberfiles_commands::{
-    FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, FILE_BROWSER,
+    FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, ReopenClosedTab, FILE_BROWSER,
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -431,6 +433,52 @@ impl MainPage {
         } else {
             NavigationTarget::Home
         }
+    }
+
+    fn capture_tab_session(&self, index: usize, cx: &App) -> ClosedTabSession {
+        let shell = self.tabs[index].shell.read(cx);
+        let pane = shell.active_pane().read(cx);
+        let current_path = match pane.target() {
+            NavigationTarget::Path(_) => {
+                Some(pane.file_browser().read(cx).current_directory().clone())
+            }
+            _ => None,
+        };
+        ClosedTabSession {
+            tab: Self::encode_session_target(pane.target(), current_path.as_ref()),
+            pane_layout: Self::capture_shell_layout(shell, cx),
+        }
+    }
+
+    fn record_closed_tab(&self, session: ClosedTabSession) {
+        let mut config = load_config().unwrap_or_default();
+        config.session_closed_tabs.retain(|closed| closed.tab != session.tab);
+        config.session_closed_tabs.insert(0, session);
+        config.session_closed_tabs.truncate(MAX_CLOSED_TABS);
+        let _ = save_config(&config);
+    }
+
+    pub fn reopen_closed_tab(&mut self, cx: &mut Context<Self>) {
+        let mut config = load_config().unwrap_or_default();
+        let Some(closed) = config.session_closed_tabs.first().cloned() else {
+            return;
+        };
+        config.session_closed_tabs.remove(0);
+        let _ = save_config(&config);
+
+        let target = Self::decode_session_target(&closed.tab);
+        let id = self.next_tab_id;
+        self.next_tab_id += 1;
+        let layout = closed.pane_layout;
+        let shell = cx.new(|cx| {
+            let mut shell = ShellPanes::new(cx, target);
+            shell.restore_layout(&layout, Self::decode_session_target, cx);
+            shell
+        });
+        self.tabs.push(TabEntry { id, shell });
+        self.active_tab = self.tabs.len() - 1;
+        self.persist_session(cx);
+        cx.notify();
     }
 
     fn capture_shell_layout(shell: &ShellPanes, cx: &App) -> SessionPaneLayout {
@@ -861,6 +909,8 @@ impl MainPage {
             cx.quit();
             return;
         }
+        let closed = self.capture_tab_session(index, cx);
+        self.record_closed_tab(closed);
         self.tabs.remove(index);
         if self.active_tab >= self.tabs.len() {
             self.active_tab = self.tabs.len() - 1;
@@ -1468,6 +1518,9 @@ impl Render for MainPage {
                 }
                 this.active_file_browser(cx)
                     .update(cx, |browser, cx| browser.go_forward(cx));
+            }))
+            .on_action(cx.listener(|this, _: &ReopenClosedTab, _, cx| {
+                this.reopen_closed_tab(cx);
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 if event.keystroke.key.as_str() == "escape" {

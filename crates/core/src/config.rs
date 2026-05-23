@@ -105,6 +105,16 @@ pub struct AppConfig {
     /// Per-tab dual-pane layout (same order as `session_tabs`).
     #[serde(default)]
     pub session_pane_layouts: Vec<SessionPaneLayout>,
+    /// Recently closed tabs (most recent first) for reopen.
+    #[serde(default)]
+    pub session_closed_tabs: Vec<ClosedTabSession>,
+}
+
+/// Snapshot of a closed tab (target + dual-pane layout).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClosedTabSession {
+    pub tab: String,
+    pub pane_layout: SessionPaneLayout,
 }
 
 /// Dual-pane state for one tab (`ShellPanes`).
@@ -193,6 +203,7 @@ impl Default for AppConfig {
             session_tabs: Vec::new(),
             session_active_tab: 0,
             session_pane_layouts: Vec::new(),
+            session_closed_tabs: Vec::new(),
         }
     }
 }

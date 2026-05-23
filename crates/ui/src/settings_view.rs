@@ -27,7 +27,8 @@ use crate::shell::preferences::{
     apply_sidebar_section_pinned, apply_sidebar_section_wsl, apply_theme_mode, apply_theme_name,
     context_menu_shell_submenu, current_locale,
     home_widget_drives, home_widget_file_tags, home_widget_network, home_widget_quick_access,
-    home_widget_recent, remove_file_tag, scrollbar_show_from_key, scrollbar_show_key,
+    home_widget_recent, add_file_tag, new_file_tag_name, remove_file_tag, scrollbar_show_from_key,
+    scrollbar_show_key,
     set_list_active_highlight, sidebar_display_mode, sidebar_section_cloud, sidebar_section_drives,
     sidebar_section_file_tags, sidebar_section_library, sidebar_section_network,
     sidebar_section_pinned, sidebar_section_wsl,
@@ -128,12 +129,14 @@ fn tags_settings_group() -> SettingGroup {
                             )
                     }))
                 })
-                .child(
-                    Label::new(ts(t!("settings.tags.add.hint")))
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground),
-                )
         }))
+        .item(
+            SettingItem::new(
+                ts(t!("settings.tags.add")),
+                SettingField::input(new_file_tag_name, add_file_tag),
+            )
+            .description(ts(t!("settings.tags.add.description"))),
+        )
 }
 
 pub fn build_settings(cx: &App) -> Settings {

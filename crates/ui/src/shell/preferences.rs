@@ -200,6 +200,28 @@ pub fn apply_sidebar_section_file_tags(enabled: bool, cx: &mut App) {
     mutate_config(cx, |c| c.show_sidebar_section_file_tags = enabled);
 }
 
+pub fn add_file_tag(name: SharedString, cx: &mut App) {
+    let trimmed = name.trim().to_string();
+    if trimmed.is_empty() {
+        return;
+    }
+    mutate_config(cx, |c| {
+        if c.file_tags.iter().any(|tag| tag.name == trimmed) {
+            return;
+        }
+        c.file_tags.push(cyberfiles_core::FileTagConfig {
+            name: trimmed,
+            color: None,
+            paths: Vec::new(),
+        });
+    });
+    refresh_home_if_active(cx);
+}
+
+pub fn new_file_tag_name(_cx: &App) -> SharedString {
+    String::new().into()
+}
+
 pub fn remove_file_tag(name: &str, cx: &mut App) {
     mutate_config(cx, |c| {
         c.file_tags.retain(|tag| tag.name != name);
@@ -352,5 +374,6 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         session_tabs: prior.session_tabs,
         session_active_tab: prior.session_active_tab,
         session_pane_layouts: prior.session_pane_layouts,
+        session_closed_tabs: prior.session_closed_tabs,
     }
 }

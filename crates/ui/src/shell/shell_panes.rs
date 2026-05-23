@@ -81,10 +81,6 @@ impl ShellPanes {
         self.active
     }
 
-    pub fn primary(&self) -> Entity<PaneShell> {
-        self.primary.clone()
-    }
-
     pub fn set_active(&mut self, side: PaneSide, cx: &mut Context<Self>) {
         if self.active != side {
             self.active = side;

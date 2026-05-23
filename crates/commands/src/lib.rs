@@ -27,6 +27,7 @@ actions!(
         ViewColumns,
         ShellProperties,
         CompressItems,
+        ReopenClosedTab,
     ]
 );
 
@@ -49,8 +50,11 @@ pub fn file_browser_key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("ctrl-shift-m", NewFile, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-f", FocusSearch, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-l", FocusOmnibar, None),
+        KeyBinding::new("ctrl-shift-t", ReopenClosedTab, None),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-l", FocusOmnibar, None),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-t", ReopenClosedTab, None),
         KeyBinding::new("ctrl-1", ViewDetails, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-2", ViewGrid, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-3", ViewColumns, Some(FILE_BROWSER)),

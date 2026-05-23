@@ -67,6 +67,10 @@ nav.split_pane:
   en: Toggle dual pane
   zh-CN: 切换双栏
   zh-HK: 切換雙欄
+nav.reopen_closed_tab:
+  en: Reopen closed tab
+  zh-CN: 重新打开已关闭的标签
+  zh-HK: 重新開啟已關閉的標籤
 nav.new_tab:
   en: New tab
   zh-CN: 新建标签页
@@ -936,13 +940,13 @@ settings.tags.add:
   zh-CN: 新建标签
   zh-HK: 新建標籤
 settings.tags.add.description:
-  en: Tag management UI is being expanded.
-  zh-CN: 标签管理界面正在完善。
-  zh-HK: 標籤管理介面正在完善。
-settings.tags.add.hint:
-  en: Create tags from the sidebar File tags section (right-click items, coming soon).
-  zh-CN: 请从侧栏「文件标签」区创建（右键菜单即将支持）。
-  zh-HK: 請從側欄「檔案標籤」區建立（右鍵選單即將支援）。
+  en: Enter a name and press Enter to create a tag (assign paths from the file menu later).
+  zh-CN: 输入名称后按 Enter 创建标签（稍后可从文件菜单分配路径）。
+  zh-HK: 輸入名稱後按 Enter 建立標籤（稍後可從檔案選單指派路徑）。
+settings.tags.add.placeholder:
+  en: New tag name
+  zh-CN: 新标签名称
+  zh-HK: 新標籤名稱
 settings.group.sidebar:
   en: Sidebar
   zh-CN: 侧栏
