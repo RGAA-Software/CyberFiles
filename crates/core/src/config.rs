@@ -102,6 +102,26 @@ pub struct AppConfig {
     pub session_tabs: Vec<String>,
     #[serde(default)]
     pub session_active_tab: usize,
+    /// Per-tab dual-pane layout (same order as `session_tabs`).
+    #[serde(default)]
+    pub session_pane_layouts: Vec<SessionPaneLayout>,
+}
+
+/// Dual-pane state for one tab (`ShellPanes`).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SessionPaneLayout {
+    #[serde(default)]
+    pub dual_pane: bool,
+    /// `primary` or `secondary`.
+    #[serde(default = "default_session_pane_side")]
+    pub active_side: String,
+    /// Encoded navigation target for the secondary pane (same format as `session_tabs`).
+    #[serde(default)]
+    pub secondary_tab: String,
+}
+
+fn default_session_pane_side() -> String {
+    "primary".into()
 }
 
 /// Sidebar file tag entry (Files `FileTagsManager` subset).
@@ -172,6 +192,7 @@ impl Default for AppConfig {
             context_menu_shell_extensions_submenu: true,
             session_tabs: Vec::new(),
             session_active_tab: 0,
+            session_pane_layouts: Vec::new(),
         }
     }
 }

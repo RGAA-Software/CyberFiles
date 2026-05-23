@@ -6,6 +6,7 @@ use gpui_component::{
 
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::PaneShell;
+use cyberfiles_core::SessionPaneLayout;
 use cyberfiles_fs::home_navigation_path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +46,43 @@ impl ShellPanes {
             self.active = PaneSide::Primary;
         }
         cx.notify();
+    }
+
+    /// Restores dual-pane layout from a prior session.
+    pub fn restore_layout(
+        &mut self,
+        layout: &SessionPaneLayout,
+        decode_target: impl Fn(&str) -> NavigationTarget,
+        cx: &mut Context<Self>,
+    ) {
+        if !layout.dual_pane {
+            return;
+        }
+        self.dual_pane = true;
+        let secondary_target = decode_target(
+            if layout.secondary_tab.is_empty() {
+                "home"
+            } else {
+                layout.secondary_tab.as_str()
+            },
+        );
+        self.secondary.update(cx, |pane, cx| {
+            pane.navigate(secondary_target, cx);
+        });
+        self.active = if layout.active_side == "secondary" {
+            PaneSide::Secondary
+        } else {
+            PaneSide::Primary
+        };
+        cx.notify();
+    }
+
+    pub fn active_side(&self) -> PaneSide {
+        self.active
+    }
+
+    pub fn primary(&self) -> Entity<PaneShell> {
+        self.primary.clone()
     }
 
     pub fn set_active(&mut self, side: PaneSide, cx: &mut Context<Self>) {

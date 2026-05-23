@@ -200,6 +200,13 @@ pub fn apply_sidebar_section_file_tags(enabled: bool, cx: &mut App) {
     mutate_config(cx, |c| c.show_sidebar_section_file_tags = enabled);
 }
 
+pub fn remove_file_tag(name: &str, cx: &mut App) {
+    mutate_config(cx, |c| {
+        c.file_tags.retain(|tag| tag.name != name);
+    });
+    refresh_home_if_active(cx);
+}
+
 pub fn context_menu_shell_submenu(_cx: &App) -> bool {
     cyberfiles_core::load_config()
         .map(|c| c.context_menu_shell_extensions_submenu)
@@ -344,5 +351,6 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         context_menu_shell_extensions_submenu: prior.context_menu_shell_extensions_submenu,
         session_tabs: prior.session_tabs,
         session_active_tab: prior.session_active_tab,
+        session_pane_layouts: prior.session_pane_layouts,
     }
 }

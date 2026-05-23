@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use cyberfiles_core::{load_config, record_path_history, save_config, APP_NAME};
+use cyberfiles_core::{
+    load_config, record_path_history, save_config, SessionPaneLayout, APP_NAME,
+};
 use cyberfiles_fs::{
     breadcrumb_root_menu_sections, home_navigation_path, list_drives,
     path_breadcrumbs, PathBreadcrumb,
@@ -89,7 +91,14 @@ impl MainPage {
             let mut restored = Vec::with_capacity(config.session_tabs.len());
             for (id, encoded) in config.session_tabs.iter().enumerate() {
                 let target = Self::decode_session_target(encoded);
-                let shell = cx.new(|cx| ShellPanes::new(cx, target));
+                let layout = config.session_pane_layouts.get(id).cloned();
+                let shell = cx.new(|cx| {
+                    let mut shell = ShellPanes::new(cx, target);
+                    if let Some(ref layout) = layout {
+                        shell.restore_layout(layout, Self::decode_session_target, cx);
+                    }
+                    shell
+                });
                 restored.push(TabEntry {
                     id: id as u64,
                     shell,
@@ -424,6 +433,30 @@ impl MainPage {
         }
     }
 
+    fn capture_shell_layout(shell: &ShellPanes, cx: &App) -> SessionPaneLayout {
+        let secondary_tab = if shell.dual_pane() {
+            let pane = shell.secondary().read(cx);
+            let current_path = match pane.target() {
+                NavigationTarget::Path(_) => {
+                    Some(pane.file_browser().read(cx).current_directory().clone())
+                }
+                _ => None,
+            };
+            Self::encode_session_target(pane.target(), current_path.as_ref())
+        } else {
+            String::new()
+        };
+        let active_side = match shell.active_side() {
+            crate::shell::PaneSide::Secondary => "secondary",
+            crate::shell::PaneSide::Primary => "primary",
+        };
+        SessionPaneLayout {
+            dual_pane: shell.dual_pane(),
+            active_side: active_side.into(),
+            secondary_tab,
+        }
+    }
+
     pub fn persist_session(&mut self, cx: &mut Context<Self>) {
         let tabs: Vec<String> = self
             .tabs
@@ -440,9 +473,15 @@ impl MainPage {
                 Self::encode_session_target(pane.target(), current_path.as_ref())
             })
             .collect();
+        let layouts: Vec<SessionPaneLayout> = self
+            .tabs
+            .iter()
+            .map(|entry| Self::capture_shell_layout(&entry.shell.read(cx), cx))
+            .collect();
         let mut config = load_config().unwrap_or_default();
         config.session_tabs = tabs;
         config.session_active_tab = self.active_tab;
+        config.session_pane_layouts = layouts;
         let _ = save_config(&config);
     }
 
@@ -483,6 +522,7 @@ impl MainPage {
     fn toggle_dual_pane(&mut self, cx: &mut Context<Self>) {
         let shell = self.active_shell();
         shell.update(cx, |shell, cx| shell.toggle_dual_pane(cx));
+        self.persist_session(cx);
         cx.notify();
     }
 

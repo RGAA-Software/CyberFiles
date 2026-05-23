@@ -883,6 +883,66 @@ settings.page.sidebar:
   en: Sidebar
   zh-CN: 侧栏
   zh-HK: 側欄
+settings.page.folders:
+  en: Folders
+  zh-CN: 文件夹
+  zh-HK: 資料夾
+settings.page.tags:
+  en: Tags
+  zh-CN: 标签
+  zh-HK: 標籤
+settings.group.folders:
+  en: Pinned folders
+  zh-CN: 固定文件夹
+  zh-HK: 固定資料夾
+settings.folders.pinned:
+  en: Pinned locations
+  zh-CN: 固定位置
+  zh-HK: 固定位置
+settings.folders.pinned.description:
+  en: Pin folders from the sidebar or file context menu. Remove them here.
+  zh-CN: 在侧栏或文件右键菜单中固定文件夹，可在此移除。
+  zh-HK: 在側欄或檔案右鍵選單中固定資料夾，可在此移除。
+settings.folders.empty:
+  en: No pinned folders yet.
+  zh-CN: 尚无固定文件夹。
+  zh-HK: 尚無固定資料夾。
+settings.group.tags:
+  en: File tags
+  zh-CN: 文件标签
+  zh-HK: 檔案標籤
+settings.tags.list:
+  en: Tags
+  zh-CN: 标签列表
+  zh-HK: 標籤列表
+settings.tags.list.description:
+  en: Tags group files in the sidebar and on Home. Assign paths from the file menu (coming soon).
+  zh-CN: 标签用于在侧栏和主页分组文件。从文件菜单分配路径（即将推出）。
+  zh-HK: 標籤用於在側欄與首頁分組檔案。從檔案選單指派路徑（即將推出）。
+settings.tags.empty:
+  en: No file tags yet.
+  zh-CN: 尚无文件标签。
+  zh-HK: 尚無檔案標籤。
+settings.tags.path_count:
+  en: "%{count} paths"
+  zh-CN: "%{count} 个路径"
+  zh-HK: "%{count} 個路徑"
+settings.tags.remove:
+  en: Remove
+  zh-CN: 移除
+  zh-HK: 移除
+settings.tags.add:
+  en: New tag
+  zh-CN: 新建标签
+  zh-HK: 新建標籤
+settings.tags.add.description:
+  en: Tag management UI is being expanded.
+  zh-CN: 标签管理界面正在完善。
+  zh-HK: 標籤管理介面正在完善。
+settings.tags.add.hint:
+  en: Create tags from the sidebar File tags section (right-click items, coming soon).
+  zh-CN: 请从侧栏「文件标签」区创建（右键菜单即将支持）。
+  zh-HK: 請從側欄「檔案標籤」區建立（右鍵選單即將支援）。
 settings.group.sidebar:
   en: Sidebar
   zh-CN: 侧栏

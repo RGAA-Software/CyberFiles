@@ -1,7 +1,9 @@
-use cyberfiles_core::APP_NAME;
-use gpui::{App, ParentElement, SharedString, Styled};
+use cyberfiles_core::{load_config, APP_NAME};
+use gpui::{prelude::FluentBuilder, App, InteractiveElement, ParentElement, SharedString, Styled};
 use gpui_component::{
-    ActiveTheme as _, IconName, ThemeMode,
+    button::Button,
+    h_flex,
+    ActiveTheme as _, IconName, Size, Sizable as _, ThemeMode,
     group_box::GroupBoxVariant,
     label::Label,
     setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
@@ -15,6 +17,7 @@ fn ts(text: impl AsRef<str>) -> SharedString {
 
 use crate::icons::sidebar_icon;
 use crate::theme;
+use crate::app_state::AppNavigation;
 use crate::shell::preferences::{
     apply_border_radius, apply_font_size, apply_locale, apply_scrollbar_show,
     apply_home_widget_drives, apply_home_widget_file_tags, apply_home_widget_network,
@@ -24,10 +27,114 @@ use crate::shell::preferences::{
     apply_sidebar_section_pinned, apply_sidebar_section_wsl, apply_theme_mode, apply_theme_name,
     context_menu_shell_submenu, current_locale,
     home_widget_drives, home_widget_file_tags, home_widget_network, home_widget_quick_access,
-    home_widget_recent, scrollbar_show_from_key, scrollbar_show_key, set_list_active_highlight,
-    sidebar_display_mode, sidebar_section_cloud, sidebar_section_drives, sidebar_section_file_tags,
-    sidebar_section_library, sidebar_section_network, sidebar_section_pinned, sidebar_section_wsl,
+    home_widget_recent, remove_file_tag, scrollbar_show_from_key, scrollbar_show_key,
+    set_list_active_highlight, sidebar_display_mode, sidebar_section_cloud, sidebar_section_drives,
+    sidebar_section_file_tags, sidebar_section_library, sidebar_section_network,
+    sidebar_section_pinned, sidebar_section_wsl,
 };
+
+fn folders_settings_group() -> SettingGroup {
+    SettingGroup::new()
+        .title(ts(t!("settings.group.folders")))
+        .item(SettingItem::render(|_, _, cx| {
+            let pinned = load_config()
+                .map(|c| c.pinned_folders)
+                .unwrap_or_default();
+            v_flex()
+                .gap_3()
+                .w_full()
+                .child(
+                    Label::new(ts(t!("settings.folders.pinned.description")))
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground),
+                )
+                .when(pinned.is_empty(), |col| {
+                    col.child(
+                        Label::new(ts(t!("settings.folders.empty")))
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground),
+                    )
+                })
+                .when(!pinned.is_empty(), |col| {
+                    col.children(pinned.iter().enumerate().map(|(index, path)| {
+                        let path_string = path.clone();
+                        h_flex()
+                            .id(("pinned-folder", index))
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .child(Label::new(path.clone()).text_sm().truncate())
+                            .child(
+                                Button::new(("unpin-folder", index))
+                                    .label(ts(t!("sidebar.menu.unpin")))
+                                    .with_size(Size::Small)
+                                    .on_click(move |_, _, cx| {
+                                        AppNavigation::unpin_folder(&path_string, cx);
+                                    }),
+                            )
+                    }))
+                })
+        }))
+}
+
+fn tags_settings_group() -> SettingGroup {
+    SettingGroup::new()
+        .title(ts(t!("settings.group.tags")))
+        .item(SettingItem::render(|_, _, cx| {
+            let tags = load_config().map(|c| c.file_tags).unwrap_or_default();
+            v_flex()
+                .gap_3()
+                .w_full()
+                .child(
+                    Label::new(ts(t!("settings.tags.list.description")))
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground),
+                )
+                .when(tags.is_empty(), |col| {
+                    col.child(
+                        Label::new(ts(t!("settings.tags.empty")))
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground),
+                    )
+                })
+                .when(!tags.is_empty(), |col| {
+                    col.children(tags.iter().enumerate().map(|(index, tag)| {
+                        let name = tag.name.clone();
+                        let summary = t!("settings.tags.path_count", count = tag.paths.len());
+                        h_flex()
+                            .id(("file-tag", index))
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .child(
+                                v_flex()
+                                    .gap_0p5()
+                                    .child(Label::new(name.clone()).text_sm())
+                                    .child(
+                                        Label::new(summary)
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground),
+                                    ),
+                            )
+                            .child(
+                                Button::new(("remove-tag", index))
+                                    .label(ts(t!("settings.tags.remove")))
+                                    .with_size(Size::Small)
+                                    .on_click(move |_, _, cx| {
+                                        remove_file_tag(&name, cx);
+                                    }),
+                            )
+                    }))
+                })
+                .child(
+                    Label::new(ts(t!("settings.tags.add.hint")))
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground),
+                )
+        }))
+}
 
 pub fn build_settings(cx: &App) -> Settings {
     let theme_options = theme::theme_set_options();
@@ -268,6 +375,12 @@ pub fn build_settings(cx: &App) -> Settings {
                             ),
                         ]),
                 ]),
+            SettingPage::new(ts(t!("settings.page.folders")))
+                .icon(sidebar_icon(IconName::Folder))
+                .groups(vec![folders_settings_group()]),
+            SettingPage::new(ts(t!("settings.page.tags")))
+                .icon(sidebar_icon(IconName::Inbox))
+                .groups(vec![tags_settings_group()]),
             SettingPage::new(ts(t!("settings.page.home")))
                 .icon(sidebar_icon(IconName::LayoutDashboard))
                 .groups(vec![
