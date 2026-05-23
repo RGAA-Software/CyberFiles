@@ -14,7 +14,10 @@ mod search;
 mod sort;
 mod watcher;
 
-pub use clipboard::{copy_items, move_items, ClipboardOperation, FileClipboard};
+pub use clipboard::{
+    copy_items, move_items, transfer_items, transfer_one, ClipboardOperation, ConflictResolution,
+    FileClipboard, TransferConflict, TransferOutcome, paths_conflict,
+};
 pub use columns::column_trail_for;
 pub use drives::{default_user_profile, home_navigation_path, list_drives, DriveInfo};
 pub use home::{

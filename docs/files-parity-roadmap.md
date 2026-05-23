@@ -147,7 +147,7 @@ MainWindow                             AppShell + open_main_window
 | 粘贴（资源管理器 CF_HDROP） | 读取 + 后台粘贴 | 🟡 |
 | 回收站删除 / 永久删除 | ✅ |
 | 拖拽 | GPUI 拖放 + 后台传输通知 | 🟡 |
-| 冲突对话框 / StatusCenter | 仅通知；无替换/跳过 UI | 🟡 |
+| 冲突对话框 / StatusCenter | 替换/跳过对话框（逐文件）🟡 |
 
 实现：`crates/ui/src/file_ops.rs`（后台 `copy_items` / `move_items` + 进行中/完成通知）。
 
@@ -202,8 +202,8 @@ MainWindow                             AppShell + open_main_window
 
 ### 第一梯队（进行中 / 当前迭代）
 
-1. **文件传输反馈** — `file_ops.rs` 后台复制/移动/粘贴 + 通知（StatusCenter 子集）🟡；待做冲突替换 UI。
-2. **右键菜单阶段 B** — Open with 动态子菜单（Shell `openas`）🟡；Send to 提取、压缩项、可配置显示项 ⬜。
+1. **文件传输反馈** — `file_ops.rs` 后台复制/移动/粘贴 + 通知 + 冲突替换/跳过对话框 🟡。
+2. **右键菜单阶段 B** — Open with 动态子菜单 🟡；**Send to** 子菜单（Shell 提取）🟡；压缩项、可配置显示项 ⬜。
 3. **子菜单行高** — PopupMenu Submenu 与 Item 统一 32px hover ✅。
 4. **工具栏 tooltip i18n** — 全 icon button ✅。
 

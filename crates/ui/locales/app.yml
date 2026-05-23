@@ -495,6 +495,26 @@ files.transfer.failed:
   en: Operation failed
   zh-CN: 操作失败
   zh-HK: 操作失敗
+files.transfer.cancelled:
+  en: Operation cancelled
+  zh-CN: 操作已取消
+  zh-HK: 操作已取消
+files.conflict.title:
+  en: File already exists
+  zh-CN: 文件已存在
+  zh-HK: 檔案已存在
+files.conflict.description:
+  en: "%{name} already exists at %{path}. Replace it?"
+  zh-CN: "%{name} 已存在于 %{path}。是否替换？"
+  zh-HK: "%{name} 已存在於 %{path}。是否取代？"
+files.conflict.replace:
+  en: Replace
+  zh-CN: 替换
+  zh-HK: 取代
+files.conflict.skip:
+  en: Skip
+  zh-CN: 跳过
+  zh-HK: 略過
 files.menu.open_with_choose:
   en: Choose another app…
   zh-CN: 选择其他应用…

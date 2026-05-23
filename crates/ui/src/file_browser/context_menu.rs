@@ -128,6 +128,14 @@ fn shell_menu_click_item(
     item.on_click(invoke)
 }
 
+fn is_send_to_submenu_label(label: &str) -> bool {
+    let lower = label.to_ascii_lowercase();
+    lower.contains("send to")
+        || lower.contains("发送到")
+        || lower.contains("傳送到")
+        || lower.contains("寄送到")
+}
+
 fn is_open_with_submenu_label(label: &str) -> bool {
     let lower = label.to_ascii_lowercase();
     lower.contains("open with")
@@ -164,6 +172,72 @@ fn open_with_entries_from_cache(
         }
     }
     Vec::new()
+}
+
+fn send_to_entries_from_cache(
+    cache: &std::sync::Arc<RwLock<Option<ShellMenuCache>>>,
+    paths: &[PathBuf],
+    extended_verbs: bool,
+) -> Vec<ShellContextMenuEntry> {
+    let key = normalize_paths_for_shell_cache(paths);
+    let entries = cache
+        .read()
+        .ok()
+        .and_then(|guard| guard.as_ref().cloned())
+        .filter(|cache| cache.paths == key && cache.extended_verbs == extended_verbs)
+        .map(|cache| cache.entries)
+        .unwrap_or_default();
+
+    for entry in &entries {
+        if let ShellContextMenuEntry::Submenu {
+            label,
+            children,
+            lazy_parent_index,
+            ..
+        } = entry
+        {
+            if is_send_to_submenu_label(label) {
+                return resolve_submenu_entries(*lazy_parent_index, children);
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn append_send_to_submenu(
+    menu: PopupMenu,
+    children: &[ShellContextMenuEntry],
+    paths: &[PathBuf],
+    extended_verbs: bool,
+    browser: Entity<FileBrowser>,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let paths_for_sub = paths.to_vec();
+    let browser_sub = browser.clone();
+    let children_stash = children.to_vec();
+    menu.submenu_with_icon(
+        Some(menu_icon(IconName::ExternalLink)),
+        t!("files.menu.send_to"),
+        window,
+        cx,
+        move |sub, window, cx| {
+            let loaded = resolve_submenu_entries(None, &children_stash);
+            if loaded.is_empty() {
+                sub.item(PopupMenuItem::new(t!("files.menu.shell_empty")).disabled(true))
+            } else {
+                append_shell_entries(
+                    sub,
+                    &loaded,
+                    &paths_for_sub,
+                    extended_verbs,
+                    browser_sub.clone(),
+                    window,
+                    cx,
+                )
+            }
+        },
+    )
 }
 
 fn append_open_with_submenu(
@@ -711,17 +785,32 @@ fn build_directory_item_menu(
     }
 
     let not_implemented: SharedString = t!("files.menu.not_implemented").into();
-    menu = menu
-        .item(menu_notice_item(
-            t!("files.menu.compress"),
-            IconName::Folder,
-            not_implemented.clone(),
-        ))
-        .item(menu_notice_item(
-            t!("files.menu.send_to"),
-            IconName::ExternalLink,
-            not_implemented.clone(),
-        ));
+    menu = menu.item(menu_notice_item(
+        t!("files.menu.compress"),
+        IconName::Folder,
+        not_implemented.clone(),
+    ));
+
+    if single {
+        let send_to_children = send_to_entries_from_cache(&shell_menu_cache, &paths, extended);
+        if send_to_children.is_empty() {
+            menu = menu.item(menu_notice_item(
+                t!("files.menu.send_to"),
+                IconName::ExternalLink,
+                not_implemented.clone(),
+            ));
+        } else {
+            menu = append_send_to_submenu(
+                menu,
+                &send_to_children,
+                &paths,
+                extended,
+                browser.clone(),
+                window,
+                cx,
+            );
+        }
+    }
 
     if single_dir {
         let path = paths[0].clone();
