@@ -663,6 +663,14 @@ files.menu.add_to_tag:
   en: Add to tag
   zh-CN: 添加到标签
   zh-HK: 新增至標籤
+files.menu.remove_from_tag:
+  en: Remove from tag
+  zh-CN: 从标签移除
+  zh-HK: 從標籤移除
+files.menu.not_in_file_tags:
+  en: Not in any tag
+  zh-CN: 不在任何标签中
+  zh-HK: 不在任何標籤中
 files.menu.no_file_tags:
   en: No tags — create one in Settings → Tags
   zh-CN: 无标签 — 请在设置 → 标签 中创建

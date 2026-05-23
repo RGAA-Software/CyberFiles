@@ -25,7 +25,9 @@ use super::{
 };
 use crate::app_state::{AppFileClipboard, AppNavigation};
 use crate::icons::pin_icon;
-use crate::shell::preferences::assign_paths_to_file_tag;
+use crate::shell::preferences::{
+    assign_paths_to_file_tag, file_tags_containing_paths, remove_paths_from_file_tag,
+};
 
 const SHELL_MENU_MAX_HEIGHT: Pixels = px(620.);
 
@@ -200,6 +202,38 @@ fn shell_feature_entries(
         }
         Err(_) => Vec::new(),
     }
+}
+
+fn append_remove_from_tags_submenu(
+    menu: PopupMenu,
+    paths: Vec<PathBuf>,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let tag_names = file_tags_containing_paths(&paths);
+    menu.submenu_with_icon(
+        Some(menu_icon(IconName::Inbox)),
+        t!("files.menu.remove_from_tag"),
+        window,
+        cx,
+        move |sub, _window, _cx| {
+            let tag_names = tag_names.clone();
+            if tag_names.is_empty() {
+                sub.item(PopupMenuItem::new(t!("files.menu.not_in_file_tags")).disabled(true))
+            } else {
+                let mut sub = sub;
+                for name in tag_names {
+                    let paths_for_tag = paths.clone();
+                    sub = sub.item(
+                        PopupMenuItem::new(name.clone()).on_click(move |_, _, cx| {
+                            remove_paths_from_file_tag(&name, &paths_for_tag, cx);
+                        }),
+                    );
+                }
+                sub
+            }
+        },
+    )
 }
 
 fn append_file_tags_submenu(
@@ -904,6 +938,7 @@ fn build_directory_item_menu(
     );
     menu = menu.separator();
     menu = append_file_tags_submenu(menu, paths.clone(), window, cx);
+    menu = append_remove_from_tags_submenu(menu, paths.clone(), window, cx);
     menu = menu.separator();
 
     if has_selection {

@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc};
 
 use cyberfiles_fs::{
-    compress_paths_to_zip, paths_conflict, transfer_one, ClipboardOperation, ConflictResolution,
-    FileClipboard, TransferOutcome,
+    compress_paths_to_zip, paths_conflict, transfer_one_cancellable, ClipboardOperation,
+    ConflictResolution, FileClipboard, TransferCancelled, TransferOutcome,
 };
 use gpui::{AppContext, Context, Entity, ParentElement, SharedString, Styled, WeakEntity, Window};
 use gpui_component::{
@@ -303,12 +303,29 @@ async fn run_transfer_with_conflicts(
         let must_replace = paths_conflict(&source, &target);
         let source_path = source.clone();
         let dest_dir = destination.clone();
-        cx.background_spawn(async move {
-            transfer_one(&source_path, &dest_dir, operation, must_replace)
-        })
-        .await?;
-        outcome.transferred += 1;
-        set_transfer_progress((index + 1) as u32, cx);
+        let cancel_for_task = cancel.clone();
+        match cx
+            .background_spawn(async move {
+                transfer_one_cancellable(
+                    &source_path,
+                    &dest_dir,
+                    operation,
+                    must_replace,
+                    &cancel_for_task,
+                )
+            })
+            .await
+        {
+            Ok(()) => {
+                outcome.transferred += 1;
+                set_transfer_progress((index + 1) as u32, cx);
+            }
+            Err(error) if error.is::<TransferCancelled>() => {
+                outcome.cancelled = true;
+                return Ok(outcome);
+            }
+            Err(error) => return Err(error),
+        }
     }
 
     Ok(outcome)

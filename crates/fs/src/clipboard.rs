@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardOperation {
@@ -27,6 +28,18 @@ pub struct TransferOutcome {
     pub transferred: u32,
     pub cancelled: bool,
 }
+
+/// Returned when the user cancels during an in-progress copy/move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransferCancelled;
+
+impl std::fmt::Display for TransferCancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "transfer cancelled")
+    }
+}
+
+impl std::error::Error for TransferCancelled {}
 
 #[derive(Debug, Clone)]
 pub struct FileClipboard {
@@ -113,6 +126,27 @@ pub fn transfer_one(
     operation: ClipboardOperation,
     replace_existing: bool,
 ) -> anyhow::Result<()> {
+    transfer_one_cancellable(
+        source,
+        destination_dir,
+        operation,
+        replace_existing,
+        &AtomicBool::new(false),
+    )
+}
+
+/// Like [`transfer_one`], but checks `cancel` between files and during large file copies.
+pub fn transfer_one_cancellable(
+    source: &Path,
+    destination_dir: &Path,
+    operation: ClipboardOperation,
+    replace_existing: bool,
+    cancel: &AtomicBool,
+) -> anyhow::Result<()> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(TransferCancelled.into());
+    }
+
     let file_name = source
         .file_name()
         .ok_or_else(|| anyhow::anyhow!("invalid source path {}", source.display()))?;
@@ -129,12 +163,17 @@ pub fn transfer_one(
     }
 
     match operation {
-        ClipboardOperation::Copy => copy_path_recursive(source, &target),
+        ClipboardOperation::Copy => copy_path_recursive_cancellable(source, &target, cancel),
         ClipboardOperation::Cut => {
-            if std::fs::rename(source, &target).is_err() {
-                copy_path_recursive(source, &target)?;
-                remove_path_recursive(source)?;
+            if std::fs::rename(source, &target).is_ok() {
+                return Ok(());
             }
+            copy_path_recursive_cancellable(source, &target, cancel)?;
+            if cancel.load(Ordering::Relaxed) {
+                let _ = remove_path_recursive(&target);
+                return Err(TransferCancelled.into());
+            }
+            remove_path_recursive(source)?;
             Ok(())
         }
     }
@@ -163,19 +202,57 @@ pub fn remove_path_recursive(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn copy_path_recursive(source: &Path, target: &Path) -> anyhow::Result<()> {
+fn copy_path_recursive_cancellable(
+    source: &Path,
+    target: &Path,
+    cancel: &AtomicBool,
+) -> anyhow::Result<()> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(TransferCancelled.into());
+    }
+
     if source.is_dir() {
         std::fs::create_dir_all(target)?;
         for entry in std::fs::read_dir(source)? {
+            if cancel.load(Ordering::Relaxed) {
+                let _ = remove_path_recursive(target);
+                return Err(TransferCancelled.into());
+            }
             let entry = entry?;
             let name = entry.file_name();
-            copy_path_recursive(&entry.path(), &target.join(name))?;
+            copy_path_recursive_cancellable(&entry.path(), &target.join(name), cancel)?;
         }
     } else {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::copy(source, target)?;
+        copy_file_cancellable(source, target, cancel)?;
+    }
+    Ok(())
+}
+
+fn copy_file_cancellable(
+    source: &Path,
+    target: &Path,
+    cancel: &AtomicBool,
+) -> anyhow::Result<()> {
+    use std::io::{Read, Write};
+
+    const CHUNK: usize = 256 * 1024;
+    let mut src = std::fs::File::open(source)?;
+    let mut dst = std::fs::File::create(target)?;
+    let mut buf = [0u8; CHUNK];
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            drop(dst);
+            let _ = std::fs::remove_file(target);
+            return Err(TransferCancelled.into());
+        }
+        let n = src.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n])?;
     }
     Ok(())
 }

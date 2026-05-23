@@ -256,6 +256,47 @@ pub fn remove_file_tag(name: &str, cx: &mut App) {
     refresh_home_if_active(cx);
 }
 
+pub fn remove_paths_from_file_tag(tag_name: &str, paths: &[PathBuf], cx: &mut App) {
+    if paths.is_empty() {
+        return;
+    }
+    let path_strings: Vec<String> = paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    mutate_config(cx, |c| {
+        let Some(tag) = c.file_tags.iter_mut().find(|t| t.name == tag_name) else {
+            return;
+        };
+        tag.paths.retain(|p| !path_strings.iter().any(|s| s == p));
+    });
+    refresh_home_if_active(cx);
+    if let Some(nav) = cx.try_global::<crate::app_state::AppNavigation>() {
+        let page = nav.main_page();
+        let _ = page.update(cx, |page, cx| page.refresh_sidebar_cache(cx));
+    }
+}
+
+/// Tag names that contain at least one of `paths` (canonical string match).
+pub fn file_tags_containing_paths(paths: &[PathBuf]) -> Vec<String> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    let path_strings: Vec<String> = paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    cyberfiles_core::load_config()
+        .map(|c| {
+            c.file_tags
+                .iter()
+                .filter(|tag| tag.paths.iter().any(|p| path_strings.iter().any(|s| s == p)))
+                .map(|tag| tag.name.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn context_menu_shell_submenu(_cx: &App) -> bool {
     cyberfiles_core::load_config()
         .map(|c| c.context_menu_shell_extensions_submenu)
