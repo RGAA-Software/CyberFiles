@@ -49,6 +49,7 @@ pub fn init(cx: &mut App) {
 
     cx.on_action(|_: &shell::Quit, cx| {
         shell::preferences::persist_window_bounds(cx);
+        cyberfiles_core::flush_config();
         cx.quit();
     });
 

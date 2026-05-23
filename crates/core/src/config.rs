@@ -1,10 +1,20 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, OnceLock, RwLock};
+use std::thread;
+use std::time::Duration;
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::{APP_NAME, WINDOW_HEIGHT, WINDOW_WIDTH};
+
+const CONFIG_SAVE_DEBOUNCE_MS: u64 = 300;
+
+static CONFIG_CACHE: OnceLock<RwLock<AppConfig>> = OnceLock::new();
+static CONFIG_CACHE_INITIALIZED: AtomicBool = AtomicBool::new(false);
+static CONFIG_FLUSH_TX: OnceLock<mpsc::Sender<()>> = OnceLock::new();
 
 /// Persisted file browser view: `details`, `grid`, or `columns`.
 pub const VIEW_DETAILS: &str = "details";
@@ -269,19 +279,96 @@ pub fn config_path() -> Option<PathBuf> {
     ProjectDirs::from("com", "cyberfiles", APP_NAME).map(|dirs| dirs.config_dir().join(CONFIG_FILE))
 }
 
+/// Loads settings from the in-memory cache (disk on first access).
+///
+/// Returns `None` when the config directory is unavailable, or when no settings
+/// file exists yet and the cache has not been initialized by a save.
 pub fn load_config() -> Option<AppConfig> {
+    let path = config_path()?;
+    if !CONFIG_CACHE_INITIALIZED.load(Ordering::Acquire) && !path.exists() {
+        return None;
+    }
+    Some(config_cache().read().expect("config cache poisoned").clone())
+}
+
+/// Updates the in-memory cache and schedules a debounced background write.
+pub fn save_config(config: &AppConfig) -> anyhow::Result<()> {
+    config_path().ok_or_else(|| anyhow::anyhow!("config directory unavailable"))?;
+    *config_cache().write().expect("config cache poisoned") = config.clone();
+    ensure_config_flush_worker();
+    schedule_config_flush();
+    Ok(())
+}
+
+/// Writes the current cache to disk immediately (e.g. on application exit).
+pub fn flush_config() {
+    let Some(cache) = CONFIG_CACHE.get() else {
+        return;
+    };
+    let Ok(config) = cache.read() else {
+        return;
+    };
+    if let Err(err) = write_config_to_disk(&config) {
+        eprintln!("cyberfiles: failed to flush config: {err}");
+    }
+}
+
+fn config_cache() -> &'static RwLock<AppConfig> {
+    CONFIG_CACHE.get_or_init(|| {
+        CONFIG_CACHE_INITIALIZED.store(true, Ordering::Release);
+        RwLock::new(read_config_from_disk().unwrap_or_default())
+    })
+}
+
+fn read_config_from_disk() -> Option<AppConfig> {
     let path = config_path()?;
     let data = fs::read_to_string(path).ok()?;
     serde_json::from_str(&data).ok()
 }
 
-pub fn save_config(config: &AppConfig) -> anyhow::Result<()> {
+fn ensure_config_flush_worker() {
+    CONFIG_FLUSH_TX.get_or_init(|| {
+        let (tx, rx) = mpsc::channel();
+        thread::Builder::new()
+            .name("config-flush".into())
+            .spawn(move || config_flush_worker(rx))
+            .ok();
+        tx
+    });
+}
+
+fn config_flush_worker(rx: mpsc::Receiver<()>) {
+    while rx.recv().is_ok() {
+        while rx.recv_timeout(Duration::from_millis(CONFIG_SAVE_DEBOUNCE_MS))
+            .is_ok()
+        {}
+        let Some(cache) = CONFIG_CACHE.get() else {
+            continue;
+        };
+        let Ok(config) = cache.read() else {
+            continue;
+        };
+        if let Err(err) = write_config_to_disk(&config) {
+            eprintln!("cyberfiles: failed to save config: {err}");
+        }
+    }
+}
+
+fn schedule_config_flush() {
+    if let Some(tx) = CONFIG_FLUSH_TX.get() {
+        let _ = tx.send(());
+    }
+}
+
+fn write_config_to_disk(config: &AppConfig) -> anyhow::Result<()> {
     let path = config_path().ok_or_else(|| anyhow::anyhow!("config directory unavailable"))?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string_pretty(config)?;
-    fs::write(path, json)?;
+    let json = serde_json::to_string(config)?;
+    let tmp_path = path.with_extension("json.tmp");
+    fs::write(&tmp_path, json)?;
+    fs::rename(tmp_path, path)?;
     Ok(())
 }
 

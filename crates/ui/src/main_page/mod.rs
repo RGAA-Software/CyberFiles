@@ -815,6 +815,7 @@ impl MainPage {
     fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         if self.tabs.len() <= 1 {
             persist_window_bounds(cx);
+            cyberfiles_core::flush_config();
             cx.quit();
             return;
         }
