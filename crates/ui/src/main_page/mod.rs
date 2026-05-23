@@ -18,7 +18,7 @@ use cyberfiles_platform_windows::list_shell_quick_access_folders;
 use gpui::{prelude::*, *};
 use gpui_component::{
     badge::Badge,
-    button::Button,
+    button::{Button, ButtonVariants as _},
     h_flex,
     input::{Input, InputEvent, InputState},
     label::Label,
@@ -48,7 +48,7 @@ use crate::toolbar_button::toolbar_icon_button;
 /// Matches Files `NavigationToolbar` height.
 const NAV_TOOLBAR_HEIGHT: Pixels = px(48.);
 /// Default medium `TabBar` height in the integrated title bar.
-const TITLE_TAB_BAR_HEIGHT: Pixels = px(34.);
+const TITLE_TAB_BAR_HEIGHT: Pixels = px(32.);
 /// Fixed width per document tab in the title bar (label truncates inside).
 const TITLE_TAB_WIDTH: Pixels = px(200.);
 const TITLE_TAB_CLOSE_RIGHT_INSET: Pixels = px(5.);
@@ -1129,7 +1129,7 @@ impl MainPage {
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> TabBar {
         let active = self.active_tab;
         TabBar::new("main-tab-bar")
-            .medium_titlebar()
+            .with_size(Size::Medium)
             .hide_bottom_border()
             .selected_index(active)
             .last_empty_space(
@@ -1144,6 +1144,12 @@ impl MainPage {
             )
             .children(self.tabs.iter().enumerate().map(|(index, tab)| {
                 let title = self.tab_title(index, cx);
+                let is_selected = index == active;
+                let close_color = if is_selected {
+                    cx.theme().tab_active_foreground
+                } else {
+                    cx.theme().muted_foreground
+                };
                 Tab::new()
                     .w(TITLE_TAB_WIDTH)
                     .min_w(TITLE_TAB_WIDTH)
@@ -1159,9 +1165,12 @@ impl MainPage {
                             .child(Label::new(title).text_left().truncate()),
                     )
                     .suffix(
-                        toolbar_icon_button(format!("main-tab-close-{}", tab.id))
+                        Button::new(format!("main-tab-close-{}", tab.id))
+                            .small()
+                            .ghost()
                             .mr(TITLE_TAB_CLOSE_RIGHT_INSET)
-                            .icon(compact_icon(IconName::Close))
+                            .text_color(close_color)
+                            .icon(compact_icon(IconName::Close).small())
                             .tooltip(t!("nav.close_tab"))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();

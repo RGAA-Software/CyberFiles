@@ -127,7 +127,7 @@ impl TabVariant {
     fn normal(&self, cx: &App) -> TabStyle {
         match self {
             TabVariant::Tab => TabStyle {
-                fg: cx.theme().tab_foreground,
+                fg: cx.theme().muted_foreground,
                 bg: cx.theme().transparent,
                 borders: Edges {
                     left: px(1.),
@@ -615,6 +615,20 @@ impl RenderOnce for Tab {
         let inner_paddings = self.variant.inner_paddings(self.size);
         let titlebar_medium =
             self.medium_titlebar && self.size == Size::Medium && self.variant == TabVariant::Tab;
+        if titlebar_medium {
+            tab_style.borders = Edges::all(px(0.));
+            tab_style.border_color = cx.theme().transparent;
+            tab_style.bg = cx.theme().transparent;
+            tab_style.inner_bg = if self.selected {
+                cx.theme().tab_active
+            } else {
+                cx.theme().transparent
+            };
+            hover_style.borders = Edges::all(px(0.));
+            hover_style.border_color = cx.theme().transparent;
+            hover_style.bg = cx.theme().transparent;
+            hover_style.inner_bg = cx.theme().tab_active;
+        }
         let inner_margins = if titlebar_medium {
             Edges::all(px(0.))
         } else {
@@ -646,6 +660,7 @@ impl RenderOnce for Tab {
                 Size::Large => this.text_base(),
                 _ => this.text_sm(),
             })
+            .when(self.selected, |this| this.font_semibold())
             .bg(tab_style.bg)
             .border_l(tab_style.borders.left)
             .border_r(tab_style.borders.right)
