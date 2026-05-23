@@ -980,16 +980,16 @@ impl MainPage {
                     .child(active_shell),
             )
             .child(self.render_shelf_pane(cx))
-            .child(self.render_status_bar(cx))
+            .child(div().flex_shrink_0().child(self.render_status_bar(cx)))
     }
 
     /// Files `ShelfPane`: shows in-app clipboard staging above the status bar.
     fn render_shelf_pane(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(clipboard) = AppFileClipboard::peek(cx) else {
-            return div().id("shelf-pane");
+            return div().id("shelf-pane").flex_shrink_0();
         };
         if clipboard.is_empty() {
-            return div().id("shelf-pane");
+            return div().id("shelf-pane").flex_shrink_0();
         }
 
         let count = clipboard.paths.len();
@@ -1018,38 +1018,37 @@ impl MainPage {
 
         h_flex()
             .id("shelf-pane")
+            .flex_shrink_0()
             .h(px(32.))
+            .w_full()
             .px_3()
             .gap_2()
             .items_center()
+            .overflow_hidden()
             .border_t_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().muted)
             .child(
-                v_flex()
-                    .gap_0p5()
-                    .flex_shrink_0()
-                    .child(
-                        Label::new(operation_label)
-                            .text_xs()
-                            .text_color(cx.theme().foreground),
-                    )
-                    .when(!preview.is_empty(), |col| {
-                        col.child(
-                            Label::new(preview)
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .truncate(),
-                        )
-                    }),
+                Label::new(operation_label)
+                    .text_xs()
+                    .text_color(cx.theme().foreground)
+                    .flex_shrink_0(),
             )
-            .flex_1()
-            .min_w_0()
-            .child(div().flex_1())
+            .when(!preview.is_empty(), |row| {
+                row.child(
+                    Label::new(preview)
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .truncate()
+                        .flex_1()
+                        .min_w_0(),
+                )
+            })
             .child(
                 Button::new("shelf-paste")
                     .label(t!("files.shelf.paste"))
                     .with_size(Size::Small)
+                    .flex_shrink_0()
                     .on_click(|_, window, cx| {
                         window.dispatch_action(Box::new(PasteItems), cx);
                     }),
@@ -1058,6 +1057,7 @@ impl MainPage {
                 Button::new("shelf-clear")
                     .label(t!("files.shelf.clear"))
                     .with_size(Size::Small)
+                    .flex_shrink_0()
                     .on_click(|_, _, cx| {
                         AppFileClipboard::clear(cx);
                     }),
@@ -1475,6 +1475,7 @@ impl MainPage {
 
         let mut bar = h_flex()
             .id("status-bar")
+            .flex_shrink_0()
             .h(if transfer.is_some() { px(36.) } else { px(32.) })
             .px_3()
             .items_center()
