@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
-use cyberfiles_assets::themes::{AYU, GRUVBOX, ONE};
+use cyberfiles_assets::themes::{ANT, AYU, GRUVBOX, ONE};
 use gpui::{App, SharedString};
 use gpui_component::{Theme, ThemeConfig, ThemeMode, ThemeSet};
 
@@ -39,7 +39,11 @@ impl ThemeCatalog {
 
     pub fn sorted_sets(&self) -> Vec<&ThemeSetEntry> {
         let mut sets: Vec<_> = self.sets().collect();
-        sets.sort_by(|a, b| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()));
+        sets.sort_by(|a, b| {
+            a.display_name
+                .to_lowercase()
+                .cmp(&b.display_name.to_lowercase())
+        });
         sets
     }
 
@@ -69,7 +73,7 @@ impl ThemeCatalog {
 
     fn load_embedded() -> Self {
         let mut sets = HashMap::new();
-        for json in [ONE, AYU, GRUVBOX] {
+        for json in [ANT, ONE, AYU, GRUVBOX] {
             if let Ok(set) = serde_json::from_str::<ThemeSet>(json) {
                 for entry in ThemeSetEntry::entries_from_family(set) {
                     sets.insert(entry.id.clone(), entry);
@@ -109,12 +113,7 @@ impl ThemeSetEntry {
             let light = by_name
                 .get(&light_name)
                 .cloned()
-                .or_else(|| {
-                    by_name
-                        .values()
-                        .find(|t| !t.mode.is_dark())
-                        .cloned()
-                });
+                .or_else(|| by_name.values().find(|t| !t.mode.is_dark()).cloned());
             let Some(light) = light else {
                 continue;
             };
@@ -215,8 +214,9 @@ mod tests {
     #[test]
     fn embedded_theme_sets_load() {
         let catalog = ThemeCatalog::load_embedded();
-        assert_eq!(catalog.sets.len(), 6);
+        assert_eq!(catalog.sets.len(), 7);
         for id in [
+            "Ant",
             "One",
             "Ayu",
             "Ayu Mirage",

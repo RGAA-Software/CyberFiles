@@ -1,5 +1,5 @@
 use gpui::{App, Entity, Global, Menu, MenuItem, SharedString};
-use gpui_component::{GlobalState, menu::AppMenuBar};
+use gpui_component::{menu::AppMenuBar, GlobalState};
 
 use rust_i18n::t;
 
@@ -65,8 +65,7 @@ fn build_view_menu_items() -> Vec<MenuItem> {
         .unwrap_or_default();
 
     let mut items = vec![
-        MenuItem::action(t!("nav.reopen_closed_tab"), ReopenClosedTab)
-            .disabled(closed.is_empty()),
+        MenuItem::action(t!("nav.reopen_closed_tab"), ReopenClosedTab).disabled(closed.is_empty()),
     ];
 
     if closed.is_empty() {
@@ -76,10 +75,7 @@ fn build_view_menu_items() -> Vec<MenuItem> {
     items.push(MenuItem::separator());
     for (index, session) in closed.iter().enumerate() {
         let label = NavigationTarget::label_for_session_tab(&session.tab);
-        items.push(MenuItem::action(
-            label,
-            ReopenClosedTabAt { index },
-        ));
+        items.push(MenuItem::action(label, ReopenClosedTabAt { index }));
     }
 
     items

@@ -30,7 +30,12 @@ pub fn list_icon_key(item: &FileItem) -> ListIconKey {
 
 /// Unique keys for all rows in a directory listing.
 pub fn list_icon_keys_for_items(items: &[FileItem]) -> Vec<ListIconKey> {
-    items.iter().map(list_icon_key).collect::<BTreeSet<_>>().into_iter().collect()
+    items
+        .iter()
+        .map(list_icon_key)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 /// Cached PNG for a list icon key, if already loaded.

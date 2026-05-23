@@ -38,7 +38,10 @@ pub fn eject_volume(root: &Path, disconnect_network: bool) -> anyhow::Result<()>
 
 fn shell_parse_name(root: &Path, disconnect_network: bool) -> anyhow::Result<String> {
     if disconnect_network {
-        let name = root.to_string_lossy().trim_end_matches(['\\', '/']).to_string();
+        let name = root
+            .to_string_lossy()
+            .trim_end_matches(['\\', '/'])
+            .to_string();
         if name.is_empty() {
             anyhow::bail!("invalid network path");
         }

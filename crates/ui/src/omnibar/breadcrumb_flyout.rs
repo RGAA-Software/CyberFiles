@@ -6,16 +6,14 @@
 
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
+use cyberfiles_fs::BreadcrumbDropdownResult;
 use gpui::{
-    anchored, deferred, div, percentage, point, prelude::FluentBuilder, px, Anchor,
-    AnyElement,
+    anchored, deferred, div, percentage, point, prelude::FluentBuilder, px, Anchor, AnyElement,
     App, AppContext, Context, DismissEvent, Element, ElementId, Entity, Focusable, GlobalElementId,
-    Hitbox,
-    HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement, MouseButton,
+    Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, ParentElement, Pixels, Point, RenderOnce, SharedString, StyleRefinement,
     Styled, Subscription, Window,
 };
-use cyberfiles_fs::BreadcrumbDropdownResult;
 use gpui_component::{IconName, Selectable};
 
 use crate::popup_menu::PopupMenu;
@@ -77,12 +75,12 @@ impl BreadcrumbFlyout {
         button_id: impl Into<ElementId>,
         tooltip: impl Into<SharedString>,
         build: impl Fn(
-            Option<&BreadcrumbDropdownResult>,
-            PopupMenu,
-            &mut Window,
-            &mut Context<PopupMenu>,
-        ) -> PopupMenu
-        + 'static,
+                Option<&BreadcrumbDropdownResult>,
+                PopupMenu,
+                &mut Window,
+                &mut Context<PopupMenu>,
+            ) -> PopupMenu
+            + 'static,
     ) -> Self {
         Self {
             id: id.into(),
@@ -100,12 +98,12 @@ impl BreadcrumbFlyout {
         button_id: impl Into<ElementId>,
         tooltip: impl Into<SharedString>,
         f: impl Fn(
-            Option<&BreadcrumbDropdownResult>,
-            PopupMenu,
-            &mut Window,
-            &mut Context<PopupMenu>,
-        ) -> PopupMenu
-        + 'static,
+                Option<&BreadcrumbDropdownResult>,
+                PopupMenu,
+                &mut Window,
+                &mut Context<PopupMenu>,
+            ) -> PopupMenu
+            + 'static,
         async_fill: impl Fn() -> BreadcrumbDropdownResult + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -308,9 +306,7 @@ impl Element for BreadcrumbFlyout {
             let hitbox = hitbox.clone();
 
             window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-                if phase.bubble()
-                    && event.button == MouseButton::Left
-                    && hitbox.is_hovered(window)
+                if phase.bubble() && event.button == MouseButton::Left && hitbox.is_hovered(window)
                 {
                     cx.stop_propagation();
                     let already_open = shared_state.borrow().open;
@@ -373,7 +369,8 @@ impl Element for BreadcrumbFlyout {
                                         let _ = window.update(cx, |_, window, cx| {
                                             let mut shared = shared_state.borrow_mut();
                                             *shared.dropdown_result.borrow_mut() = Some(result);
-                                            let result_for_menu = shared.dropdown_result.borrow().clone();
+                                            let result_for_menu =
+                                                shared.dropdown_result.borrow().clone();
                                             let new_menu = PopupMenu::build(window, cx, {
                                                 let builder = builder_fill.clone();
                                                 move |menu, window, cx| {

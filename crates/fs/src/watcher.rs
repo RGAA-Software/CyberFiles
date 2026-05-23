@@ -17,7 +17,10 @@ impl DirectoryWatcher {
     }
 
     /// Watches a directory tree (e.g. Quick Access `AutomaticDestinations`).
-    pub fn watch_recursive(path: &Path, debounce: Duration) -> anyhow::Result<(Self, Receiver<()>)> {
+    pub fn watch_recursive(
+        path: &Path,
+        debounce: Duration,
+    ) -> anyhow::Result<(Self, Receiver<()>)> {
         Self::watch_mode(path, RecursiveMode::Recursive, debounce)
     }
 

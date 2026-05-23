@@ -6,8 +6,9 @@ use windows::core::GUID;
 use windows::Win32::Foundation::{HWND, S_OK};
 use windows::Win32::UI::Shell::Common::{ITEMIDLIST, STRRET};
 use windows::Win32::UI::Shell::{
-    ILFree, IEnumIDList, IShellFolder, SHCONTF_FOLDERS, SHCONTF_INCLUDEHIDDEN, SHGetDesktopFolder,
-    SHGetKnownFolderIDList, StrRetToStrW, SHGDN_FORPARSING, SHGDN_INFOLDER, SHGDNF, KF_FLAG_DEFAULT,
+    IEnumIDList, ILFree, IShellFolder, SHGetDesktopFolder, SHGetKnownFolderIDList, StrRetToStrW,
+    KF_FLAG_DEFAULT, SHCONTF_FOLDERS, SHCONTF_INCLUDEHIDDEN, SHGDNF, SHGDN_FORPARSING,
+    SHGDN_INFOLDER,
 };
 
 use crate::com::ensure_com_apartment;
@@ -96,10 +97,8 @@ unsafe fn list_known_folder_folders_inner(
             ILFree(Some(pidl));
             continue;
         }
-        let display_name =
-            display_name_of(&shell_folder, pidl, SHGDN_INFOLDER).unwrap_or_default();
-        let parsing =
-            display_name_of(&shell_folder, pidl, SHGDN_FORPARSING).unwrap_or_default();
+        let display_name = display_name_of(&shell_folder, pidl, SHGDN_INFOLDER).unwrap_or_default();
+        let parsing = display_name_of(&shell_folder, pidl, SHGDN_FORPARSING).unwrap_or_default();
         let path = PathBuf::from(&parsing);
         if path.as_os_str().is_empty() {
             ILFree(Some(pidl));

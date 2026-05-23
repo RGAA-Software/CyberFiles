@@ -439,7 +439,14 @@ pub fn file_view_mode_from_config() -> String {
 }
 
 pub fn file_sort_prefs_from_config() -> (Option<String>, Option<String>, Option<bool>) {
-    load_config().map(|c| (c.file_sort_option, c.file_sort_direction, c.file_show_hidden))
+    load_config()
+        .map(|c| {
+            (
+                c.file_sort_option,
+                c.file_sort_direction,
+                c.file_show_hidden,
+            )
+        })
         .unwrap_or((None, None, None))
 }
 
@@ -468,7 +475,12 @@ pub fn load_config() -> Option<AppConfig> {
     if !CONFIG_CACHE_INITIALIZED.load(Ordering::Acquire) && !path.exists() {
         return None;
     }
-    Some(config_cache().read().expect("config cache poisoned").clone())
+    Some(
+        config_cache()
+            .read()
+            .expect("config cache poisoned")
+            .clone(),
+    )
 }
 
 /// Updates the in-memory cache and schedules a debounced background write.
@@ -519,7 +531,8 @@ fn ensure_config_flush_worker() {
 
 fn config_flush_worker(rx: mpsc::Receiver<()>) {
     while rx.recv().is_ok() {
-        while rx.recv_timeout(Duration::from_millis(CONFIG_SAVE_DEBOUNCE_MS))
+        while rx
+            .recv_timeout(Duration::from_millis(CONFIG_SAVE_DEBOUNCE_MS))
             .is_ok()
         {}
         let Some(cache) = CONFIG_CACHE.get() else {

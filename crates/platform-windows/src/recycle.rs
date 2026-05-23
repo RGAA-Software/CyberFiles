@@ -4,8 +4,8 @@ use std::time::SystemTime;
 use windows::Win32::Foundation::{HWND, S_OK};
 use windows::Win32::UI::Shell::Common::{ITEMIDLIST, STRRET};
 use windows::Win32::UI::Shell::{
-    ILFree, IEnumIDList, IShellFolder, SHCONTF_FOLDERS, SHCONTF_INCLUDEHIDDEN, SHCONTF_NONFOLDERS,
-    SHGDN_FORPARSING, SHGDN_INFOLDER, SHGetDesktopFolder, StrRetToStrW, SHGDNF,
+    IEnumIDList, ILFree, IShellFolder, SHGetDesktopFolder, StrRetToStrW, SHCONTF_FOLDERS,
+    SHCONTF_INCLUDEHIDDEN, SHCONTF_NONFOLDERS, SHGDNF, SHGDN_FORPARSING, SHGDN_INFOLDER,
 };
 
 use crate::com::ensure_com_apartment;
@@ -74,9 +74,8 @@ unsafe fn enum_child_pidls(folder: &IShellFolder) -> anyhow::Result<Vec<*mut ITE
 }
 
 unsafe fn entry_from_pidl(folder: &IShellFolder, pidl: *const ITEMIDLIST) -> RecycleBinEntry {
-    let display_name = display_name_of(folder, pidl, SHGDN_INFOLDER).unwrap_or_else(|_| {
-        display_name_of(folder, pidl, SHGDN_FORPARSING).unwrap_or_default()
-    });
+    let display_name = display_name_of(folder, pidl, SHGDN_INFOLDER)
+        .unwrap_or_else(|_| display_name_of(folder, pidl, SHGDN_FORPARSING).unwrap_or_default());
     let shell_path = display_name_of(folder, pidl, SHGDN_FORPARSING)
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(&display_name));

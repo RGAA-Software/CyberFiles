@@ -5,8 +5,8 @@ pub(crate) mod app_menus;
 mod app_shell;
 pub mod navigation;
 mod pane_shell;
-mod shell_panes;
 pub mod preferences;
+mod shell_panes;
 mod window;
 
 pub use pane_shell::PaneShell;

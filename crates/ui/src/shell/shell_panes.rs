@@ -59,13 +59,11 @@ impl ShellPanes {
             return;
         }
         self.dual_pane = true;
-        let secondary_target = decode_target(
-            if layout.secondary_tab.is_empty() {
-                "home"
-            } else {
-                layout.secondary_tab.as_str()
-            },
-        );
+        let secondary_target = decode_target(if layout.secondary_tab.is_empty() {
+            "home"
+        } else {
+            layout.secondary_tab.as_str()
+        });
         self.secondary.update(cx, |pane, cx| {
             pane.navigate(secondary_target, cx);
         });
@@ -134,42 +132,44 @@ impl Render for ShellPanes {
 
         h_resizable("shell-panes")
             .child(
-                resizable_panel()
-                    .flex_1()
-                    .child(
-                        div()
-                            .size_full()
-                            .min_h_0()
-                            .border_2()
-                            .border_color(if active == PaneSide::Primary {
-                                cx.theme().primary
-                            } else {
-                                cx.theme().border
-                            })
-                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                resizable_panel().flex_1().child(
+                    div()
+                        .size_full()
+                        .min_h_0()
+                        .border_2()
+                        .border_color(if active == PaneSide::Primary {
+                            cx.theme().primary
+                        } else {
+                            cx.theme().border
+                        })
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, _, cx| {
                                 this.set_active(PaneSide::Primary, cx);
-                            }))
-                            .child(primary),
-                    ),
+                            }),
+                        )
+                        .child(primary),
+                ),
             )
             .child(
-                resizable_panel()
-                    .flex_1()
-                    .child(
-                        div()
-                            .size_full()
-                            .min_h_0()
-                            .border_2()
-                            .border_color(if active == PaneSide::Secondary {
-                                cx.theme().primary
-                            } else {
-                                cx.theme().border
-                            })
-                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                resizable_panel().flex_1().child(
+                    div()
+                        .size_full()
+                        .min_h_0()
+                        .border_2()
+                        .border_color(if active == PaneSide::Secondary {
+                            cx.theme().primary
+                        } else {
+                            cx.theme().border
+                        })
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, _, cx| {
                                 this.set_active(PaneSide::Secondary, cx);
-                            }))
-                            .child(secondary),
-                    ),
+                            }),
+                        )
+                        .child(secondary),
+                ),
             )
             .into_any_element()
     }

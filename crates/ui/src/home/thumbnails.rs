@@ -71,10 +71,13 @@ impl HomePage {
         window: &Window,
     ) -> AnyElement {
         if let Some(bytes) = self.thumbnail_bytes.get(&thumbnail_cache_key(path)) {
-            return img(Arc::new(Image::from_bytes(ImageFormat::Png, bytes.as_ref().clone())))
-                .size(logical_size)
-                .object_fit(ObjectFit::Contain)
-                .into_any();
+            return img(Arc::new(Image::from_bytes(
+                ImageFormat::Png,
+                bytes.as_ref().clone(),
+            )))
+            .size(logical_size)
+            .object_fit(ObjectFit::Contain)
+            .into_any();
         }
         shell_icon_for_path(path, logical_size, window)
     }

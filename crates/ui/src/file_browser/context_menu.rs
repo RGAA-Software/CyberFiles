@@ -5,23 +5,24 @@ use std::sync::{Arc, RwLock};
 
 use cyberfiles_commands::{
     CompressItems, CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, NewFile,
-    NewFolder, OpenItem,
-    PasteItems, RefreshDirectory, RenameItem, ShellProperties, ViewColumns, ViewDetails, ViewGrid,
+    NewFolder, OpenItem, PasteItems, RefreshDirectory, RenameItem, ShellProperties, ViewColumns,
+    ViewDetails, ViewGrid,
 };
 use cyberfiles_core::{context_menu_item_prefs, load_config};
 use cyberfiles_fs::SortOption;
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
-use gpui::{Context, Entity, Pixels, SharedString, Window, px};
+use gpui::{px, Context, Entity, Pixels, SharedString, Window};
 use gpui_component::{notification::Notification, Icon, IconName, WindowExt as _};
 
 use crate::popup_menu::{PopupMenu, PopupMenuItem};
 use rust_i18n::t;
 
 use super::{
-    BrowseLocation, CreateFolderFromSelection, CreateShortcut, FileBrowser, OpenInNewPane,
-    OpenInNewWindow, OpenInTerminal, OpenWithDialog, ShellMenuCache, ShellSubmenuSnapshot,
-    SortByCreated, SortByModified, SortByName, SortBySize, SortByType, ToggleShowHidden,
-    ToggleSortDirection, ViewMode, normalize_paths_for_shell_cache, shell_submenu_snapshot,
+    normalize_paths_for_shell_cache, shell_submenu_snapshot, BrowseLocation,
+    CreateFolderFromSelection, CreateShortcut, FileBrowser, OpenInNewPane, OpenInNewWindow,
+    OpenInTerminal, OpenWithDialog, ShellMenuCache, ShellSubmenuSnapshot, SortByCreated,
+    SortByModified, SortByName, SortBySize, SortByType, ToggleShowHidden, ToggleSortDirection,
+    ViewMode,
 };
 use crate::app_state::{AppFileClipboard, AppNavigation};
 use crate::icons::pin_icon;
@@ -225,11 +226,9 @@ fn append_remove_from_tags_submenu(
                 let mut sub = sub;
                 for name in tag_names {
                     let paths_for_tag = paths.clone();
-                    sub = sub.item(
-                        PopupMenuItem::new(name.clone()).on_click(move |_, _, cx| {
-                            remove_paths_from_file_tag(&name, &paths_for_tag, cx);
-                        }),
-                    );
+                    sub = sub.item(PopupMenuItem::new(name.clone()).on_click(move |_, _, cx| {
+                        remove_paths_from_file_tag(&name, &paths_for_tag, cx);
+                    }));
                 }
                 sub
             }
@@ -243,9 +242,7 @@ fn append_file_tags_submenu(
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let tags = load_config()
-        .map(|c| c.file_tags)
-        .unwrap_or_default();
+    let tags = load_config().map(|c| c.file_tags).unwrap_or_default();
     let tag_names: Vec<String> = tags.iter().map(|t| t.name.clone()).collect();
     menu.submenu_with_icon(
         Some(menu_icon(IconName::Inbox)),
@@ -260,11 +257,9 @@ fn append_file_tags_submenu(
                 let mut sub = sub;
                 for name in tag_names {
                     let paths_for_tag = paths.clone();
-                    sub = sub.item(
-                        PopupMenuItem::new(name.clone()).on_click(move |_, _, cx| {
-                            assign_paths_to_file_tag(&name, &paths_for_tag, cx);
-                        }),
-                    );
+                    sub = sub.item(PopupMenuItem::new(name.clone()).on_click(move |_, _, cx| {
+                        assign_paths_to_file_tag(&name, &paths_for_tag, cx);
+                    }));
                 }
                 sub
             }
@@ -541,8 +536,11 @@ fn append_show_more_options(
         t!("files.menu.show_more_options"),
         window,
         cx,
-        move |sub, window, cx| {
-        match shell_submenu_snapshot(&shell_menu_cache, &paths_for_sub, extended_verbs) {
+        move |sub, window, cx| match shell_submenu_snapshot(
+            &shell_menu_cache,
+            &paths_for_sub,
+            extended_verbs,
+        ) {
             ShellSubmenuSnapshot::Loading => {
                 sub.item(PopupMenuItem::new(t!("files.menu.shell_loading")).disabled(true))
             }
@@ -558,16 +556,11 @@ fn append_show_more_options(
                 window,
                 cx,
             ),
-        }
         },
     )
 }
 
-fn append_clipboard_commands(
-    menu: PopupMenu,
-    has_selection: bool,
-    can_paste: bool,
-) -> PopupMenu {
+fn append_clipboard_commands(menu: PopupMenu, has_selection: bool, can_paste: bool) -> PopupMenu {
     menu_action_enabled(
         menu_action_enabled(
             menu_action_enabled(
@@ -689,65 +682,79 @@ fn build_background_menu(
         window,
         cx,
         move |menu, _, cx| {
-        let state = browser_sort.read(cx);
-        let focus = state.focus_handle.clone();
-        let sort = state.sort_preferences;
-        let show_hidden = state.read_options.show_hidden_items;
-        let hidden_label = if show_hidden {
-            t!("files.show_hidden.off")
-        } else {
-            t!("files.show_hidden.on")
-        };
-        menu.action_context(focus)
-            .menu_with_check(
-                t!("files.sort.name"),
-                sort.option == SortOption::Name,
-                Box::new(SortByName),
-            )
-            .menu_with_check(
-                t!("files.sort.modified"),
-                sort.option == SortOption::DateModified,
-                Box::new(SortByModified),
-            )
-            .menu_with_check(
-                t!("files.sort.created"),
-                sort.option == SortOption::DateCreated,
-                Box::new(SortByCreated),
-            )
-            .menu_with_check(
-                t!("files.sort.size"),
-                sort.option == SortOption::Size,
-                Box::new(SortBySize),
-            )
-            .menu_with_check(
-                t!("files.sort.type"),
-                sort.option == SortOption::FileType,
-                Box::new(SortByType),
-            )
-            .separator()
-            .menu(t!("files.sort.toggle_direction"), Box::new(ToggleSortDirection))
-            .menu(hidden_label, Box::new(ToggleShowHidden))
+            let state = browser_sort.read(cx);
+            let focus = state.focus_handle.clone();
+            let sort = state.sort_preferences;
+            let show_hidden = state.read_options.show_hidden_items;
+            let hidden_label = if show_hidden {
+                t!("files.show_hidden.off")
+            } else {
+                t!("files.show_hidden.on")
+            };
+            menu.action_context(focus)
+                .menu_with_check(
+                    t!("files.sort.name"),
+                    sort.option == SortOption::Name,
+                    Box::new(SortByName),
+                )
+                .menu_with_check(
+                    t!("files.sort.modified"),
+                    sort.option == SortOption::DateModified,
+                    Box::new(SortByModified),
+                )
+                .menu_with_check(
+                    t!("files.sort.created"),
+                    sort.option == SortOption::DateCreated,
+                    Box::new(SortByCreated),
+                )
+                .menu_with_check(
+                    t!("files.sort.size"),
+                    sort.option == SortOption::Size,
+                    Box::new(SortBySize),
+                )
+                .menu_with_check(
+                    t!("files.sort.type"),
+                    sort.option == SortOption::FileType,
+                    Box::new(SortByType),
+                )
+                .separator()
+                .menu(
+                    t!("files.sort.toggle_direction"),
+                    Box::new(ToggleSortDirection),
+                )
+                .menu(hidden_label, Box::new(ToggleShowHidden))
         },
     );
 
     if !in_recycle && !in_file_tag {
-        menu = menu
-            .separator()
-            .submenu_with_icon(
-                Some(menu_icon(IconName::Folder)),
-                t!("files.menu.new"),
-                window,
-                cx,
-                move |menu, _, cx| {
-                    let focus = browser_new.read(cx).focus_handle.clone();
-                    menu.action_context(focus)
-                        .menu_with_icon(t!("files.new_folder"), menu_icon(IconName::Folder), Box::new(NewFolder))
-                        .menu_with_icon(t!("files.new_file"), menu_icon(IconName::File), Box::new(NewFile))
-                },
-            );
+        menu = menu.separator().submenu_with_icon(
+            Some(menu_icon(IconName::Folder)),
+            t!("files.menu.new"),
+            window,
+            cx,
+            move |menu, _, cx| {
+                let focus = browser_new.read(cx).focus_handle.clone();
+                menu.action_context(focus)
+                    .menu_with_icon(
+                        t!("files.new_folder"),
+                        menu_icon(IconName::Folder),
+                        Box::new(NewFolder),
+                    )
+                    .menu_with_icon(
+                        t!("files.new_file"),
+                        menu_icon(IconName::File),
+                        Box::new(NewFile),
+                    )
+            },
+        );
     }
 
-    menu_action(menu, t!("files.menu.refresh"), IconName::Replace, Box::new(RefreshDirectory))
+    menu_action(
+        menu,
+        t!("files.menu.refresh"),
+        IconName::Replace,
+        Box::new(RefreshDirectory),
+    )
 }
 
 fn build_item_menu(
@@ -786,7 +793,12 @@ fn build_directory_item_menu(
     menu = append_clipboard_commands(menu, has_selection, can_paste);
     menu = menu.separator();
 
-    menu = menu_action(menu, t!("files.menu.open"), IconName::Folder, Box::new(OpenItem));
+    menu = menu_action(
+        menu,
+        t!("files.menu.open"),
+        IconName::Folder,
+        Box::new(OpenItem),
+    );
 
     if single && !paths[0].is_dir() {
         let open_with_children = shell_feature_entries(
@@ -839,7 +851,12 @@ fn build_directory_item_menu(
     }
 
     menu = menu.separator();
-    menu = menu_action(menu, t!("files.menu.copy_path"), IconName::ExternalLink, Box::new(CopyPath));
+    menu = menu_action(
+        menu,
+        t!("files.menu.copy_path"),
+        IconName::ExternalLink,
+        Box::new(CopyPath),
+    );
 
     if multi {
         menu = menu_action(
@@ -961,14 +978,8 @@ fn build_directory_item_menu(
                 cx,
             );
         } else {
-            menu = append_inline_shell_extensions(
-                menu,
-                paths,
-                shell_menu_cache,
-                browser,
-                window,
-                cx,
-            );
+            menu =
+                append_inline_shell_extensions(menu, paths, shell_menu_cache, browser, window, cx);
         }
     }
 
@@ -988,15 +999,9 @@ fn append_inline_shell_extensions(
             menu.item(PopupMenuItem::new(t!("files.menu.shell_loading")).disabled(true))
         }
         ShellSubmenuSnapshot::Empty => menu,
-        ShellSubmenuSnapshot::Ready(entries) => append_shell_entries(
-            menu,
-            &entries,
-            &paths,
-            false,
-            browser,
-            window,
-            cx,
-        ),
+        ShellSubmenuSnapshot::Ready(entries) => {
+            append_shell_entries(menu, &entries, &paths, false, browser, window, cx)
+        }
     }
 }
 
@@ -1012,7 +1017,12 @@ fn build_recycle_item_menu(
     let focus = state.focus_handle.clone();
 
     let mut menu = menu.action_context(focus);
-    menu = menu_action(menu, t!("files.menu.open"), IconName::Folder, Box::new(OpenItem));
+    menu = menu_action(
+        menu,
+        t!("files.menu.open"),
+        IconName::Folder,
+        Box::new(OpenItem),
+    );
     menu = menu.separator();
     menu = menu_action_enabled(
         menu,
@@ -1029,7 +1039,12 @@ fn build_recycle_item_menu(
         Box::new(DeleteItemsPermanent),
         has_selection,
     );
-    menu = menu_action(menu, t!("files.menu.properties"), IconName::Settings2, Box::new(ShellProperties));
+    menu = menu_action(
+        menu,
+        t!("files.menu.properties"),
+        IconName::Settings2,
+        Box::new(ShellProperties),
+    );
     menu_action_enabled(
         menu,
         t!("files.menu.paste"),
@@ -1051,7 +1066,12 @@ fn build_file_tag_item_menu(
     let focus = state.focus_handle.clone();
 
     let mut menu = menu.action_context(focus);
-    menu = menu_action(menu, t!("files.menu.open"), IconName::Folder, Box::new(OpenItem));
+    menu = menu_action(
+        menu,
+        t!("files.menu.open"),
+        IconName::Folder,
+        Box::new(OpenItem),
+    );
 
     if single_dir {
         let path = paths[0].clone();
@@ -1062,8 +1082,18 @@ fn build_file_tag_item_menu(
         ));
     }
 
-    menu = menu_action(menu, t!("files.menu.copy_path"), IconName::ExternalLink, Box::new(CopyPath));
-    menu_action(menu, t!("files.menu.properties"), IconName::Settings2, Box::new(ShellProperties))
+    menu = menu_action(
+        menu,
+        t!("files.menu.copy_path"),
+        IconName::ExternalLink,
+        Box::new(CopyPath),
+    );
+    menu_action(
+        menu,
+        t!("files.menu.properties"),
+        IconName::Settings2,
+        Box::new(ShellProperties),
+    )
 }
 
 fn path_is_pinned(path_string: &str) -> bool {

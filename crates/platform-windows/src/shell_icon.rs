@@ -14,14 +14,12 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Controls::{IImageList, ILD_TRANSPARENT};
 use windows::Win32::UI::Shell::{
-    IShellItem, IShellItemImageFactory, SHCreateItemFromParsingName, SHGetFileInfoW, SHGetImageList,
-    SHFILEINFOW, SHGFI_SYSICONINDEX, SHGFI_USEFILEATTRIBUTES, SIIGBF_BIGGERSIZEOK,
-    SIIGBF_ICONONLY, SIIGBF_SCALEUP, SIIGBF_THUMBNAILONLY, SHIL_EXTRALARGE, SHIL_JUMBO,
-    SHIL_LARGE, SHIL_SMALL,
+    IShellItem, IShellItemImageFactory, SHCreateItemFromParsingName, SHGetFileInfoW,
+    SHGetImageList, SHFILEINFOW, SHGFI_SYSICONINDEX, SHGFI_USEFILEATTRIBUTES, SHIL_EXTRALARGE,
+    SHIL_JUMBO, SHIL_LARGE, SHIL_SMALL, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY, SIIGBF_SCALEUP,
+    SIIGBF_THUMBNAILONLY,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    DestroyIcon, GetIconInfo, HICON, ICONINFO,
-};
+use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 
 use crate::com::run_sta_task;
 use crate::icons::shell_dummy_icon_path;
@@ -183,7 +181,11 @@ fn shell_icon_parsing_path(path: &Path) -> PathBuf {
     }
 }
 
-unsafe fn shell_icon_png_inner(path: &Path, size: u32, _is_folder: bool) -> anyhow::Result<Vec<u8>> {
+unsafe fn shell_icon_png_inner(
+    path: &Path,
+    size: u32,
+    _is_folder: bool,
+) -> anyhow::Result<Vec<u8>> {
     let parsing = shell_icon_parsing_path(path);
     let wide = path_to_wide(&parsing);
     let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)?;

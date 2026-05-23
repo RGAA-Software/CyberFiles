@@ -6,38 +6,35 @@ use std::{
     rc::Rc,
 };
 
+use crate::app_state::AppFileClipboard;
+use crate::app_state::AppNavigation;
+use crate::file_ops::{
+    spawn_compress, spawn_file_transfer, spawn_paste_from_clipboard, FileTransferKind,
+};
+use crate::icons::{compact_icon, toolbar_icon};
+use crate::list_icon_cache;
+use crate::popup_menu::PopupMenu;
+use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
 use chrono::{DateTime, Local};
 use cyberfiles_commands::{
     CompressItems, CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch,
-    NavigateNext,
-    NavigatePrevious, NewFile, NewFolder, OpenItem,
-    PasteItems, RefreshDirectory, RenameItem, SelectAll, ShellProperties, ViewColumns, ViewDetails,
-    ViewGrid, FILE_BROWSER,
+    NavigateNext, NavigatePrevious, NewFile, NewFolder, OpenItem, PasteItems, RefreshDirectory,
+    RenameItem, SelectAll, ShellProperties, ViewColumns, ViewDetails, ViewGrid, FILE_BROWSER,
 };
 use cyberfiles_core::{
     file_sort_prefs_from_config, file_view_mode_from_config, load_config, save_file_browser_prefs,
     VIEW_COLUMNS, VIEW_DETAILS, VIEW_GRID,
 };
 use cyberfiles_fs::{
-    column_trail_for, create_directory, create_file, delete_paths,
-    file_items_for_tag_paths, filter_items_by_query, home_navigation_path, move_items,
-    read_directory, read_recycle_bin,
+    column_trail_for, create_directory, create_file, delete_paths, file_items_for_tag_paths,
+    filter_items_by_query, home_navigation_path, move_items, read_directory, read_recycle_bin,
     recycle_paths, rename_path, unique_new_file_name, unique_new_folder_name, ClipboardOperation,
     DirectoryReadOptions, DirectoryWatcher, FileClipboard, FileItem, FileItemKind, SortDirection,
     SortOption, SortPreferences,
 };
-use crate::app_state::AppNavigation;
-use crate::file_ops::{
-    spawn_compress, spawn_file_transfer, spawn_paste_from_clipboard, FileTransferKind,
-};
-use crate::icons::{compact_icon, toolbar_icon};
-use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
-use crate::app_state::AppFileClipboard;
-use crate::list_icon_cache;
-use crate::popup_menu::PopupMenu;
 use gpui::{
-    actions, anchored, deferred, prelude::*, ClipboardItem, ClickEvent, DismissEvent, Entity,
+    actions, anchored, deferred, prelude::*, ClickEvent, ClipboardItem, DismissEvent, Entity,
     FocusHandle, Focusable, ParentElement, ScrollStrategy, Subscription, Window, *,
 };
 use gpui_component::{
@@ -144,7 +141,10 @@ pub(crate) fn normalize_paths_for_shell_cache(paths: &[PathBuf]) -> Vec<PathBuf>
     normalized
 }
 
-pub(crate) fn shell_cache_matches_selection(cache_paths: &[PathBuf], selection: &[PathBuf]) -> bool {
+pub(crate) fn shell_cache_matches_selection(
+    cache_paths: &[PathBuf],
+    selection: &[PathBuf],
+) -> bool {
     normalize_paths_for_shell_cache(cache_paths) == normalize_paths_for_shell_cache(selection)
 }
 
@@ -401,11 +401,13 @@ impl FileBrowser {
             .shell_menu_cache
             .read()
             .ok()
-            .and_then(|guard| guard.as_ref().map(|cache| {
-                cache.paths == paths_key
-                    && cache.extended_verbs == extended
-                    && !cache.entries.is_empty()
-            }))
+            .and_then(|guard| {
+                guard.as_ref().map(|cache| {
+                    cache.paths == paths_key
+                        && cache.extended_verbs == extended
+                        && !cache.entries.is_empty()
+                })
+            })
             .unwrap_or(false)
         {
             return;
@@ -623,10 +625,7 @@ impl FileBrowser {
         });
     }
 
-    fn render_context_menu_overlay(
-        &self,
-        window: &Window,
-    ) -> impl IntoElement {
+    fn render_context_menu_overlay(&self, window: &Window) -> impl IntoElement {
         let Some(menu) = self.context_menu_view.clone() else {
             return div().into_any_element();
         };
@@ -785,27 +784,19 @@ impl FileBrowser {
             BrowseLocation::Directory => {
                 load_files_dir(&self.current_dir, self.read_options, self.sort_preferences)
             }
-            BrowseLocation::RecycleBin => match read_recycle_bin(
-                self.read_options,
-                self.sort_preferences,
-            ) {
-                Ok(items) => (items, None),
-                Err(error) => (Vec::new(), Some(error.to_string())),
-            },
+            BrowseLocation::RecycleBin => {
+                match read_recycle_bin(self.read_options, self.sort_preferences) {
+                    Ok(items) => (items, None),
+                    Err(error) => (Vec::new(), Some(error.to_string())),
+                }
+            }
             BrowseLocation::FileTag { tag_name } => {
                 let paths = paths_for_file_tag(tag_name);
                 if paths.is_empty() {
-                    (
-                        Vec::new(),
-                        Some(t!("file_tag.empty").to_string()),
-                    )
+                    (Vec::new(), Some(t!("file_tag.empty").to_string()))
                 } else {
                     (
-                        file_items_for_tag_paths(
-                            &paths,
-                            self.read_options,
-                            self.sort_preferences,
-                        ),
+                        file_items_for_tag_paths(&paths, self.read_options, self.sort_preferences),
                         None,
                     )
                 }
@@ -1022,10 +1013,13 @@ impl FileBrowser {
         let key = list_icon_cache::list_icon_key(item);
         if let Some(png) = list_icon_cache::list_icon_png_cached(&key, px) {
             if !png.is_empty() {
-                return img(std::sync::Arc::new(Image::from_bytes(ImageFormat::Png, (*png).clone())))
-                    .size(logical_size)
-                    .object_fit(ObjectFit::Contain)
-                    .into_any_element();
+                return img(std::sync::Arc::new(Image::from_bytes(
+                    ImageFormat::Png,
+                    (*png).clone(),
+                )))
+                .size(logical_size)
+                .object_fit(ObjectFit::Contain)
+                .into_any_element();
             }
         }
         div()
@@ -1073,8 +1067,8 @@ impl FileBrowser {
             return;
         }
         let index = self.focused_index.unwrap_or(0);
-        let next = (index as isize + delta)
-            .clamp(0, self.display_items.len() as isize - 1) as usize;
+        let next =
+            (index as isize + delta).clamp(0, self.display_items.len() as isize - 1) as usize;
         self.focused_index = Some(next);
         self.scroll_handle
             .scroll_to_item(next, ScrollStrategy::Center);
@@ -1103,8 +1097,7 @@ impl FileBrowser {
     }
 
     fn primary_path(&self) -> Option<PathBuf> {
-        self.primary_selected_item()
-            .map(|item| item.path.clone())
+        self.primary_selected_item().map(|item| item.path.clone())
     }
 
     fn selected_paths_vec(&self) -> Vec<PathBuf> {
@@ -1119,9 +1112,7 @@ impl FileBrowser {
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_default();
-        let input = cx.new(|cx| {
-            InputState::new(window, cx).default_value(default_name)
-        });
+        let input = cx.new(|cx| InputState::new(window, cx).default_value(default_name));
         self.renaming = Some(RenameState { path, input });
     }
 
@@ -1185,7 +1176,10 @@ impl FileBrowser {
                     self.anchor_index = self.focused_index;
                     self.begin_rename(window, cx);
                 } else {
-                    window.push_notification(Notification::success(t!("files.new_folder.success")), cx);
+                    window.push_notification(
+                        Notification::success(t!("files.new_folder.success")),
+                        cx,
+                    );
                 }
             }
             Err(error) => self.error = Some(error.to_string()),
@@ -1205,7 +1199,8 @@ impl FileBrowser {
                     self.anchor_index = self.focused_index;
                     self.begin_rename(window, cx);
                 } else {
-                    window.push_notification(Notification::success(t!("files.new_file.success")), cx);
+                    window
+                        .push_notification(Notification::success(t!("files.new_file.success")), cx);
                 }
             }
             Err(error) => self.error = Some(error.to_string()),
@@ -1460,10 +1455,13 @@ impl FileBrowser {
             .min_h_0()
             .w_full()
             .overflow_x_scroll()
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.clear_selection();
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.clear_selection();
+                    cx.notify();
+                }),
+            )
             .children(columns)
     }
 
@@ -1503,19 +1501,22 @@ impl FileBrowser {
                     cx.notify();
                 }
             }))
-            .on_drag(DraggedFilePaths(drag_paths), |paths, _offset, _window, cx| {
-                let label = if paths.0.len() == 1 {
-                    paths.0[0]
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_else(|| t!("files.type.file").to_string())
-                } else {
-                    format!("{} {}", paths.0.len(), t!("files.status.items"))
-                };
-                cx.new(|_| DragPathPreview {
-                    label: label.into(),
-                })
-            })
+            .on_drag(
+                DraggedFilePaths(drag_paths),
+                |paths, _offset, _window, cx| {
+                    let label = if paths.0.len() == 1 {
+                        paths.0[0]
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| t!("files.type.file").to_string())
+                    } else {
+                        format!("{} {}", paths.0.len(), t!("files.status.items"))
+                    };
+                    cx.new(|_| DragPathPreview {
+                        label: label.into(),
+                    })
+                },
+            )
             .child(
                 div()
                     .w(px(20.))
@@ -1573,17 +1574,11 @@ impl FileBrowser {
                                 visible_range
                                     .filter_map(|index| {
                                         let item = this.display_items.get(index)?.clone();
-                                        let selected =
-                                            this.selected_paths.contains(&item.path);
+                                        let selected = this.selected_paths.contains(&item.path);
                                         let drag_paths =
                                             this.drag_paths_for_item(index, &item.path);
                                         Some(Self::row(
-                                            window,
-                                            index,
-                                            item,
-                                            selected,
-                                            drag_paths,
-                                            cx,
+                                            window, index, item, selected, drag_paths, cx,
                                         ))
                                     })
                                     .collect()
@@ -1676,11 +1671,14 @@ impl FileBrowser {
                     this.open_context_menu(event.position, window, cx);
                 }),
             )
-            .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
-                cx.new(|_| DragPathPreview {
-                    label: drag_preview_label(&paths.0).into(),
-                })
-            })
+            .on_drag(
+                DraggedFilePaths(drag_paths),
+                move |paths, _offset, _window, cx| {
+                    cx.new(|_| DragPathPreview {
+                        label: drag_preview_label(&paths.0).into(),
+                    })
+                },
+            )
             .child(
                 div()
                     .w(px(28.))
@@ -1787,11 +1785,14 @@ impl FileBrowser {
                     this.open_context_menu(event.position, window, cx);
                 }),
             )
-            .on_drag(DraggedFilePaths(drag_paths), move |paths, _offset, _window, cx| {
-                cx.new(|_| DragPathPreview {
-                    label: drag_preview_label(&paths.0).into(),
-                })
-            })
+            .on_drag(
+                DraggedFilePaths(drag_paths),
+                move |paths, _offset, _window, cx| {
+                    cx.new(|_| DragPathPreview {
+                        label: drag_preview_label(&paths.0).into(),
+                    })
+                },
+            )
             .child(Self::row_list_icon(&item, px(16.), window))
             .child(
                 div()
@@ -2004,7 +2005,12 @@ impl FileBrowser {
         AppNavigation::open_path_in_secondary_pane(path, cx);
     }
 
-    fn on_open_in_terminal(&mut self, _: &OpenInTerminal, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_open_in_terminal(
+        &mut self,
+        _: &OpenInTerminal,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(path) = self.primary_path() else {
             return;
         };
@@ -2103,11 +2109,21 @@ impl FileBrowser {
         self.set_view_mode(ViewMode::Columns, cx);
     }
 
-    fn on_focus_search_action(&mut self, _: &FocusSearch, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_focus_search_action(
+        &mut self,
+        _: &FocusSearch,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.focus_search(window, cx);
     }
 
-    fn on_shell_properties(&mut self, _: &ShellProperties, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_shell_properties(
+        &mut self,
+        _: &ShellProperties,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(path) = self.primary_path() else {
             return;
         };
@@ -2119,7 +2135,6 @@ impl FileBrowser {
         })
         .detach();
     }
-
 }
 
 impl FileBrowser {
@@ -2290,137 +2305,137 @@ impl Render for FileBrowser {
             })
             .when(self.show_toolbar, |this| {
                 this.child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .flex_wrap()
-                    .child(
-                        toolbar_icon_button("files-back")
-                            .icon(toolbar_icon(IconName::ArrowLeft))
-                            .tooltip(t!("nav.back"))
-                            .disabled(!can_go_back)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.navigate_back(cx);
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-forward")
-                            .icon(toolbar_icon(IconName::ArrowRight))
-                            .tooltip(t!("nav.forward"))
-                            .disabled(!can_go_forward)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.navigate_forward(cx);
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-up")
-                            .icon(toolbar_icon(IconName::ArrowUp))
-                            .tooltip(t!("nav.up"))
-                            .disabled(!can_go_up)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.navigate_parent(cx);
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-refresh")
-                            .icon(toolbar_icon(IconName::Redo2))
-                            .tooltip(t!("nav.refresh"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.refresh();
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-new-folder-btn")
-                            .icon(toolbar_icon(IconName::Folder))
-                            .tooltip(t!("files.new_folder"))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.create_new_folder(window, cx);
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-new-file-btn")
-                            .icon(toolbar_icon(IconName::File))
-                            .tooltip(t!("files.new_file"))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.create_new_file(window, cx);
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-view-details")
-                            .icon(toolbar_icon(IconName::GalleryVerticalEnd))
-                            .tooltip(t!("files.view.details"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_view_mode(ViewMode::Details, cx);
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-view-grid")
-                            .icon(toolbar_icon(IconName::LayoutDashboard))
-                            .tooltip(t!("files.view.grid"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_view_mode(ViewMode::Grid, cx);
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-view-columns")
-                            .icon(toolbar_icon(IconName::PanelLeft))
-                            .tooltip(t!("files.view.columns"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_view_mode(ViewMode::Columns, cx);
-                            })),
-                    )
-                    .child(
-                        toolbar_icon_button("files-delete-btn")
-                            .icon(toolbar_icon(IconName::Delete))
-                            .tooltip(t!("files.menu.delete"))
-                            .disabled(selected_count == 0)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.perform_delete(window, cx);
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        toolbar_dropdown_button("files-sort")
-                            .button(
-                                toolbar_labeled_button("files-sort-btn")
-                                    .label(sort_label)
-                                    .tooltip(t!("files.menu.sort")),
-                            )
-                            .dropdown_menu(move |menu, _, _| {
-                                let hidden_label = if show_hidden {
-                                    t!("files.show_hidden.off")
-                                } else {
-                                    t!("files.show_hidden.on")
-                                };
-                                menu.menu(t!("files.sort.name"), Box::new(SortByName))
-                                    .menu(t!("files.sort.modified"), Box::new(SortByModified))
-                                    .menu(t!("files.sort.size"), Box::new(SortBySize))
-                                    .menu(t!("files.sort.type"), Box::new(SortByType))
-                                    .separator()
-                                    .menu(
-                                        t!("files.sort.toggle_direction"),
-                                        Box::new(ToggleSortDirection),
-                                    )
-                                    .menu(hidden_label, Box::new(ToggleShowHidden))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(120.))
-                            .px_3()
-                            .py_1()
-                            .rounded(cx.theme().radius)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .text_color(cx.theme().muted_foreground)
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .child(current_dir),
-                    ),
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .flex_wrap()
+                        .child(
+                            toolbar_icon_button("files-back")
+                                .icon(toolbar_icon(IconName::ArrowLeft))
+                                .tooltip(t!("nav.back"))
+                                .disabled(!can_go_back)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.navigate_back(cx);
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-forward")
+                                .icon(toolbar_icon(IconName::ArrowRight))
+                                .tooltip(t!("nav.forward"))
+                                .disabled(!can_go_forward)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.navigate_forward(cx);
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-up")
+                                .icon(toolbar_icon(IconName::ArrowUp))
+                                .tooltip(t!("nav.up"))
+                                .disabled(!can_go_up)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.navigate_parent(cx);
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-refresh")
+                                .icon(toolbar_icon(IconName::Redo2))
+                                .tooltip(t!("nav.refresh"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.refresh();
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-new-folder-btn")
+                                .icon(toolbar_icon(IconName::Folder))
+                                .tooltip(t!("files.new_folder"))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.create_new_folder(window, cx);
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-new-file-btn")
+                                .icon(toolbar_icon(IconName::File))
+                                .tooltip(t!("files.new_file"))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.create_new_file(window, cx);
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-view-details")
+                                .icon(toolbar_icon(IconName::GalleryVerticalEnd))
+                                .tooltip(t!("files.view.details"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_view_mode(ViewMode::Details, cx);
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-view-grid")
+                                .icon(toolbar_icon(IconName::LayoutDashboard))
+                                .tooltip(t!("files.view.grid"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_view_mode(ViewMode::Grid, cx);
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-view-columns")
+                                .icon(toolbar_icon(IconName::PanelLeft))
+                                .tooltip(t!("files.view.columns"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_view_mode(ViewMode::Columns, cx);
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-delete-btn")
+                                .icon(toolbar_icon(IconName::Delete))
+                                .tooltip(t!("files.menu.delete"))
+                                .disabled(selected_count == 0)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.perform_delete(window, cx);
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            toolbar_dropdown_button("files-sort")
+                                .button(
+                                    toolbar_labeled_button("files-sort-btn")
+                                        .label(sort_label)
+                                        .tooltip(t!("files.menu.sort")),
+                                )
+                                .dropdown_menu(move |menu, _, _| {
+                                    let hidden_label = if show_hidden {
+                                        t!("files.show_hidden.off")
+                                    } else {
+                                        t!("files.show_hidden.on")
+                                    };
+                                    menu.menu(t!("files.sort.name"), Box::new(SortByName))
+                                        .menu(t!("files.sort.modified"), Box::new(SortByModified))
+                                        .menu(t!("files.sort.size"), Box::new(SortBySize))
+                                        .menu(t!("files.sort.type"), Box::new(SortByType))
+                                        .separator()
+                                        .menu(
+                                            t!("files.sort.toggle_direction"),
+                                            Box::new(ToggleSortDirection),
+                                        )
+                                        .menu(hidden_label, Box::new(ToggleShowHidden))
+                                }),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(120.))
+                                .px_3()
+                                .py_1()
+                                .rounded(cx.theme().radius)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .text_color(cx.theme().muted_foreground)
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .child(current_dir),
+                        ),
                 )
             })
             .when_some(self.rename_bar(window, cx), |this, bar| this.child(bar))
@@ -2455,10 +2470,13 @@ impl Render for FileBrowser {
                     .min_h_0()
                     .size_full()
                     .overflow_hidden()
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        this.clear_selection();
-                        cx.notify();
-                    }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.clear_selection();
+                            cx.notify();
+                        }),
+                    )
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(|this, event: &MouseDownEvent, window, cx| {

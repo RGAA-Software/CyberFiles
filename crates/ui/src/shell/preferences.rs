@@ -1,20 +1,19 @@
 use std::path::PathBuf;
 
-use cyberfiles_core::{self, AppConfig, WINDOW_HEIGHT, WINDOW_WIDTH, save_config};
-use gpui::{App, SharedString, px};
-use gpui_component::{ActiveTheme as _, Theme, ThemeMode, scroll::ScrollbarShow};
+use cyberfiles_core::{self, save_config, AppConfig, WINDOW_HEIGHT, WINDOW_WIDTH};
+use gpui::{px, App, SharedString};
+use gpui_component::{scroll::ScrollbarShow, ActiveTheme as _, Theme, ThemeMode};
 
 use crate::theme::{self, ThemeCatalog};
 
 use crate::i18n;
 
 fn persist_preferences(cx: &mut App) {
-    let (window_width, window_height) =
-        window_size_from_active(cx).unwrap_or_else(|| {
-            cyberfiles_core::load_config()
-                .map(|c| (c.window_width, c.window_height))
-                .unwrap_or((WINDOW_WIDTH, WINDOW_HEIGHT))
-        });
+    let (window_width, window_height) = window_size_from_active(cx).unwrap_or_else(|| {
+        cyberfiles_core::load_config()
+            .map(|c| (c.window_width, c.window_height))
+            .unwrap_or((WINDOW_WIDTH, WINDOW_HEIGHT))
+    });
     let _ = save_config(&capture_config(cx, window_width, window_height));
 }
 
@@ -291,7 +290,11 @@ pub fn file_tags_containing_paths(paths: &[PathBuf]) -> Vec<String> {
         .map(|c| {
             c.file_tags
                 .iter()
-                .filter(|tag| tag.paths.iter().any(|p| path_strings.iter().any(|s| s == p)))
+                .filter(|tag| {
+                    tag.paths
+                        .iter()
+                        .any(|p| path_strings.iter().any(|s| s == p))
+                })
                 .map(|tag| tag.name.clone())
                 .collect()
         })

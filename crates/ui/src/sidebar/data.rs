@@ -248,4 +248,3 @@ fn path_key(path: &Path) -> String {
         .to_string_lossy()
         .to_ascii_lowercase()
 }
-

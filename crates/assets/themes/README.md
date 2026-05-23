@@ -4,6 +4,7 @@ Built-in color themes are ported from [Zed](https://github.com/zed-industries/ze
 
 | File | Zed source | Variants |
 |------|------------|----------|
+| `ant.json` | Hand-mapped from Ant Design color tokens | Ant Light, Ant Dark |
 | `one.json` | `zed/assets/themes/one/` | One Light, One Dark |
 | `ayu.json` | `zed/assets/themes/ayu/` | Ayu Light, Ayu Dark, Ayu Mirage |
 | `gruvbox.json` | `zed/assets/themes/gruvbox/` | Light/Dark × standard, hard, soft |

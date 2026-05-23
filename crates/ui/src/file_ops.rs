@@ -12,11 +12,7 @@ use cyberfiles_fs::{
 };
 use gpui::{AppContext, Context, Entity, ParentElement, SharedString, Styled, WeakEntity, Window};
 use gpui_component::{
-    button::Button,
-    dialog::DialogFooter,
-    label::Label,
-    notification::Notification,
-    v_flex,
+    button::Button, dialog::DialogFooter, label::Label, notification::Notification, v_flex,
     WindowExt as _,
 };
 use rust_i18n::t;
@@ -90,10 +86,8 @@ pub fn spawn_file_transfer(
             };
             let _ = window.update(cx, |_, window, cx| match &result {
                 Ok(outcome) if outcome.cancelled => {
-                    window.push_notification(
-                        Notification::info(t!("files.transfer.cancelled")),
-                        cx,
-                    );
+                    window
+                        .push_notification(Notification::info(t!("files.transfer.cancelled")), cx);
                 }
                 Ok(outcome) if outcome.transferred > 0 => {
                     window.push_notification(Notification::success(t!("files.transfer.done")), cx);
@@ -137,8 +131,7 @@ pub fn spawn_paste_from_clipboard(
     let paths = clipboard.paths;
     let paths_for_clipboard = paths.clone();
 
-    let progress_status: SharedString =
-        t!("files.transfer.pasting", count = paths.len()).into();
+    let progress_status: SharedString = t!("files.transfer.pasting", count = paths.len()).into();
     window.push_notification(
         Notification::info(t!("files.transfer.pasting", count = paths.len())),
         cx,
@@ -148,8 +141,7 @@ pub fn spawn_paste_from_clipboard(
     let weak = browser.downgrade();
     cx.spawn(async move |this, cx| {
         let cancel = begin_transfer_status(progress_status, total, cx);
-        let result =
-            run_transfer_with_conflicts(weak, cx, kind, paths, destination, cancel).await;
+        let result = run_transfer_with_conflicts(weak, cx, kind, paths, destination, cancel).await;
         end_transfer_status(cx);
 
         let _ = this.update(cx, |browser, cx| {
@@ -163,10 +155,8 @@ pub fn spawn_paste_from_clipboard(
                         FileClipboard::new(operation, paths_for_clipboard.clone()),
                         cx,
                     );
-                    window.push_notification(
-                        Notification::info(t!("files.transfer.cancelled")),
-                        cx,
-                    );
+                    window
+                        .push_notification(Notification::info(t!("files.transfer.cancelled")), cx);
                 }
                 Ok(outcome) if outcome.transferred > 0 => {
                     if operation == ClipboardOperation::Copy {
@@ -275,10 +265,8 @@ pub fn spawn_compress(
                     window.push_notification(Notification::success(t!("files.compress.done")), cx);
                 }
                 Err(error) if error.is::<CompressCancelled>() => {
-                    window.push_notification(
-                        Notification::info(t!("files.transfer.cancelled")),
-                        cx,
-                    );
+                    window
+                        .push_notification(Notification::info(t!("files.transfer.cancelled")), cx);
                 }
                 Err(error) => {
                     window.push_notification(
@@ -409,36 +397,37 @@ async fn prompt_conflict(
                         .pt_3()
                         .child(Label::new(description.clone()))
                         .child(
-                            DialogFooter::new().child(conflict_button(
-                                "conflict-cancel",
-                                cancel_label.clone(),
-                                ConflictResolution::Cancel,
-                                tx.clone(),
-                            ))
-                            .child(conflict_button(
-                                "conflict-skip-all",
-                                skip_all_label.clone(),
-                                ConflictResolution::SkipAll,
-                                tx.clone(),
-                            ))
-                            .child(conflict_button(
-                                "conflict-skip",
-                                skip_label.clone(),
-                                ConflictResolution::Skip,
-                                tx.clone(),
-                            ))
-                            .child(conflict_button(
-                                "conflict-replace-all",
-                                replace_all_label.clone(),
-                                ConflictResolution::ReplaceAll,
-                                tx.clone(),
-                            ))
-                            .child(conflict_button(
-                                "conflict-replace",
-                                replace_label.clone(),
-                                ConflictResolution::Replace,
-                                tx.clone(),
-                            )),
+                            DialogFooter::new()
+                                .child(conflict_button(
+                                    "conflict-cancel",
+                                    cancel_label.clone(),
+                                    ConflictResolution::Cancel,
+                                    tx.clone(),
+                                ))
+                                .child(conflict_button(
+                                    "conflict-skip-all",
+                                    skip_all_label.clone(),
+                                    ConflictResolution::SkipAll,
+                                    tx.clone(),
+                                ))
+                                .child(conflict_button(
+                                    "conflict-skip",
+                                    skip_label.clone(),
+                                    ConflictResolution::Skip,
+                                    tx.clone(),
+                                ))
+                                .child(conflict_button(
+                                    "conflict-replace-all",
+                                    replace_all_label.clone(),
+                                    ConflictResolution::ReplaceAll,
+                                    tx.clone(),
+                                ))
+                                .child(conflict_button(
+                                    "conflict-replace",
+                                    replace_label.clone(),
+                                    ConflictResolution::Replace,
+                                    tx.clone(),
+                                )),
                         ),
                 )
             });
@@ -455,10 +444,8 @@ fn conflict_button(
     resolution: ConflictResolution,
     tx: Arc<mpsc::SyncSender<ConflictResolution>>,
 ) -> Button {
-    Button::new(id)
-        .label(label)
-        .on_click(move |_, window, cx| {
-            let _ = tx.send(resolution);
-            window.close_dialog(cx);
-        })
+    Button::new(id).label(label).on_click(move |_, window, cx| {
+        let _ = tx.send(resolution);
+        window.close_dialog(cx);
+    })
 }

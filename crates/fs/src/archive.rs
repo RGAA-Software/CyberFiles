@@ -21,7 +21,10 @@ impl std::fmt::Display for CompressCancelled {
 impl std::error::Error for CompressCancelled {}
 
 /// Builds `destination_dir / {name}.zip` containing all `sources`.
-pub fn compress_paths_to_zip(sources: &[PathBuf], destination_dir: &Path) -> anyhow::Result<PathBuf> {
+pub fn compress_paths_to_zip(
+    sources: &[PathBuf],
+    destination_dir: &Path,
+) -> anyhow::Result<PathBuf> {
     compress_paths_to_zip_cancellable(sources, destination_dir, &AtomicBool::new(false), |_, _| {})
 }
 

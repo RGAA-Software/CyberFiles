@@ -1,5 +1,8 @@
 //! Embedded UI color themes (gpui-component `ThemeSet` JSON), ported from Zed built-in themes.
 
+/// Ant Design family (Ant Light / Ant Dark).
+pub const ANT: &str = include_str!("../themes/ant.json");
+
 /// Atom One family (One Light / One Dark).
 pub const ONE: &str = include_str!("../themes/one.json");
 

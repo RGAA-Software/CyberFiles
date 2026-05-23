@@ -1,31 +1,31 @@
 //! Windows-only Shell helpers (icons, clipboard file lists, known folders).
 
 #[cfg(windows)]
-mod com;
-#[cfg(windows)]
 mod clipboard;
+#[cfg(windows)]
+mod com;
 #[cfg(windows)]
 mod context_menu;
 #[cfg(windows)]
-mod shell_menu_session;
+mod eject;
 #[cfg(windows)]
 mod icons;
-#[cfg(windows)]
-mod shell_icon;
 #[cfg(windows)]
 mod paths;
 #[cfg(windows)]
 mod quick_access;
 #[cfg(windows)]
-mod shell_folder;
+mod recent_policy;
 #[cfg(windows)]
 mod recycle;
 #[cfg(windows)]
 mod shell;
 #[cfg(windows)]
-mod eject;
+mod shell_folder;
 #[cfg(windows)]
-mod recent_policy;
+mod shell_icon;
+#[cfg(windows)]
+mod shell_menu_session;
 #[cfg(windows)]
 mod storage;
 #[cfg(windows)]
@@ -34,34 +34,20 @@ mod volume;
 #[cfg(windows)]
 pub use clipboard::read_clipboard_file_paths;
 #[cfg(windows)]
+pub use eject::eject_volume;
+#[cfg(windows)]
 pub use icons::{
     icon_hint_for_path, icon_hint_from_extension, shell_dummy_icon_path, ShellIconHint,
 };
 #[cfg(windows)]
-pub use shell_icon::{
-    menu_icon_pixel_size, shell_icon_pixel_size, shell_icon_png, shell_icon_png_for_list_key,
-    shell_icon_png_from_cache, shell_icon_png_scaled, shell_thumbnail_png_scaled,
-    system_scale_factor,
-};
+pub use paths::{is_recycle_bin_path, recycle_bin_folder, SHELL_RECYCLE_BIN_PATH};
 pub use quick_access::{
     list_shell_quick_access_folders, shell_pin_to_quick_access, shell_unpin_from_quick_access,
     ShellQuickAccessEntry,
 };
-#[cfg(windows)]
-pub use paths::{is_recycle_bin_path, recycle_bin_folder, SHELL_RECYCLE_BIN_PATH};
-#[cfg(windows)]
-#[cfg(windows)]
-pub use shell_folder::{
-    list_cloud_drive_roots, list_known_folder_folders, list_wsl_distro_roots, ShellFolderEntry,
-    FOLDERID_LIBRARIES, FOLDERID_NETWORK,
-};
+pub use recent_policy::recent_documents_tracking_enabled;
 #[cfg(windows)]
 pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
-#[cfg(windows)]
-pub use eject::eject_volume;
-pub use recent_policy::recent_documents_tracking_enabled;
-pub use storage::open_storage_sense_settings;
-pub use volume::{DriveKind, VolumeDetails, volume_details};
 #[cfg(windows)]
 pub use shell::{
     clear_shell_menu_session, format_shell_menu_label, invoke_shell_context_menu_item,
@@ -69,6 +55,20 @@ pub use shell::{
     query_shell_context_menu_items, show_open_with_dialog, show_shell_context_menu,
     warm_up_query_context_menu, ShellContextMenuEntry,
 };
+#[cfg(windows)]
+#[cfg(windows)]
+pub use shell_folder::{
+    list_cloud_drive_roots, list_known_folder_folders, list_wsl_distro_roots, ShellFolderEntry,
+    FOLDERID_LIBRARIES, FOLDERID_NETWORK,
+};
+#[cfg(windows)]
+pub use shell_icon::{
+    menu_icon_pixel_size, shell_icon_pixel_size, shell_icon_png, shell_icon_png_for_list_key,
+    shell_icon_png_from_cache, shell_icon_png_scaled, shell_thumbnail_png_scaled,
+    system_scale_factor,
+};
+pub use storage::open_storage_sense_settings;
+pub use volume::{volume_details, DriveKind, VolumeDetails};
 
 #[cfg(not(windows))]
 pub use stubs::*;
@@ -187,7 +187,6 @@ mod stubs {
         pub display_name: String,
         pub path: PathBuf,
     }
-
 
     pub fn open_item_properties(_path: &Path) -> anyhow::Result<()> {
         Ok(())

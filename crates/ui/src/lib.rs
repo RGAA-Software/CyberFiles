@@ -1,18 +1,18 @@
 mod app_state;
 mod drag;
-mod file_ops;
 mod file_browser;
+mod file_ops;
 mod home;
-mod icons;
 mod i18n;
+mod icons;
 mod info_pane;
+mod list_icon_cache;
 mod main_page;
 mod omnibar;
+mod popup_menu;
 mod settings_view;
 mod shell;
-mod list_icon_cache;
 mod shell_icon;
-mod popup_menu;
 mod sidebar;
 mod theme;
 mod toolbar_button;
@@ -21,10 +21,10 @@ rust_i18n::i18n!("locales", fallback = "en");
 
 use gpui::App;
 
-pub use main_page::MainPage;
-pub use popup_menu::{ContextMenuExt, DropdownMenu, PopupMenu, PopupMenuItem};
 pub use cyberfiles_assets::Assets;
 pub use i18n::{init_locale, locale, set_locale};
+pub use main_page::MainPage;
+pub use popup_menu::{ContextMenuExt, DropdownMenu, PopupMenu, PopupMenuItem};
 pub use shell::open_main_window;
 
 pub fn init(cx: &mut App) {
@@ -52,5 +52,4 @@ pub fn init(cx: &mut App) {
         cyberfiles_core::flush_config();
         cx.quit();
     });
-
 }

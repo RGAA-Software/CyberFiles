@@ -26,7 +26,9 @@ fn sample_config() -> AppConfig {
         .map(|i| cyberfiles_core::FileTagConfig {
             name: format!("tag-{i}"),
             color: Some("#ff5500".into()),
-            paths: (0..8).map(|j| format!(r"C:\tag\{i}\file_{j}.txt")).collect(),
+            paths: (0..8)
+                .map(|j| format!(r"C:\tag\{i}\file_{j}.txt"))
+                .collect(),
         })
         .collect();
     config

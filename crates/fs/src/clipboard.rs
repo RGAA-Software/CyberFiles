@@ -231,11 +231,7 @@ fn copy_path_recursive_cancellable(
     Ok(())
 }
 
-fn copy_file_cancellable(
-    source: &Path,
-    target: &Path,
-    cancel: &AtomicBool,
-) -> anyhow::Result<()> {
+fn copy_file_cancellable(source: &Path, target: &Path, cancel: &AtomicBool) -> anyhow::Result<()> {
     use std::io::{Read, Write};
 
     const CHUNK: usize = 256 * 1024;

@@ -6,9 +6,7 @@ const MAX_PATH_HISTORY: usize = 10;
 
 /// Recent paths typed in the omnibar (Files `PathHistoryList`).
 pub fn path_history_list() -> Vec<String> {
-    load_config()
-        .map(|c| c.path_history)
-        .unwrap_or_default()
+    load_config().map(|c| c.path_history).unwrap_or_default()
 }
 
 /// Records a successfully navigated directory path (deduped, most recent first).

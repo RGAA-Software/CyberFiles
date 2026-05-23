@@ -4,16 +4,16 @@ use cyberfiles_core::{load_config, sidebar_is_compact, sidebar_is_offcanvas};
 use cyberfiles_platform_windows::{open_item_properties, SHELL_RECYCLE_BIN_PATH};
 use gpui::{prelude::*, ClickEvent, *};
 use gpui_component::{
+    h_flex,
     sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarItem, SidebarToggleButton},
-    Collapsible,
-    h_flex, Icon, IconName,
+    Collapsible, Icon, IconName,
 };
 use rust_i18n::t;
 
 use crate::drag::DraggedFilePaths;
-use crate::popup_menu::{PopupMenu, PopupMenuItem};
 use crate::icons::sidebar_icon;
 use crate::main_page::MainPage;
+use crate::popup_menu::{PopupMenu, PopupMenuItem};
 use crate::shell::navigation::NavigationTarget;
 
 use super::menu_with_drop::SidebarMenuWithDrop;
@@ -42,28 +42,22 @@ pub fn render_sidebar(
         pinned_in_settings: false,
     };
 
-    let mut footer = h_flex()
-        .w_full()
-        .gap_2()
-        .items_center()
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child({
-                    let mut settings_menu = SidebarMenuWithDrop::new().collapsed(collapsed);
-                    push_nav_entry(&mut settings_menu, &page, &settings_entry, &active);
-                    settings_menu.render("sidebar-settings", window, cx)
-                }),
-        );
+    let mut footer =
+        h_flex()
+            .w_full()
+            .gap_2()
+            .items_center()
+            .child(div().flex_1().min_w_0().child({
+                let mut settings_menu = SidebarMenuWithDrop::new().collapsed(collapsed);
+                push_nav_entry(&mut settings_menu, &page, &settings_entry, &active);
+                settings_menu.render("sidebar-settings", window, cx)
+            }));
     if collapsible != SidebarCollapsible::None {
-        footer = footer.child(
-            SidebarToggleButton::new()
-                .collapsed(collapsed)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.toggle_sidebar_collapsed(cx);
-                })),
-        );
+        footer = footer.child(SidebarToggleButton::new().collapsed(collapsed).on_click(
+            cx.listener(|this, _, _, cx| {
+                this.toggle_sidebar_collapsed(cx);
+            }),
+        ));
     }
 
     let mut sidebar = Sidebar::new("files-sidebar")
@@ -304,12 +298,11 @@ fn build_entry_context_menu(
 
     let page_nav = page.clone();
     let nav_target = target.clone();
-    let mut menu = menu.item(
-        PopupMenuItem::new(t!("sidebar.menu.open"))
-            .on_click(move |_, _, cx| {
-                let _ = page_nav.update(cx, |p, cx| p.navigate_to(nav_target.clone(), cx));
-            }),
-    );
+    let mut menu = menu.item(PopupMenuItem::new(t!("sidebar.menu.open")).on_click(
+        move |_, _, cx| {
+            let _ = page_nav.update(cx, |p, cx| p.navigate_to(nav_target.clone(), cx));
+        },
+    ));
 
     if let NavigationTarget::Path(path) = target.clone() {
         let path_exists = path.exists();
@@ -326,27 +319,27 @@ fn build_entry_context_menu(
         if pinned {
             let page_unpin = page.clone();
             let ps_unpin = path_string.clone();
-            menu = menu.item(
-                PopupMenuItem::new(t!("sidebar.menu.unpin")).on_click(move |_, _, cx| {
+            menu = menu.item(PopupMenuItem::new(t!("sidebar.menu.unpin")).on_click(
+                move |_, _, cx| {
                     let _ = page_unpin.update(cx, |p, cx| {
                         p.unpin_folder_path(&ps_unpin, cx);
                     });
-                }),
-            );
+                },
+            ));
             let page_up = page.clone();
             let ps_up = path_string.clone();
-            menu = menu.item(
-                PopupMenuItem::new(t!("sidebar.menu.move_up")).on_click(move |_, _, cx| {
+            menu = menu.item(PopupMenuItem::new(t!("sidebar.menu.move_up")).on_click(
+                move |_, _, cx| {
                     let _ = page_up.update(cx, |p, cx| p.move_pinned_folder(&ps_up, -1, cx));
-                }),
-            );
+                },
+            ));
             let page_down = page.clone();
             let ps_down = path_string.clone();
-            menu = menu.item(
-                PopupMenuItem::new(t!("sidebar.menu.move_down")).on_click(move |_, _, cx| {
+            menu = menu.item(PopupMenuItem::new(t!("sidebar.menu.move_down")).on_click(
+                move |_, _, cx| {
                     let _ = page_down.update(cx, |p, cx| p.move_pinned_folder(&ps_down, 1, cx));
-                }),
-            );
+                },
+            ));
         } else if path_exists {
             let page_pin = page.clone();
             let path_pin = path.clone();
@@ -358,12 +351,12 @@ fn build_entry_context_menu(
         }
 
         let path_props = path.clone();
-        menu = menu.item(
-            PopupMenuItem::new(t!("sidebar.menu.properties")).on_click(move |_, _, cx| {
+        menu = menu.item(PopupMenuItem::new(t!("sidebar.menu.properties")).on_click(
+            move |_, _, cx| {
                 let _ = open_item_properties(&path_props);
                 cx.stop_propagation();
-            }),
-        );
+            },
+        ));
     }
 
     menu
@@ -400,7 +393,10 @@ fn paths_match(sidebar: &Path, current: &Path) -> bool {
     if is_windows_drive_root(sidebar) {
         return false;
     }
-    if let (Ok(a), Ok(b)) = (std::fs::canonicalize(sidebar), std::fs::canonicalize(current)) {
+    if let (Ok(a), Ok(b)) = (
+        std::fs::canonicalize(sidebar),
+        std::fs::canonicalize(current),
+    ) {
         return is_strict_descendant(&a, &b);
     }
     is_strict_descendant(sidebar, current)

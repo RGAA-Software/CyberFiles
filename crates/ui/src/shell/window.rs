@@ -1,12 +1,12 @@
-use cyberfiles_core::{APP_NAME, window_size};
+use cyberfiles_core::{window_size, APP_NAME};
 use gpui::{
-    App, AppContext, Bounds, Focusable, SharedString, Size, Window, WindowBounds, WindowKind,
-    WindowOptions, px, size,
+    px, size, App, AppContext, Bounds, Focusable, SharedString, Size, Window, WindowBounds,
+    WindowKind, WindowOptions,
 };
 use gpui_component::{Root, TitleBar};
 
-use crate::app_state::AppNavigation;
 use super::app_shell::AppShell;
+use crate::app_state::AppNavigation;
 
 pub fn open_main_window<F, E>(crate_view_fn: F, cx: &mut App)
 where
@@ -47,10 +47,7 @@ where
                 window.defer(cx, move |window, cx| {
                     if window.focused(cx).is_none() {
                         if let Some(nav) = cx.try_global::<AppNavigation>() {
-                            nav.main_page()
-                                .read(cx)
-                                .focus_handle(cx)
-                                .focus(window, cx);
+                            nav.main_page().read(cx).focus_handle(cx).focus(window, cx);
                         }
                     }
                 });

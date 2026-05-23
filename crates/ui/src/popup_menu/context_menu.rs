@@ -3,10 +3,10 @@ use std::{cell::RefCell, rc::Rc};
 // Fork of gpui-component `ContextMenu` (MIT).
 
 use gpui::{
-    Anchor, AnyElement, App, Context, DismissEvent, Element, ElementId, Entity, Focusable,
-    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, Pixels, Point, StyleRefinement, Styled,
-    Subscription, Window, anchored, deferred, div, prelude::FluentBuilder, px,
+    anchored, deferred, div, prelude::FluentBuilder, px, Anchor, AnyElement, App, Context,
+    DismissEvent, Element, ElementId, Entity, Focusable, GlobalElementId, Hitbox, HitboxBehavior,
+    InspectorElementId, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement, Pixels, Point, StyleRefinement, Styled, Subscription, Window,
 };
 
 use super::PopupMenu;

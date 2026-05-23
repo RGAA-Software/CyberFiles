@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use gpui::{
-    prelude::FluentBuilder, AnyView, App, AppContext, Context, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, MouseButton, ParentElement, Render, Styled, Window, div,
+    div, prelude::FluentBuilder, AnyView, App, AppContext, Context, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Render, Styled, Window,
 };
-use gpui_component::{Root, v_flex};
+use gpui_component::{v_flex, Root};
 
-use crate::app_state::AppNavigation;
 use super::preferences::{persist_window_bounds, window_size_from_active};
+use crate::app_state::AppNavigation;
 
 const WINDOW_BOUNDS_DEBOUNCE_MS: u64 = 400;
 
@@ -75,13 +75,16 @@ impl Render for AppShell {
             .id("app-shell")
             .size_full()
             .when(path_edit_active, |shell| {
-                shell.on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| {
-                    if let Some(nav) = cx.try_global::<AppNavigation>() {
-                        nav.main_page().update(cx, |page, cx| {
-                            page.dismiss_omnibar_path_edit(cx);
-                        });
-                    }
-                }))
+                shell.on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|_, _, _, cx| {
+                        if let Some(nav) = cx.try_global::<AppNavigation>() {
+                            nav.main_page().update(cx, |page, cx| {
+                                page.dismiss_omnibar_path_edit(cx);
+                            });
+                        }
+                    }),
+                )
             })
             .child(
                 v_flex()

@@ -17,11 +17,7 @@ impl DriveInfo {
         let total = self.total_bytes?;
         let free = self.free_bytes?;
         let used = total.saturating_sub(free);
-        Some(format!(
-            "{} / {}",
-            format_bytes(used),
-            format_bytes(total)
-        ))
+        Some(format!("{} / {}", format_bytes(used), format_bytes(total)))
     }
 
     pub fn used_fraction(&self) -> Option<f32> {
@@ -57,7 +53,7 @@ pub fn list_drives() -> Vec<DriveInfo> {
 
 #[cfg(windows)]
 fn list_windows_drives() -> Vec<DriveInfo> {
-    use cyberfiles_platform_windows::{DriveKind, volume_details};
+    use cyberfiles_platform_windows::{volume_details, DriveKind};
 
     let mut drives = Vec::new();
 
@@ -113,7 +109,9 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 pub fn default_user_profile() -> Option<PathBuf> {
-    std::env::var_os("USERPROFILE").map(PathBuf::from).filter(|p| p.exists())
+    std::env::var_os("USERPROFILE")
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
 }
 
 pub fn home_navigation_path() -> PathBuf {

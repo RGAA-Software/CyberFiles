@@ -1,11 +1,11 @@
 //! Fork of gpui-component `MenuItemElement` (MIT).
 
-use gpui_component::{ActiveTheme, Disableable, StyledExt, h_flex};
 use gpui::{
     prelude::FluentBuilder as _, AnyElement, App, ClickEvent, ElementId, InteractiveElement,
     IntoElement, MouseButton, ParentElement, RenderOnce, SharedString,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
 };
+use gpui_component::{h_flex, ActiveTheme, Disableable, StyledExt};
 use smallvec::SmallVec;
 
 #[derive(IntoElement)]

@@ -3,22 +3,19 @@ use std::rc::Rc;
 
 use cyberfiles_fs::{
     breadcrumb_dropdown_entries, breadcrumb_visible_layout_for_widths, BreadcrumbDropdownResult,
-    BreadcrumbMenuSection, BREADCRUMB_BLOCK_GAP, DirectoryReadOptions, OmnibarPathSuggestion,
-    PathBreadcrumb,
+    BreadcrumbMenuSection, DirectoryReadOptions, OmnibarPathSuggestion, PathBreadcrumb,
+    BREADCRUMB_BLOCK_GAP,
 };
 use gpui::{prelude::*, *};
 use gpui_component::plot::label::measure_text_width;
-use gpui_component::{
-    h_flex,
-    ActiveTheme as _, IconName,
-};
+use gpui_component::{h_flex, ActiveTheme as _, IconName};
 use rust_i18n::t;
 
 use super::breadcrumb_flyout::BreadcrumbFlyout;
 use crate::app_state::AppNavigation;
-use crate::popup_menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use crate::file_browser::DraggedFilePaths;
 use crate::icons::toolbar_icon;
+use crate::popup_menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use crate::toolbar_button::{toolbar_icon_button, toolbar_labeled_button, TOOLBAR_BUTTON_PX};
 
 /// Segment label `text_sm()` (matches menu rows).
@@ -98,11 +95,7 @@ fn breadcrumb_labeled_block_width(label: &str, window: &mut Window) -> f32 {
     text + BREADCRUMB_LABELED_BUTTON_PADDING
 }
 
-fn breadcrumb_segment_block_width(
-    label: &str,
-    has_chevron: bool,
-    window: &mut Window,
-) -> f32 {
+fn breadcrumb_segment_block_width(label: &str, has_chevron: bool, window: &mut Window) -> f32 {
     let mut w = breadcrumb_labeled_block_width(label, window);
     if has_chevron {
         w += f32::from(TOOLBAR_BUTTON_PX);
@@ -160,11 +153,7 @@ impl RenderOnce for PathBreadcrumbBar {
 
         if layout.hidden_prefix_len > 0 {
             let collapsed: Vec<PathBreadcrumb> = self.segments[..layout.hidden_prefix_len].to_vec();
-            bar = bar.child(render_ellipsis_item(
-                collapsed,
-                on_navigate.clone(),
-                cx,
-            ));
+            bar = bar.child(render_ellipsis_item(collapsed, on_navigate.clone(), cx));
         }
 
         for &index in &layout.visible_indices {
@@ -197,12 +186,12 @@ fn render_chevron_menu(
     button_id: impl Into<ElementId>,
     tooltip: String,
     menu_builder: impl Fn(
-        Option<&BreadcrumbDropdownResult>,
-        PopupMenu,
-        &mut Window,
-        &mut Context<PopupMenu>,
-    ) -> PopupMenu
-    + 'static,
+            Option<&BreadcrumbDropdownResult>,
+            PopupMenu,
+            &mut Window,
+            &mut Context<PopupMenu>,
+        ) -> PopupMenu
+        + 'static,
 ) -> BreadcrumbFlyout {
     let button_id = button_id.into();
     BreadcrumbFlyout::new(
@@ -366,7 +355,6 @@ fn render_path_segment(
     segment
 }
 
-
 fn apply_breadcrumb_menu_style(menu: PopupMenu) -> PopupMenu {
     menu.min_w(BREADCRUMB_DROPDOWN_MIN_WIDTH)
         .max_w(BREADCRUMB_DROPDOWN_MAX_WIDTH)
@@ -393,8 +381,7 @@ fn truncate_breadcrumb_menu_label(label: &str, max_width: f32, window: &mut Wind
     let mut acc = String::new();
     for ch in label.chars() {
         acc.push(ch);
-        if measure_text_width(&SharedString::from(&acc), BREADCRUMB_MENU_FONT_SIZE, window)
-            > budget
+        if measure_text_width(&SharedString::from(&acc), BREADCRUMB_MENU_FONT_SIZE, window) > budget
         {
             acc.pop();
             if acc.is_empty() {
@@ -414,8 +401,11 @@ fn breadcrumb_menu_row(
     dimmed: bool,
     window: &mut Window,
 ) -> impl IntoElement {
-    let display =
-        truncate_breadcrumb_menu_label(&label, breadcrumb_menu_label_max_width(icon.is_some()), window);
+    let display = truncate_breadcrumb_menu_label(
+        &label,
+        breadcrumb_menu_label_max_width(icon.is_some()),
+        window,
+    );
     h_flex()
         .w_full()
         .max_w(BREADCRUMB_DROPDOWN_ROW_WIDTH)
@@ -446,7 +436,11 @@ fn popup_menu_path_item(
     PopupMenuItem::element(move |window, _| {
         breadcrumb_menu_row(
             label.clone(),
-            Some(crate::shell_icon::shell_icon_for_path(&path, px(16.), window)),
+            Some(crate::shell_icon::shell_icon_for_path(
+                &path,
+                px(16.),
+                window,
+            )),
             dimmed,
             window,
         )
@@ -463,21 +457,17 @@ fn popup_menu_text_item(
 }
 
 /// Builds segment chevron menu from optional async `read_dir` result (CyberFiles; not upstream API).
-fn segment_dropdown_menu(
-    menu: PopupMenu,
-    result: Option<&BreadcrumbDropdownResult>,
-) -> PopupMenu {
+fn segment_dropdown_menu(menu: PopupMenu, result: Option<&BreadcrumbDropdownResult>) -> PopupMenu {
     let mut menu = apply_breadcrumb_menu_style(menu.scrollable(true));
     match result {
-        None => menu.item(
-            PopupMenuItem::new(t!("omnibar.breadcrumb.loading").to_string()).disabled(true),
-        ),
+        None => menu
+            .item(PopupMenuItem::new(t!("omnibar.breadcrumb.loading").to_string()).disabled(true)),
         Some(BreadcrumbDropdownResult::AccessDenied) => menu.item(
             PopupMenuItem::new(t!("omnibar.breadcrumb.access_denied").to_string()).disabled(true),
         ),
-        Some(BreadcrumbDropdownResult::Empty) => menu.item(
-            PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true),
-        ),
+        Some(BreadcrumbDropdownResult::Empty) => {
+            menu.item(PopupMenuItem::new(t!("omnibar.breadcrumb.empty").to_string()).disabled(true))
+        }
         Some(BreadcrumbDropdownResult::Entries(entries)) => {
             for entry in entries {
                 let target = entry.path.clone();
@@ -504,9 +494,7 @@ fn segment_dropdown_menu_builder(
         button_id,
         t!("omnibar.breadcrumb.chevron_tooltip").to_string(),
         |result, menu, _, _| segment_dropdown_menu(menu, result),
-        move || {
-            breadcrumb_dropdown_entries(&fill_path, fill_options, fill_working.as_deref())
-        },
+        move || breadcrumb_dropdown_entries(&fill_path, fill_options, fill_working.as_deref()),
     )
 }
 
@@ -518,7 +506,7 @@ fn root_dropdown_menu_builder(
     &mut Window,
     &mut Context<PopupMenu>,
 ) -> PopupMenu
-+ 'static {
+       + 'static {
     move |_, menu, _, _| {
         let sections = root_menu();
         let mut menu = menu.scrollable(true);
@@ -554,7 +542,7 @@ fn ellipsis_dropdown_menu_builder(
     &mut Window,
     &mut Context<PopupMenu>,
 ) -> PopupMenu
-+ 'static {
+       + 'static {
     move |_, menu, _, _| {
         let mut menu = menu.scrollable(true);
         for crumb in &collapsed {

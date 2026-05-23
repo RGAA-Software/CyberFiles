@@ -45,7 +45,8 @@ fn breadcrumb_label(path: &Path) -> String {
     #[cfg(windows)]
     {
         let bytes = text.as_bytes();
-        if bytes.len() >= 2 && bytes[1] == b':' && bytes.len() <= 3 && bytes.last() == Some(&b'\\') {
+        if bytes.len() >= 2 && bytes[1] == b':' && bytes.len() <= 3 && bytes.last() == Some(&b'\\')
+        {
             return text.to_string();
         }
     }
@@ -300,17 +301,12 @@ const CHEVRON_WIDTH: f32 = 32.0;
 pub const BREADCRUMB_BLOCK_GAP: f32 = 2.0;
 
 fn segment_text_width_px(label: &str) -> f32 {
-    let units: u32 = label
-        .chars()
-        .map(|c| c.width().unwrap_or(1) as u32)
-        .sum();
+    let units: u32 = label.chars().map(|c| c.width().unwrap_or(1) as u32).sum();
     (units.max(1) as f32) * SEGMENT_CELL_WIDTH
 }
 
 fn segment_width_px(label: &str, has_chevron: bool) -> f32 {
-    SEGMENT_PADDING
-        + segment_text_width_px(label)
-        + if has_chevron { CHEVRON_WIDTH } else { 0.0 }
+    SEGMENT_PADDING + segment_text_width_px(label) + if has_chevron { CHEVRON_WIDTH } else { 0.0 }
 }
 
 fn breadcrumb_trail_width_px(

@@ -20,11 +20,11 @@ impl NavigationTarget {
             NavigationTarget::RecycleBin => SharedString::from("Recycle Bin"),
             NavigationTarget::Settings => SharedString::from("Settings"),
             NavigationTarget::FileTag(name) => SharedString::from(format!("Tag: {name}")),
-            NavigationTarget::Path(path) => {
-                SharedString::from(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(
-                    || path.to_string_lossy().to_string(),
-                ))
-            }
+            NavigationTarget::Path(path) => SharedString::from(
+                path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.to_string_lossy().to_string()),
+            ),
         }
     }
 

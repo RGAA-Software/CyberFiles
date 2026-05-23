@@ -5,8 +5,7 @@ use windows::Win32::System::Registry::{
     RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ, REG_DWORD,
 };
 
-const EXPLORER_ADVANCED: &str =
-    "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
+const EXPLORER_ADVANCED: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
 const START_TRACK_DOCS: &str = "Start_TrackDocs";
 
 /// `true` when Explorer is configured to track recently opened documents.
@@ -19,15 +18,7 @@ fn read_dword(root: HKEY, subkey: &str, value: &str) -> Option<u32> {
         let subkey_wide: Vec<u16> = subkey.encode_utf16().chain([0]).collect();
         let value_wide: Vec<u16> = value.encode_utf16().chain([0]).collect();
         let mut key = HKEY::default();
-        if RegOpenKeyExW(
-            root,
-            PCWSTR(subkey_wide.as_ptr()),
-            0,
-            KEY_READ,
-            &mut key,
-        )
-        .is_err()
-        {
+        if RegOpenKeyExW(root, PCWSTR(subkey_wide.as_ptr()), 0, KEY_READ, &mut key).is_err() {
             return None;
         }
         let mut kind = REG_DWORD;

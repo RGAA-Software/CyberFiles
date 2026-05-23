@@ -4,19 +4,19 @@
 
 use super::actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight, SelectUp};
 use super::menu_item::MenuItemElement;
-use gpui_component::scroll::ScrollableElement;
-use gpui_component::{
-    ActiveTheme, ElementExt, Icon, IconName, Side, Size, Sizable as _, StyledExt, h_flex, kbd::Kbd,
-    v_flex,
-};
 use gpui::{
-    Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
-    EventEmitter, FocusHandle, Focusable, Image, ImageFormat, InteractiveElement, IntoElement,
-    KeyBinding, ObjectFit, ParentElement, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, StyledImage, WeakEntity, Window, anchored, div, img,
-    prelude::FluentBuilder, px, rems,
+    anchored, div, img, prelude::FluentBuilder, px, rems, Action, Anchor, AnyElement, App,
+    AppContext, Bounds, Context, DismissEvent, Edges, Entity, EventEmitter, FocusHandle, Focusable,
+    Image, ImageFormat, InteractiveElement, IntoElement, KeyBinding, ObjectFit, ParentElement,
+    Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, StyledImage,
+    WeakEntity, Window,
 };
 use gpui::{ClickEvent, Half, MouseDownEvent, Point, Subscription};
+use gpui_component::scroll::ScrollableElement;
+use gpui_component::{
+    h_flex, kbd::Kbd, v_flex, ActiveTheme, ElementExt, Icon, IconName, Side, Sizable as _, Size,
+    StyledExt,
+};
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -143,7 +143,11 @@ impl PopupMenuItem {
     /// Set a full-color PNG for the left icon slot (Windows Shell menu icons).
     pub fn icon_png(mut self, png: Arc<Vec<u8>>) -> Self {
         match &mut self {
-            PopupMenuItem::Item { icon_png: p, icon: i, .. } => {
+            PopupMenuItem::Item {
+                icon_png: p,
+                icon: i,
+                ..
+            } => {
                 *p = Some(png);
                 *i = None;
             }
@@ -154,7 +158,11 @@ impl PopupMenuItem {
 
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
         match &mut self {
-            PopupMenuItem::Item { icon: i, icon_png: p, .. } => {
+            PopupMenuItem::Item {
+                icon: i,
+                icon_png: p,
+                ..
+            } => {
                 *i = Some(icon.into());
                 *p = None;
             }
@@ -285,11 +293,7 @@ impl PopupMenuItem {
                 icon_png,
                 checked,
                 ..
-            } => {
-                icon.is_some()
-                    || icon_png.is_some()
-                    || (check_side.is_left() && *checked)
-            }
+            } => icon.is_some() || icon_png.is_some() || (check_side.is_left() && *checked),
             PopupMenuItem::ElementItem { icon, checked, .. } => {
                 icon.is_some() || (check_side.is_left() && *checked)
             }
@@ -1031,9 +1035,12 @@ impl PopupMenu {
                     .items_center()
                     .justify_center()
                     .child(
-                        img(Arc::new(Image::from_bytes(ImageFormat::Png, (*png).clone())))
-                            .size(ICON_SLOT_SIZE)
-                            .object_fit(ObjectFit::Contain),
+                        img(Arc::new(Image::from_bytes(
+                            ImageFormat::Png,
+                            (*png).clone(),
+                        )))
+                        .size(ICON_SLOT_SIZE)
+                        .object_fit(ObjectFit::Contain),
                     ),
             );
         }
@@ -1146,7 +1153,13 @@ impl PopupMenu {
                     .cursor_default()
                     .items_center()
                     .gap_x_1()
-                    .children(Self::render_icon_slot(has_left_icon, false, None, None, window))
+                    .children(Self::render_icon_slot(
+                        has_left_icon,
+                        false,
+                        None,
+                        None,
+                        window,
+                    ))
                     .child(div().flex_1().child(label.clone())),
             ),
             PopupMenuItem::ElementItem {

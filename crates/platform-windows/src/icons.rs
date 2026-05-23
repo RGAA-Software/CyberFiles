@@ -50,12 +50,12 @@ pub fn icon_hint_for_path(path: &Path) -> ShellIconHint {
     }
 
     let metadata = std::fs::symlink_metadata(path).ok();
-    if metadata.as_ref().is_some_and(|m| m.file_type().is_symlink()) {
+    if metadata
+        .as_ref()
+        .is_some_and(|m| m.file_type().is_symlink())
+    {
         return ShellIconHint::Symlink;
     }
 
-    icon_hint_from_extension(
-        path.extension()
-            .and_then(|e| e.to_str()),
-    )
+    icon_hint_from_extension(path.extension().and_then(|e| e.to_str()))
 }

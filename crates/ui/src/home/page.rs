@@ -1,25 +1,23 @@
 use cyberfiles_core::{home_widget_prefs, save_home_widget_prefs, HomeWidgetPrefs};
 use cyberfiles_fs::{
     file_tag_previews, list_drives, list_quick_access_entries, list_recent_files,
-    load_home_file_tags, quick_access_automatic_destinations_dir, DirectoryWatcher,
-    DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
+    load_home_file_tags, quick_access_automatic_destinations_dir, DirectoryWatcher, DriveInfo,
+    FileTagPreview, QuickAccessEntry, RecentItem,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    anchored, deferred, div, prelude::*, px, Anchor, DismissEvent, Entity,
-    MouseButton, MouseDownEvent, Pixels, Point, Subscription, Task, Window,
+    anchored, deferred, div, prelude::*, px, Anchor, DismissEvent, Entity, MouseButton,
+    MouseDownEvent, Pixels, Point, Subscription, Task, Window,
 };
-use gpui_component::{
-    v_flex,
-};
+use gpui_component::v_flex;
 use rust_i18n::t;
 
 use crate::app_state::AppNavigation;
-use crate::popup_menu::{PopupMenu, PopupMenuItem};
 use crate::home::widgets::{load_network_entries, NetworkEntry};
+use crate::popup_menu::{PopupMenu, PopupMenuItem};
 
 /// Loaded Home dashboard data (Files `RefreshWidgetProperties` snapshot).
 #[derive(Clone)]
@@ -211,10 +209,7 @@ impl HomePage {
         cx: &mut Context<Self>,
     ) {
         let order = self.prefs.widget_order_normalized();
-        let pos = order
-            .iter()
-            .position(|id| id == section_key)
-            .unwrap_or(0);
+        let pos = order.iter().position(|id| id == section_key).unwrap_or(0);
         let can_move_up = pos > 0;
         let can_move_down = pos + 1 < order.len();
 

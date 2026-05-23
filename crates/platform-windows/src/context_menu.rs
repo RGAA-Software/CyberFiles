@@ -1,17 +1,17 @@
+use crate::com::ensure_com_apartment;
+use crate::shell_menu_session;
 use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use windows::core::{Interface, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, POINT, WPARAM};
-use crate::com::ensure_com_apartment;
-use crate::shell_menu_session;
-use windows::Win32::UI::Shell::{
-    CMINVOKECOMMANDINFO, CMF_EXTENDEDVERBS, CMF_NORMAL, CMF_OPTIMIZEFORINVOKE, GCS_VERBA, IContextMenu,
-    IContextMenu2, ILClone, ILFree, IShellFolder, SHBindToParent, SHParseDisplayName,
-};
-use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::Graphics::Gdi::HBITMAP;
+use windows::Win32::UI::Shell::Common::ITEMIDLIST;
+use windows::Win32::UI::Shell::{
+    IContextMenu, IContextMenu2, ILClone, ILFree, IShellFolder, SHBindToParent, SHParseDisplayName,
+    CMF_EXTENDEDVERBS, CMF_NORMAL, CMF_OPTIMIZEFORINVOKE, CMINVOKECOMMANDINFO, GCS_VERBA,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CopyImage, CreatePopupMenu, DestroyMenu, GetCursorPos, GetForegroundWindow, GetMenuItemCount,
     GetMenuItemInfoW, GetSubMenu, SetForegroundWindow, TrackPopupMenu, HMENU, IMAGE_BITMAP,
@@ -102,7 +102,10 @@ fn path_to_wide(path: &Path) -> Vec<u16> {
 }
 
 fn same_parent(paths: &[PathBuf]) -> bool {
-    let Some(first) = paths.first().and_then(|p| p.parent().map(|p| p.to_path_buf())) else {
+    let Some(first) = paths
+        .first()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+    else {
         return false;
     };
     paths
@@ -265,7 +268,8 @@ unsafe fn expand_lazy_submenu_inner(
 
 pub(crate) fn invoke_prepared_menu(command_offset: u32) -> anyhow::Result<()> {
     unsafe {
-        let Some(menu) = PREPARED_MENU.with(|slot| slot.borrow().as_ref().map(|h| h.menu.clone())) else {
+        let Some(menu) = PREPARED_MENU.with(|slot| slot.borrow().as_ref().map(|h| h.menu.clone()))
+        else {
             anyhow::bail!("no prepared shell context menu for invoke");
         };
         let mut info = CMINVOKECOMMANDINFO::default();
@@ -292,7 +296,10 @@ impl ContextMenuHandle {
     }
 }
 
-unsafe fn create_context_menu(paths: &[PathBuf], extended_verbs: bool) -> anyhow::Result<ContextMenuHandle> {
+unsafe fn create_context_menu(
+    paths: &[PathBuf],
+    extended_verbs: bool,
+) -> anyhow::Result<ContextMenuHandle> {
     let (parent_sf, first_child) = bind_parent_and_relative(&paths[0])?;
     let mut child_pidls = vec![first_child];
 
@@ -725,8 +732,8 @@ mod windows_tests {
             ("directory", vec![subdir.clone()]),
         ] {
             let icon_px = menu_icon_pixel_size(system_scale_factor());
-            let normal = query_shell_context_menu_items(&paths, false, icon_px)
-                .unwrap_or_else(|e| {
+            let normal =
+                query_shell_context_menu_items(&paths, false, icon_px).unwrap_or_else(|e| {
                     panic!("query normal ({label}): {e:#}");
                 });
             eprintln!("[shell-menu] smoke {label}: entries={}", normal.len());

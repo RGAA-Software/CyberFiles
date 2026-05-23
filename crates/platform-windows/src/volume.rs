@@ -5,7 +5,9 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 
 use windows::core::PCWSTR;
-use windows::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetDriveTypeW, GetVolumeInformationW};
+use windows::Win32::Storage::FileSystem::{
+    GetDiskFreeSpaceExW, GetDriveTypeW, GetVolumeInformationW,
+};
 
 const DRIVE_REMOVABLE: u32 = 2;
 const DRIVE_FIXED: u32 = 3;
@@ -49,11 +51,7 @@ impl VolumeDetails {
         let total = self.total_bytes?;
         let free = self.free_bytes?;
         let used = total.saturating_sub(free);
-        Some(format!(
-            "{} / {}",
-            format_bytes(used),
-            format_bytes(total)
-        ))
+        Some(format!("{} / {}", format_bytes(used), format_bytes(total)))
     }
 
     pub fn used_fraction(&self) -> Option<f32> {

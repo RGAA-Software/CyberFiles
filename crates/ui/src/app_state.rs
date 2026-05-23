@@ -155,10 +155,7 @@ impl AppNavigation {
     }
 
     /// Open a path in the secondary pane (enables dual pane if needed).
-    pub fn open_path_in_secondary_pane(
-        path: PathBuf,
-        cx: &mut (impl AppContext + BorrowMut<App>),
-    ) {
+    pub fn open_path_in_secondary_pane(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {
         let page = cx.borrow_mut().global::<Self>().0.clone();
         page.update(cx, |page, cx| page.open_path_in_secondary_pane(path, cx));
     }
@@ -211,7 +208,6 @@ impl AppNavigation {
             page.refresh_home_widgets(cx);
         });
     }
-
 }
 
 pub fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget {

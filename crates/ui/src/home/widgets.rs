@@ -21,13 +21,13 @@ use gpui_component::{
 use rust_i18n::t;
 
 use crate::app_state::AppNavigation;
-use crate::popup_menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
-use crate::icons::{inline_icon, pin_icon};
 use crate::home::page::HomePage;
 use crate::home::widget_shell::{
     block_home_page_context_menu, card_grid, space_progress_bar, CARD_MIN_HEIGHT, CARD_WIDTH,
     FOLDER_CARD_HEIGHT, FOLDER_CARD_WIDTH,
 };
+use crate::icons::{inline_icon, pin_icon};
+use crate::popup_menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
 use crate::shell_icon::shell_icon_for_path;
 
 #[cfg(windows)]
@@ -132,10 +132,12 @@ impl HomePage {
                         ))
                     })
                     .when(!entries.is_empty(), |b| {
-                        b.child(card_grid(entries.iter().enumerate().map(|(index, entry)| {
-                            self.folder_card(window, index, "home-qa", entry, cx)
-                                .into_any_element()
-                        })))
+                        b.child(card_grid(entries.iter().enumerate().map(
+                            |(index, entry)| {
+                                self.folder_card(window, index, "home-qa", entry, cx)
+                                    .into_any_element()
+                            },
+                        )))
                     })
                 }),
         )
@@ -162,10 +164,12 @@ impl HomePage {
                     cx,
                 ))
                 .when(expanded, |body| {
-                    body.child(card_grid(drives.iter().enumerate().map(|(index, drive)| {
-                        self.drive_card(window, index, "home-drive", drive, cx)
-                            .into_any_element()
-                    })))
+                    body.child(card_grid(drives.iter().enumerate().map(
+                        |(index, drive)| {
+                            self.drive_card(window, index, "home-drive", drive, cx)
+                                .into_any_element()
+                        },
+                    )))
                 }),
         )
     }
@@ -198,19 +202,21 @@ impl HomePage {
                         ))
                     })
                     .when(!entries.is_empty(), |b| {
-                        b.child(card_grid(entries.iter().enumerate().map(|(index, entry)| {
-                            let drive = DriveInfo {
-                                path: entry.path.clone(),
-                                label: entry.label.clone(),
-                                volume_label: None,
-                                total_bytes: None,
-                                free_bytes: None,
-                                is_removable: false,
-                                is_network: true,
-                            };
-                            self.drive_card(window, index, "home-network", &drive, cx)
-                                .into_any_element()
-                        })))
+                        b.child(card_grid(entries.iter().enumerate().map(
+                            |(index, entry)| {
+                                let drive = DriveInfo {
+                                    path: entry.path.clone(),
+                                    label: entry.label.clone(),
+                                    volume_label: None,
+                                    total_bytes: None,
+                                    free_bytes: None,
+                                    is_removable: false,
+                                    is_network: true,
+                                };
+                                self.drive_card(window, index, "home-network", &drive, cx)
+                                    .into_any_element()
+                            },
+                        )))
                     })
                 }),
         )
@@ -244,9 +250,12 @@ impl HomePage {
                         ))
                     })
                     .when(!previews.is_empty(), |b| {
-                        b.child(card_grid(previews.iter().enumerate().map(|(index, preview)| {
-                            self.tag_container(window, index, preview, cx).into_any_element()
-                        })))
+                        b.child(card_grid(previews.iter().enumerate().map(
+                            |(index, preview)| {
+                                self.tag_container(window, index, preview, cx)
+                                    .into_any_element()
+                            },
+                        )))
                     })
                 }),
         )
@@ -285,20 +294,23 @@ impl HomePage {
                             t!("home.widget.recent.empty").to_string(),
                         ))
                     })
-                    .when(recent_documents_enabled() && !recent.is_empty(), |b| {
-                        b.child(
-                            v_flex()
-                                .w_full()
-                                .rounded(cx.theme().radius)
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .overflow_hidden()
-                                .child(self.recent_table_header(cx))
-                                .children(recent.iter().enumerate().map(|(index, item)| {
-                                    self.recent_row(window, index, item, cx).into_any_element()
-                                })),
-                        )
-                    })
+                    .when(
+                        recent_documents_enabled() && !recent.is_empty(),
+                        |b| {
+                            b.child(
+                                v_flex()
+                                    .w_full()
+                                    .rounded(cx.theme().radius)
+                                    .border_1()
+                                    .border_color(cx.theme().border)
+                                    .overflow_hidden()
+                                    .child(self.recent_table_header(cx))
+                                    .children(recent.iter().enumerate().map(|(index, item)| {
+                                        self.recent_row(window, index, item, cx).into_any_element()
+                                    })),
+                            )
+                        },
+                    )
                 }),
         )
     }
@@ -350,9 +362,7 @@ impl HomePage {
             .context_menu({
                 let path = path.clone();
                 let pinned = pinned;
-                move |menu, window, cx| {
-                    folder_context_menu(menu, &path, pinned, window, cx)
-                }
+                move |menu, window, cx| folder_context_menu(menu, &path, pinned, window, cx)
             })
     }
 
@@ -440,7 +450,11 @@ impl HomePage {
     ) -> impl IntoElement {
         let path = item.path.clone();
         let name = item.label.clone();
-        let location = item.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
+        let location = item
+            .path
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
         let modified = format_system_time(item.modified);
         h_flex()
             .id(("home-recent-row", index))
@@ -464,12 +478,11 @@ impl HomePage {
                 let path = path.clone();
                 move |menu, window, cx| file_context_menu(menu, &path, window, cx)
             })
-            .child(
-                div()
-                    .w(px(28.))
-                    .flex_none()
-                    .child(shell_icon_for_path(&item.path, px(16.), window)),
-            )
+            .child(div().w(px(28.)).flex_none().child(shell_icon_for_path(
+                &item.path,
+                px(16.),
+                window,
+            )))
             .child(
                 div()
                     .flex_1()
@@ -535,10 +548,7 @@ impl HomePage {
                                         h_flex()
                                             .gap_2()
                                             .items_center()
-                                            .child(tag_color_dot(
-                                                preview.tag.color.as_deref(),
-                                                cx,
-                                            ))
+                                            .child(tag_color_dot(preview.tag.color.as_deref(), cx))
                                             .child(
                                                 Label::new(tag_name)
                                                     .text_sm()
@@ -546,10 +556,7 @@ impl HomePage {
                                             ),
                                     )
                                     .on_click(cx.listener(move |_, _, _, cx| {
-                                        AppNavigation::navigate_to_file_tag(
-                                            view_more.clone(),
-                                            cx,
-                                        );
+                                        AppNavigation::navigate_to_file_tag(view_more.clone(), cx);
                                     }))
                                     .on_mouse_down(MouseButton::Right, |_, _, cx| {
                                         cx.stop_propagation()
@@ -568,46 +575,38 @@ impl HomePage {
                                         .text_color(cx.theme().muted_foreground),
                                 )
                             })
-                            .children(
-                                preview.preview_items.iter().enumerate().map(
-                                    |(row, (name, file_path))| {
-                                        let open = file_path.clone();
-                                        Button::new(SharedString::from(format!(
-                                            "home-tag-file-{index}-{row}"
-                                        )))
-                                            .ghost()
-                                            .w_full()
-                                            .child(
-                                                h_flex()
-                                                    .gap_2()
-                                                    .items_center()
-                                                    .child(shell_icon_for_path(
-                                                        file_path, px(16.), window,
-                                                    ))
-                                                    .child(
-                                                        Label::new(name.clone())
-                                                            .text_sm()
-                                                            .truncate(),
-                                                    ),
-                                            )
-                                            .on_click(cx.listener({
-                                                let open = open.clone();
-                                                move |_, event, window, cx| {
-                                                    open_path(&open, event, window, cx);
-                                                }
-                                            }))
-                                            .on_mouse_down(MouseButton::Right, |_, _, cx| {
-                                                cx.stop_propagation()
-                                            })
-                                            .context_menu({
-                                                let open = open.clone();
-                                                move |menu, window, cx| {
-                                                    file_context_menu(menu, &open, window, cx)
-                                                }
-                                            })
-                                    },
-                                ),
-                            ),
+                            .children(preview.preview_items.iter().enumerate().map(
+                                |(row, (name, file_path))| {
+                                    let open = file_path.clone();
+                                    Button::new(SharedString::from(format!(
+                                        "home-tag-file-{index}-{row}"
+                                    )))
+                                    .ghost()
+                                    .w_full()
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .items_center()
+                                            .child(shell_icon_for_path(file_path, px(16.), window))
+                                            .child(Label::new(name.clone()).text_sm().truncate()),
+                                    )
+                                    .on_click(cx.listener({
+                                        let open = open.clone();
+                                        move |_, event, window, cx| {
+                                            open_path(&open, event, window, cx);
+                                        }
+                                    }))
+                                    .on_mouse_down(MouseButton::Right, |_, _, cx| {
+                                        cx.stop_propagation()
+                                    })
+                                    .context_menu({
+                                        let open = open.clone();
+                                        move |menu, window, cx| {
+                                            file_context_menu(menu, &open, window, cx)
+                                        }
+                                    })
+                                },
+                            )),
                     ),
             )
     }
@@ -627,10 +626,7 @@ fn parse_hex_color(s: &str) -> Option<Hsla> {
             let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
             let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            Some(
-                gpui::rgb(((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
-                    .into(),
-            )
+            Some(gpui::rgb(((r as u32) << 16) | ((g as u32) << 8) | (b as u32)).into())
         }
         _ => None,
     }
@@ -714,11 +710,11 @@ fn folder_context_menu(
     let path_pin = path.clone();
     let path_unpin = path_string.clone();
     let path_props = path.clone();
-    let mut menu = menu.item(
-        PopupMenuItem::new(t!("sidebar.menu.open")).on_click(move |_, _, cx| {
+    let mut menu = menu.item(PopupMenuItem::new(t!("sidebar.menu.open")).on_click(
+        move |_, _, cx| {
             AppNavigation::navigate_to_path(path_open.clone(), cx);
-        }),
-    );
+        },
+    ));
     menu = menu.item(
         PopupMenuItem::new(t!("sidebar.menu.open_new_tab")).on_click(move |_, _, cx| {
             AppNavigation::open_path_in_new_tab(path_tab.clone(), cx);
@@ -731,14 +727,18 @@ fn folder_context_menu(
             }),
         );
     } else {
-        menu = menu.item(PopupMenuItem::new(t!("sidebar.menu.pin")).on_click(move |_, _, cx| {
-            AppNavigation::pin_folder(path_pin.clone(), cx);
-        }));
+        menu = menu.item(
+            PopupMenuItem::new(t!("sidebar.menu.pin")).on_click(move |_, _, cx| {
+                AppNavigation::pin_folder(path_pin.clone(), cx);
+            }),
+        );
     }
-    menu.item(PopupMenuItem::new(t!("files.menu.properties")).on_click(move |_, _, cx| {
-        let _ = open_item_properties(path_props.as_path());
-        cx.stop_propagation();
-    }))
+    menu.item(
+        PopupMenuItem::new(t!("files.menu.properties")).on_click(move |_, _, cx| {
+            let _ = open_item_properties(path_props.as_path());
+            cx.stop_propagation();
+        }),
+    )
 }
 
 fn file_context_menu(
@@ -760,8 +760,10 @@ fn file_context_menu(
             AppNavigation::open_path_in_new_tab(path_tab.clone(), cx);
         }),
     )
-    .item(PopupMenuItem::new(t!("files.menu.properties")).on_click(move |_, _, cx| {
-        let _ = open_item_properties(path_props.as_path());
-        cx.stop_propagation();
-    }))
+    .item(
+        PopupMenuItem::new(t!("files.menu.properties")).on_click(move |_, _, cx| {
+            let _ = open_item_properties(path_props.as_path());
+            cx.stop_propagation();
+        }),
+    )
 }

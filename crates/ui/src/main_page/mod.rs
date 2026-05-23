@@ -6,44 +6,44 @@ use cyberfiles_core::{
 };
 
 const MAX_CLOSED_TABS: usize = 12;
-use cyberfiles_fs::{
-    breadcrumb_root_menu_sections, home_navigation_path, list_drives,
-    path_breadcrumbs, PathBreadcrumb,
-};
-use cyberfiles_platform_windows::list_shell_quick_access_folders;
 use cyberfiles_commands::{
     FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, PasteItems, ReopenClosedTab,
     FILE_BROWSER,
 };
+use cyberfiles_fs::{
+    breadcrumb_root_menu_sections, home_navigation_path, list_drives, path_breadcrumbs,
+    PathBreadcrumb,
+};
+use cyberfiles_platform_windows::list_shell_quick_access_folders;
 use gpui::{prelude::*, *};
 use gpui_component::{
     badge::Badge,
     button::Button,
     h_flex,
-    label::Label,
     input::{Input, InputEvent, InputState},
+    label::Label,
     progress::Progress,
     resizable::{h_resizable, resizable_panel},
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Size, ThemeMode,
-    Sizable as _, TitleBar, WindowExt as _,
+    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Sizable as _, Size,
+    ThemeMode, TitleBar, WindowExt as _,
 };
 use rust_i18n::t;
 
-use crate::file_ops::{spawn_file_transfer, FileTransferKind};
-use crate::icons::{compact_icon, pin_icon, toolbar_icon};
-use crate::toolbar_button::toolbar_icon_button;
-use crate::info_pane::InfoPane;
 use crate::app_state::{
     breadcrumb_navigation_target, AppFileClipboard, AppNavigation, TransferStatusGlobal,
 };
-use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
+use crate::file_ops::{spawn_file_transfer, FileTransferKind};
+use crate::icons::{compact_icon, pin_icon, toolbar_icon};
+use crate::info_pane::InfoPane;
 use crate::omnibar::{OmnibarBreadcrumbCallbacks, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::app_menus;
-use crate::shell::ReopenClosedTabAt;
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::preferences::{apply_theme_mode, persist_window_bounds};
+use crate::shell::ReopenClosedTabAt;
 use crate::shell::{PaneShell, ShellPanes};
+use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
+use crate::toolbar_button::toolbar_icon_button;
 
 /// Matches Files `NavigationToolbar` height.
 const NAV_TOOLBAR_HEIGHT: Pixels = px(48.);
@@ -187,9 +187,7 @@ impl MainPage {
                     crate::sidebar::build_sidebar_sections_cached(&config)
                 })
                 .await;
-            let key = load_config()
-                .map(|c| sidebar_cache_key(&c))
-                .unwrap_or(0);
+            let key = load_config().map(|c| sidebar_cache_key(&c)).unwrap_or(0);
             let _ = page.update(cx, |page, cx| {
                 page.sidebar_cache_loading = false;
                 if page.sidebar_cache_generation != generation {
@@ -377,19 +375,24 @@ impl MainPage {
         cx.notify();
     }
 
-    fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+    fn ensure_search_input(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<InputState> {
         if let Some(input) = self.search_input.clone() {
             return input;
         }
 
-        let input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(t!("search.placeholder"))
-        });
-        self._search_subscription = Some(cx.subscribe(&input, move |page, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                page.apply_search_from_input(cx);
-            }
-        }));
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(t!("search.placeholder")));
+        self._search_subscription = Some(cx.subscribe(
+            &input,
+            move |page, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    page.apply_search_from_input(cx);
+                }
+            },
+        ));
         self.search_input = Some(input.clone());
         input
     }
@@ -459,7 +462,9 @@ impl MainPage {
 
     fn record_closed_tab(&self, session: ClosedTabSession) {
         let mut config = load_config().unwrap_or_default();
-        config.session_closed_tabs.retain(|closed| closed.tab != session.tab);
+        config
+            .session_closed_tabs
+            .retain(|closed| closed.tab != session.tab);
         config.session_closed_tabs.insert(0, session);
         config.session_closed_tabs.truncate(MAX_CLOSED_TABS);
         let _ = save_config(&config);
@@ -560,9 +565,7 @@ impl MainPage {
     fn file_navigation_active(&self, cx: &App) -> bool {
         matches!(
             self.active_pane(cx).read(cx).target(),
-            NavigationTarget::Path(_)
-                | NavigationTarget::RecycleBin
-                | NavigationTarget::FileTag(_)
+            NavigationTarget::Path(_) | NavigationTarget::RecycleBin | NavigationTarget::FileTag(_)
         )
     }
 
@@ -598,21 +601,25 @@ impl MainPage {
         cx.notify();
     }
 
-    fn ensure_omnibar_path_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+    fn ensure_omnibar_path_input(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<InputState> {
         if let Some(input) = self.omnibar_path_input.clone() {
             return input;
         }
 
-        let input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(t!("nav.path.placeholder"))
-        });
-        self._omnibar_path_subscription = Some(cx.subscribe(&input, move |page, _, event: &InputEvent, cx| {
-            match event {
+        let input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(t!("nav.path.placeholder")));
+        self._omnibar_path_subscription = Some(cx.subscribe(
+            &input,
+            move |page, _, event: &InputEvent, cx| match event {
                 InputEvent::PressEnter { .. } => page.submit_omnibar_path(cx),
                 InputEvent::Blur => page.dismiss_omnibar_path_edit(cx),
                 _ => {}
-            }
-        }));
+            },
+        ));
         self.omnibar_path_input = Some(input.clone());
         input
     }
@@ -811,7 +818,8 @@ impl MainPage {
     }
 
     pub fn refresh_home_widgets(&mut self, cx: &mut Context<Self>) {
-        self.active_pane(cx).update(cx, |pane, cx| pane.reload_home(cx));
+        self.active_pane(cx)
+            .update(cx, |pane, cx| pane.reload_home(cx));
         cx.notify();
     }
 
@@ -832,11 +840,7 @@ impl MainPage {
 
     pub fn unpin_folder_path(&mut self, path_string: &str, cx: &mut Context<Self>) {
         let mut config = load_config().unwrap_or_default();
-        if let Some(index) = config
-            .pinned_folders
-            .iter()
-            .position(|p| p == path_string)
-        {
+        if let Some(index) = config.pinned_folders.iter().position(|p| p == path_string) {
             config.pinned_folders.remove(index);
             let _ = save_config(&config);
             let path = PathBuf::from(path_string);
@@ -853,15 +857,11 @@ impl MainPage {
 
     pub fn move_pinned_folder(&mut self, path_string: &str, delta: i32, cx: &mut Context<Self>) {
         let mut config = load_config().unwrap_or_default();
-        let Some(index) = config
-            .pinned_folders
-            .iter()
-            .position(|p| p == path_string)
-        else {
+        let Some(index) = config.pinned_folders.iter().position(|p| p == path_string) else {
             return;
         };
-        let new_index = (index as i32 + delta).clamp(0, config.pinned_folders.len() as i32 - 1)
-            as usize;
+        let new_index =
+            (index as i32 + delta).clamp(0, config.pinned_folders.len() as i32 - 1) as usize;
         if new_index == index {
             return;
         }
@@ -874,14 +874,15 @@ impl MainPage {
 
     fn pin_current_folder(&mut self, cx: &mut Context<Self>) {
         let pane = self.active_pane(cx);
-        let path = pane.read(cx).file_browser().read(cx).current_directory().clone();
+        let path = pane
+            .read(cx)
+            .file_browser()
+            .read(cx)
+            .current_directory()
+            .clone();
         let path_string = path.to_string_lossy().to_string();
         let mut config = load_config().unwrap_or_default();
-        if let Some(index) = config
-            .pinned_folders
-            .iter()
-            .position(|p| p == &path_string)
-        {
+        if let Some(index) = config.pinned_folders.iter().position(|p| p == &path_string) {
             config.pinned_folders.remove(index);
         } else {
             config.pinned_folders.push(path_string);
@@ -1104,15 +1105,13 @@ impl MainPage {
                         .when(show_info_pane, |this| {
                             this.child(
                                 h_resizable("main-with-info-pane")
-                                    .child(
-                                        resizable_panel().flex_1().min_w_0().child(
-                                            self.render_content_column(
-                                                window,
-                                                active_shell.clone(),
-                                                cx,
-                                            ),
+                                    .child(resizable_panel().flex_1().min_w_0().child(
+                                        self.render_content_column(
+                                            window,
+                                            active_shell.clone(),
+                                            cx,
                                         ),
-                                    )
+                                    ))
                                     .child(
                                         resizable_panel()
                                             .size(px(300.))
@@ -1133,20 +1132,14 @@ impl MainPage {
         TabBar::new("main-tab-bar")
             .selected_index(active)
             .last_empty_space(
-                h_flex()
-                    .gap_1()
-                    .pr_1()
-                    .child(
-                        toolbar_icon_button("main-new-tab")
-                            .icon(compact_icon(IconName::Plus))
-                            .tooltip(t!("nav.new_tab"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.add_tab(
-                                    NavigationTarget::Path(home_navigation_path()),
-                                    cx,
-                                );
-                            })),
-                    ),
+                h_flex().gap_1().pr_1().child(
+                    toolbar_icon_button("main-new-tab")
+                        .icon(compact_icon(IconName::Plus))
+                        .tooltip(t!("nav.new_tab"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.add_tab(NavigationTarget::Path(home_navigation_path()), cx);
+                        })),
+                ),
             )
             .children(self.tabs.iter().enumerate().map(|(index, tab)| {
                 let title = self.tab_title(index, cx);
@@ -1183,7 +1176,11 @@ impl MainPage {
     }
 
     /// Menu + tabs + window actions in one row (browser-style title bar).
-    fn render_title_bar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_title_bar(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let notifications_count = window.notifications(cx).len();
         let is_dark = cx.theme().mode.is_dark();
         let theme_icon = if is_dark {
@@ -1194,75 +1191,74 @@ impl MainPage {
         let app_menu_bar = app_menus::menu_bar(cx);
         let tab_bar = self.render_tab_bar(cx);
 
-        TitleBar::new()
-            .child(
-                h_flex()
-                    .id("title-bar-inner")
-                    .h_full()
-                    .w_full()
-                    .min_w_0()
-                    .items_center()
-                    .gap_1()
-                    .child(div().flex_none().child(app_menu_bar))
-                    .child(
-                        div()
-                            .id("title-bar-tabs")
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .overflow_hidden()
-                            .flex()
-                            .items_center()
-                            .child(
-                                div()
-                                    .id("title-bar-tabs-clip")
-                                    .w_full()
-                                    .h(TITLE_TAB_BAR_VISIBLE_HEIGHT)
-                                    .max_h(TITLE_TAB_BAR_VISIBLE_HEIGHT)
-                                    .overflow_hidden()
-                                    .child(tab_bar.h(TITLE_TAB_BAR_HEIGHT)),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .id("title-bar-actions")
-                            .flex_none()
-                            .items_center()
-                            .gap_2()
-                            .px_2()
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .child(
-                                toolbar_icon_button("theme-toggle")
-                                    .icon(toolbar_icon(theme_icon))
-                                    .tooltip(t!("nav.theme_toggle"))
-                                    .on_click(move |_, _, cx| {
-                                        let mode = if cx.theme().mode.is_dark() {
-                                            ThemeMode::Light
-                                        } else {
-                                            ThemeMode::Dark
-                                        };
-                                        apply_theme_mode(mode, cx);
-                                    }),
-                            )
-                            .child(
-                                toolbar_icon_button("github")
-                                    .icon(toolbar_icon(IconName::Github))
-                                    .tooltip(t!("nav.github"))
-                                    .on_click(|_, _, cx| {
-                                        cx.open_url("https://github.com/RGAA-Software/CyberFiles")
-                                    }),
-                            )
-                            .child(
-                                div().relative().child(
-                                    Badge::new().count(notifications_count).max(99).child(
-                                        toolbar_icon_button("bell")
-                                            .icon(toolbar_icon(IconName::Bell))
-                                            .tooltip(t!("nav.notifications")),
-                                    ),
+        TitleBar::new().child(
+            h_flex()
+                .id("title-bar-inner")
+                .h_full()
+                .w_full()
+                .min_w_0()
+                .items_center()
+                .gap_1()
+                .child(div().flex_none().child(app_menu_bar))
+                .child(
+                    div()
+                        .id("title-bar-tabs")
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .overflow_hidden()
+                        .flex()
+                        .items_center()
+                        .child(
+                            div()
+                                .id("title-bar-tabs-clip")
+                                .w_full()
+                                .h(TITLE_TAB_BAR_VISIBLE_HEIGHT)
+                                .max_h(TITLE_TAB_BAR_VISIBLE_HEIGHT)
+                                .overflow_hidden()
+                                .child(tab_bar.h(TITLE_TAB_BAR_HEIGHT)),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .id("title-bar-actions")
+                        .flex_none()
+                        .items_center()
+                        .gap_2()
+                        .px_2()
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(
+                            toolbar_icon_button("theme-toggle")
+                                .icon(toolbar_icon(theme_icon))
+                                .tooltip(t!("nav.theme_toggle"))
+                                .on_click(move |_, _, cx| {
+                                    let mode = if cx.theme().mode.is_dark() {
+                                        ThemeMode::Light
+                                    } else {
+                                        ThemeMode::Dark
+                                    };
+                                    apply_theme_mode(mode, cx);
+                                }),
+                        )
+                        .child(
+                            toolbar_icon_button("github")
+                                .icon(toolbar_icon(IconName::Github))
+                                .tooltip(t!("nav.github"))
+                                .on_click(|_, _, cx| {
+                                    cx.open_url("https://github.com/RGAA-Software/CyberFiles")
+                                }),
+                        )
+                        .child(
+                            div().relative().child(
+                                Badge::new().count(notifications_count).max(99).child(
+                                    toolbar_icon_button("bell")
+                                        .icon(toolbar_icon(IconName::Bell))
+                                        .tooltip(t!("nav.notifications")),
                                 ),
                             ),
-                    ),
-            )
+                        ),
+                ),
+        )
     }
 
     fn render_navigation_toolbar(
@@ -1271,9 +1267,7 @@ impl MainPage {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let show_info_pane = self.show_info_pane;
-        let sidebar_collapsed = load_config()
-            .map(|c| c.sidebar_collapsed)
-            .unwrap_or(false);
+        let sidebar_collapsed = load_config().map(|c| c.sidebar_collapsed).unwrap_or(false);
         let pane = self.active_pane(cx);
         let target = pane.read(cx).target().clone();
         let browser = pane.read(cx).file_browser();
@@ -1288,9 +1282,7 @@ impl MainPage {
         };
         let show_file_search = matches!(
             target,
-            NavigationTarget::Path(_)
-                | NavigationTarget::RecycleBin
-                | NavigationTarget::FileTag(_)
+            NavigationTarget::Path(_) | NavigationTarget::RecycleBin | NavigationTarget::FileTag(_)
         );
 
         h_flex()
@@ -1331,8 +1323,7 @@ impl MainPage {
                             .tooltip(t!("nav.back"))
                             .disabled(!can_back)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                let browser =
-                                    this.active_pane(cx).read(cx).file_browser().clone();
+                                let browser = this.active_pane(cx).read(cx).file_browser().clone();
                                 browser.update(cx, |b, cx| b.go_back(cx));
                             })),
                     )
@@ -1342,8 +1333,7 @@ impl MainPage {
                             .tooltip(t!("nav.forward"))
                             .disabled(!can_forward)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                let browser =
-                                    this.active_pane(cx).read(cx).file_browser().clone();
+                                let browser = this.active_pane(cx).read(cx).file_browser().clone();
                                 browser.update(cx, |b, cx| b.go_forward(cx));
                             })),
                     )
@@ -1353,8 +1343,7 @@ impl MainPage {
                             .tooltip(t!("nav.up"))
                             .disabled(!can_up)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                let browser =
-                                    this.active_pane(cx).read(cx).file_browser().clone();
+                                let browser = this.active_pane(cx).read(cx).file_browser().clone();
                                 browser.update(cx, |b, cx| b.go_up(cx));
                             })),
                     )
@@ -1434,11 +1423,7 @@ impl MainPage {
                                 .h(OMNIBAR_BAR_HEIGHT)
                                 .flex()
                                 .items_center()
-                                .child(
-                                    Input::new(&search_input)
-                                        .w_full()
-                                        .with_size(Size::Medium),
-                                ),
+                                .child(Input::new(&search_input).w_full().with_size(Size::Medium)),
                         );
                 }
                 trailing
@@ -1450,7 +1435,9 @@ impl MainPage {
         let target = pane.read(cx).target().clone();
 
         let (items, selected, hint) = match target {
-            NavigationTarget::Path(_) | NavigationTarget::RecycleBin | NavigationTarget::FileTag(_) => {
+            NavigationTarget::Path(_)
+            | NavigationTarget::RecycleBin
+            | NavigationTarget::FileTag(_) => {
                 let b = pane.read(cx).file_browser().read(cx);
                 let hint = match target {
                     NavigationTarget::RecycleBin => t!("main.status.recycle_bin").to_string(),
@@ -1523,16 +1510,12 @@ impl MainPage {
                                     .gap_2()
                                     .items_center()
                                     .child(
-                                        div()
-                                            .flex_1()
-                                            .min_w_0()
-                                            .overflow_hidden()
-                                            .child(
-                                                Label::new(job.message.clone())
-                                                    .text_xs()
-                                                    .text_color(cx.theme().accent_foreground)
-                                                    .truncate(),
-                                            ),
+                                        div().flex_1().min_w_0().overflow_hidden().child(
+                                            Label::new(job.message.clone())
+                                                .text_xs()
+                                                .text_color(cx.theme().accent_foreground)
+                                                .truncate(),
+                                        ),
                                     )
                                     .child(
                                         Label::new(progress_label)
@@ -1560,7 +1543,6 @@ impl MainPage {
                 .text_color(cx.theme().muted_foreground),
         )
     }
-
 }
 
 impl Focusable for MainPage {
@@ -1576,7 +1558,8 @@ impl Render for MainPage {
         let show_info_pane = self.show_info_pane;
         let file_navigation_active = self.file_navigation_active(cx);
         let info_item = self.info_selection(cx);
-        self.info_pane.update(cx, |pane, _| pane.set_item(info_item));
+        self.info_pane
+            .update(cx, |pane, _| pane.set_item(info_item));
 
         v_flex()
             .id("main-page")
@@ -1584,7 +1567,9 @@ impl Render for MainPage {
             .min_h_0()
             .min_w_0()
             .track_focus(&self.focus_handle)
-            .when(file_navigation_active, |page| page.key_context(FILE_BROWSER))
+            .when(file_navigation_active, |page| {
+                page.key_context(FILE_BROWSER)
+            })
             .on_action(cx.listener(|this, _: &FocusOmnibar, window, cx| {
                 this.focus_search_input(window, cx);
             }))
@@ -1629,13 +1614,7 @@ impl Render for MainPage {
                     .min_h_0()
                     .min_w_0()
                     .overflow_hidden()
-                    .child(self.render_shell_layout_row(
-                        window,
-                        active_shell,
-                        show_info_pane,
-                        cx,
-                    )),
+                    .child(self.render_shell_layout_row(window, active_shell, show_info_pane, cx)),
             )
     }
 }
-

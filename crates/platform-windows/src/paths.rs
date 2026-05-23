@@ -3,9 +3,9 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 
 use windows::core::{GUID, PCWSTR};
+use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
-use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Shell::{
     SHGetFolderLocation, SHGetKnownFolderIDList, SHGetKnownFolderPath, SHParseDisplayName,
     CSIDL_BITBUCKET, KF_FLAG_DEFAULT,
@@ -46,7 +46,8 @@ pub unsafe fn recycle_bin_pidl() -> windows::core::Result<*mut ITEMIDLIST> {
         windows::Win32::UI::Shell::ILFree(Some(pidl));
     }
 
-    if let Ok(pidl) = SHGetKnownFolderIDList(&FOLDERID_RECYCLE_BIN, KF_FLAG_DEFAULT.0 as u32, None) {
+    if let Ok(pidl) = SHGetKnownFolderIDList(&FOLDERID_RECYCLE_BIN, KF_FLAG_DEFAULT.0 as u32, None)
+    {
         return Ok(pidl);
     }
 

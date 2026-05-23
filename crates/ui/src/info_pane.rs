@@ -93,19 +93,17 @@ fn details_panel(item: Option<&FileItem>, cx: &mut Context<InfoPane>) -> impl In
                         .items_center()
                         .text_color(cx.theme().foreground)
                         .child(icon_foreground(IconName::Info, cx))
-                        .child(
-                            Label::new(name)
-                                .text_sm()
-                                .text_color(cx.theme().foreground),
-                        ),
+                        .child(Label::new(name).text_sm().text_color(cx.theme().foreground)),
                 )
                 .child(
                     DescriptionList::vertical()
                         .bordered(false)
                         .columns(1)
-                        .children(detail_lines.into_iter().map(|(label, value)| {
-                            DescriptionItem::new(label).value(value)
-                        })),
+                        .children(
+                            detail_lines
+                                .into_iter()
+                                .map(|(label, value)| DescriptionItem::new(label).value(value)),
+                        ),
                 )
         })
         .when(name.is_none(), |panel| {
@@ -154,11 +152,7 @@ fn preview_text_content(path: &std::path::Path, cx: &mut Context<InfoPane>) -> A
             .border_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().muted)
-            .child(
-                Label::new(text)
-                    .text_xs()
-                    .text_color(cx.theme().foreground),
-            )
+            .child(Label::new(text).text_xs().text_color(cx.theme().foreground))
             .into_any_element(),
         Err(error) => Alert::error(
             "info-pane-preview-error",
@@ -186,10 +180,7 @@ fn item_details(item: Option<&FileItem>) -> (Option<String>, Vec<(String, String
             t!("info_pane.path").to_string(),
             item.path.display().to_string(),
         ),
-        (
-            t!("info_pane.type").to_string(),
-            item_type_label(item),
-        ),
+        (t!("info_pane.type").to_string(), item_type_label(item)),
     ];
 
     if let Some(size) = item.size {

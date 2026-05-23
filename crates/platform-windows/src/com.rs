@@ -19,13 +19,11 @@ where
     thread::Builder::new()
         .name("cyberfiles-sta-task".into())
         .spawn(move || {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                unsafe {
-                    let _ = OleInitialize(None);
-                    let out = f();
-                    let _ = OleUninitialize();
-                    out
-                }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                let _ = OleInitialize(None);
+                let out = f();
+                let _ = OleUninitialize();
+                out
             }));
             let _ = reply_tx.send(result);
         })
@@ -47,14 +45,12 @@ impl StaMessageThread {
         let (job_tx, job_rx) = mpsc::sync_channel::<Box<dyn FnOnce() + Send>>(128);
         let join = thread::Builder::new()
             .name(name.into())
-            .spawn(move || {
-                unsafe {
-                    let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-                    for job in job_rx {
-                        job();
-                    }
-                    let _ = CoUninitialize();
+            .spawn(move || unsafe {
+                let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+                for job in job_rx {
+                    job();
                 }
+                let _ = CoUninitialize();
             })
             .expect("spawn STA message thread");
         Self {

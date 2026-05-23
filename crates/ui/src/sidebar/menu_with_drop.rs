@@ -9,20 +9,17 @@ use std::rc::Rc;
 use gpui::{
     div,
     prelude::{FluentBuilder as _, *},
-    AnyElement, App, ClickEvent, ElementId, IntoElement, MouseButton, SharedString,
-    StyleRefinement, Styled, Window, px,
+    px, AnyElement, App, ClickEvent, ElementId, IntoElement, MouseButton, SharedString,
+    StyleRefinement, Styled, Window,
 };
 use gpui_component::{
-    h_flex,
-    Collapsible, Icon, StyledExt,
-    sidebar::SidebarItem,
-    v_flex, ActiveTheme as _,
+    h_flex, sidebar::SidebarItem, v_flex, ActiveTheme as _, Collapsible, Icon, StyledExt,
 };
 
+use super::constants::SIDEBAR_ITEM_HEIGHT;
 use crate::drag::DraggedFilePaths;
 use crate::popup_menu::{ContextMenuExt as _, PopupMenu};
 use crate::shell_icon::shell_icon_for_path;
-use super::constants::SIDEBAR_ITEM_HEIGHT;
 
 #[derive(Clone)]
 struct FolderDropHandlers {
@@ -73,7 +70,9 @@ fn render_item_row(
     let is_hoverable = !active;
     let icon_element = match icon {
         SidebarRowIcon::App(icon) => icon.into_any_element(),
-        SidebarRowIcon::Shell(path) => shell_icon_for_path(&path, px(16.), window).into_any_element(),
+        SidebarRowIcon::Shell(path) => {
+            shell_icon_for_path(&path, px(16.), window).into_any_element()
+        }
     };
 
     let item_inner = h_flex()
