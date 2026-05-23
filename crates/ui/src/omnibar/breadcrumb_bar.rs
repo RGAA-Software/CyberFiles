@@ -8,7 +8,10 @@ use cyberfiles_fs::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::plot::label::measure_text_width;
-use gpui_component::{h_flex, ActiveTheme as _, IconName};
+use gpui_component::{
+    button::{Button, ButtonVariants as _},
+    h_flex, ActiveTheme as _, IconName, Sizable as _, Size,
+};
 use rust_i18n::t;
 
 use super::breadcrumb_flyout::BreadcrumbFlyout;
@@ -16,12 +19,13 @@ use crate::app_state::AppNavigation;
 use crate::file_browser::DraggedFilePaths;
 use crate::icons::toolbar_icon;
 use crate::popup_menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
-use crate::toolbar_button::{toolbar_icon_button, toolbar_labeled_button, TOOLBAR_BUTTON_PX};
+use crate::toolbar_button::{toolbar_icon_button, TOOLBAR_BUTTON_PX};
 
-/// Segment label `text_sm()` (matches menu rows).
+/// Segment label at 14px.
 const BREADCRUMB_SEGMENT_FONT_SIZE: Pixels = px(14.);
 /// Horizontal inset on medium ghost labeled buttons (label + padding).
-const BREADCRUMB_LABELED_BUTTON_PADDING: f32 = 24.;
+const BREADCRUMB_LABELED_BUTTON_PADDING: f32 = 12.;
+const BREADCRUMB_CHEVRON_BUTTON_PX: Pixels = px(24.);
 
 /// Breadcrumb dropdown outer width (Files-style flyout).
 const BREADCRUMB_DROPDOWN_MIN_WIDTH: Pixels = px(220.);
@@ -98,7 +102,7 @@ fn breadcrumb_labeled_block_width(label: &str, window: &mut Window) -> f32 {
 fn breadcrumb_segment_block_width(label: &str, has_chevron: bool, window: &mut Window) -> f32 {
     let mut w = breadcrumb_labeled_block_width(label, window);
     if has_chevron {
-        w += f32::from(TOOLBAR_BUTTON_PX);
+        w += f32::from(BREADCRUMB_CHEVRON_BUTTON_PX);
     }
     w
 }
@@ -113,7 +117,7 @@ impl RenderOnce for PathBreadcrumbBar {
             .map(|(i, s)| breadcrumb_segment_block_width(&s.label, i + 1 < n, window))
             .collect();
         let root_width = if self.show_root {
-            f32::from(TOOLBAR_BUTTON_PX) * 2.0 + f32::from(px(2.))
+            f32::from(TOOLBAR_BUTTON_PX) + f32::from(BREADCRUMB_CHEVRON_BUTTON_PX) + f32::from(px(2.))
         } else {
             0.0
         };
@@ -252,7 +256,9 @@ fn render_ellipsis_item(
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
         .child(
-            toolbar_labeled_button("breadcrumb-ellipsis-button")
+            Button::new("breadcrumb-ellipsis-button")
+                .with_size(Size::Small)
+                .ghost()
                 .label("…")
                 .tooltip(tip)
                 .dropdown_menu_with_anchor(Anchor::BottomLeft, {
@@ -306,7 +312,9 @@ fn render_path_segment(
         })
         .child({
             let navigate = navigate.clone();
-            toolbar_labeled_button(("breadcrumb-segment-label", index))
+            Button::new(("breadcrumb-segment-label", index))
+                .with_size(Size::Small)
+                .ghost()
                 .label(label)
                 .tooltip(tooltip)
                 .on_click(move |_, window, cx| {

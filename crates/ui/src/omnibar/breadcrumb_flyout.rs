@@ -14,12 +14,15 @@ use gpui::{
     MouseDownEvent, ParentElement, Pixels, Point, RenderOnce, SharedString, StyleRefinement,
     Styled, Subscription, Window,
 };
-use gpui_component::{IconName, Selectable};
+use gpui_component::{
+    button::{Button, ButtonVariants as _},
+    IconName, Selectable, Sizable as _, Size,
+};
 
 use crate::popup_menu::PopupMenu;
 
 use crate::icons::inline_icon;
-use crate::toolbar_button::{toolbar_icon_button, TOOLBAR_BUTTON_PX};
+use crate::toolbar_button::TOOLBAR_BUTTON_PX;
 
 /// Chevron trigger; rotates 90° while flyout is open (Files `ChevronNormalOn`).
 #[derive(IntoElement)]
@@ -32,14 +35,15 @@ struct BreadcrumbChevronTrigger {
 impl RenderOnce for BreadcrumbChevronTrigger {
     fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
         div()
-            .h(TOOLBAR_BUTTON_PX)
-            .w(TOOLBAR_BUTTON_PX)
+            .size(TOOLBAR_BUTTON_PX)
             .flex()
             .flex_none()
             .items_center()
             .justify_center()
             .child(
-                toolbar_icon_button(self.id)
+                Button::new(self.id)
+                    .with_size(Size::Small)
+                    .ghost()
                     .tooltip(self.tooltip)
                     .selected(self.open)
                     .child(

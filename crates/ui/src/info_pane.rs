@@ -81,6 +81,9 @@ fn tab_content(
 
 fn details_panel(item: Option<&FileItem>, cx: &mut Context<InfoPane>) -> impl IntoElement {
     let (name, detail_lines) = item_details(item);
+    let path_label = t!("info_pane.path").to_string();
+    let type_label = t!("info_pane.type").to_string();
+    let modified_label = t!("info_pane.modified").to_string();
 
     v_flex()
         .w_full()
@@ -102,7 +105,17 @@ fn details_panel(item: Option<&FileItem>, cx: &mut Context<InfoPane>) -> impl In
                         .children(
                             detail_lines
                                 .into_iter()
-                                .map(|(label, value)| DescriptionItem::new(label).value(value)),
+                                .map(|(label, value)| {
+                                    let item = DescriptionItem::new(label.clone());
+                                    if label == path_label
+                                        || label == type_label
+                                        || label == modified_label
+                                    {
+                                        item.value(div().text_sm().child(value).into_any_element())
+                                    } else {
+                                        item.value(value)
+                                    }
+                                }),
                         ),
                 )
         })
