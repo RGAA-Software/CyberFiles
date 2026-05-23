@@ -36,12 +36,16 @@ pub use icons::{
 #[cfg(windows)]
 pub use shell_icon::{
     menu_icon_pixel_size, shell_icon_pixel_size, shell_icon_png, shell_icon_png_for_list_key,
-    shell_icon_png_from_cache, shell_icon_png_scaled, system_scale_factor,
+    shell_icon_png_from_cache, shell_icon_png_scaled, shell_thumbnail_png_scaled,
+    system_scale_factor,
+};
+pub use quick_access::{
+    list_shell_quick_access_folders, shell_pin_to_quick_access, shell_unpin_from_quick_access,
+    ShellQuickAccessEntry,
 };
 #[cfg(windows)]
 pub use paths::{is_recycle_bin_path, recycle_bin_folder, SHELL_RECYCLE_BIN_PATH};
 #[cfg(windows)]
-pub use quick_access::{list_shell_quick_access_folders, ShellQuickAccessEntry};
 #[cfg(windows)]
 pub use shell_folder::{
     list_cloud_drive_roots, list_known_folder_folders, list_wsl_distro_roots, ShellFolderEntry,

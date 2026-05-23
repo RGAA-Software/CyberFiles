@@ -33,7 +33,9 @@ use crate::file_ops::{spawn_file_transfer, FileTransferKind};
 use crate::icons::{compact_icon, pin_icon, toolbar_icon};
 use crate::toolbar_button::toolbar_icon_button;
 use crate::info_pane::InfoPane;
-use crate::app_state::{breadcrumb_navigation_target, AppFileClipboard, TransferStatusGlobal};
+use crate::app_state::{
+    breadcrumb_navigation_target, AppFileClipboard, AppNavigation, TransferStatusGlobal,
+};
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
 use crate::omnibar::{OmnibarBreadcrumbCallbacks, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::app_menus;
@@ -818,8 +820,11 @@ impl MainPage {
         if !config.pinned_folders.iter().any(|p| p == &path_string) {
             config.pinned_folders.push(path_string);
             let _ = save_config(&config);
+            if let Err(error) = cyberfiles_fs::sync_pin_to_shell_quick_access(&path) {
+                eprintln!("[home] pintohome: {error:#}");
+            }
             self.refresh_sidebar_cache(cx);
-            self.refresh_home_widgets(cx);
+            AppNavigation::refresh_quick_access(cx);
             cx.notify();
         }
     }
@@ -833,8 +838,14 @@ impl MainPage {
         {
             config.pinned_folders.remove(index);
             let _ = save_config(&config);
+            let path = PathBuf::from(path_string);
+            if path.exists() {
+                if let Err(error) = cyberfiles_fs::sync_unpin_from_shell_quick_access(&path) {
+                    eprintln!("[home] unpinfromhome: {error:#}");
+                }
+            }
             self.refresh_sidebar_cache(cx);
-            self.refresh_home_widgets(cx);
+            AppNavigation::refresh_quick_access(cx);
             cx.notify();
         }
     }

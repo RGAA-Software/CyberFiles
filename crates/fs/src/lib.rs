@@ -25,7 +25,8 @@ pub use columns::column_trail_for;
 pub use drives::{default_user_profile, home_navigation_path, list_drives, DriveInfo};
 pub use home::{
     eject_drive, file_tag_previews, list_quick_access_entries, load_home_file_tags,
-    quick_access_automatic_destinations_dir, FileTagPreview, QuickAccessEntry,
+    quick_access_automatic_destinations_dir, sync_pin_to_shell_quick_access,
+    sync_unpin_from_shell_quick_access, FileTagPreview, QuickAccessEntry,
 };
 pub use file_tag::file_items_for_tag_paths;
 pub use item::{DirectoryReadOptions, FileItem, FileItemKind};

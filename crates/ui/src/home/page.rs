@@ -4,6 +4,8 @@ use cyberfiles_fs::{
     load_home_file_tags, quick_access_automatic_destinations_dir, DirectoryWatcher,
     DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
 };
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
@@ -58,6 +60,9 @@ pub struct HomePage {
     _qa_watcher: Option<DirectoryWatcher>,
     #[cfg(windows)]
     _qa_watch_task: Option<Task<()>>,
+    /// Shell thumbnail PNG bytes for Home cards (path key → image).
+    pub(super) thumbnail_bytes: HashMap<String, Arc<Vec<u8>>>,
+    pub(super) thumbnail_pending: HashSet<String>,
 }
 
 impl HomePage {
@@ -72,6 +77,8 @@ impl HomePage {
             _qa_watcher: None,
             #[cfg(windows)]
             _qa_watch_task: None,
+            thumbnail_bytes: HashMap::new(),
+            thumbnail_pending: HashSet::new(),
         };
         page.schedule_load(cx);
         #[cfg(windows)]
@@ -105,6 +112,8 @@ impl HomePage {
 
     pub fn reload(&mut self, cx: &mut Context<Self>) {
         self.snapshot = None;
+        self.thumbnail_bytes.clear();
+        self.thumbnail_pending.clear();
         self.schedule_load(cx);
     }
 

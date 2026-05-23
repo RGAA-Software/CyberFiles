@@ -49,7 +49,7 @@ CyberFiles 实现：`crates/ui/src/home/`（`page.rs`、`widgets.rs`、`widget_s
 
 ## 建议下一批（H5）
 
-1. 驱动器/文件夹 **Shell 缩略图**（异步，对齐 `WidgetDriveCardItem.LoadCardThumbnailAsync`）⬜
+1. 驱动器/文件夹 **Shell 缩略图**（异步 `SIIGBF_THUMBNAILONLY`，无缩略图时回退图标）✅
 2. Quick Access **AutomaticDestinations** 监听刷新 ✅
 3. **Eject** / 断开网络盘（驱动器/网络卡片右键）✅
-4. Explorer **pintohome** 只读或双向同步 ⬜
+4. Explorer **pintohome** 固定/取消固定同步（Pin 时调用 Shell `pintohome`）✅

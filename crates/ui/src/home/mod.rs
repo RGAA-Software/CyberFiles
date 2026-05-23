@@ -1,4 +1,5 @@
 mod page;
+mod thumbnails;
 mod widget_shell;
 mod widgets;
 

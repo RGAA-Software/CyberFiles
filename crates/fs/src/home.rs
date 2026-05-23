@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use cyberfiles_core::{load_config, pinned_folder_paths, FileTagConfig};
 
 #[cfg(windows)]
-use cyberfiles_platform_windows::list_shell_quick_access_folders;
+use cyberfiles_platform_windows::{
+    list_shell_quick_access_folders, shell_pin_to_quick_access, shell_unpin_from_quick_access,
+};
 
 /// One quick-access folder on the Home page (Shell QA + user pinned).
 #[derive(Debug, Clone)]
@@ -119,6 +121,28 @@ pub fn eject_drive(drive: &crate::drives::DriveInfo) -> anyhow::Result<()> {
 #[cfg(not(windows))]
 pub fn eject_drive(_drive: &crate::drives::DriveInfo) -> anyhow::Result<()> {
     anyhow::bail!("eject is only supported on Windows")
+}
+
+/// Pin a folder in Explorer Quick Access (in addition to `settings.json` pins).
+#[cfg(windows)]
+pub fn sync_pin_to_shell_quick_access(path: &Path) -> anyhow::Result<()> {
+    shell_pin_to_quick_access(path)
+}
+
+#[cfg(not(windows))]
+pub fn sync_pin_to_shell_quick_access(_path: &Path) -> anyhow::Result<()> {
+    Ok(())
+}
+
+/// Unpin from Explorer Quick Access.
+#[cfg(windows)]
+pub fn sync_unpin_from_shell_quick_access(path: &Path) -> anyhow::Result<()> {
+    shell_unpin_from_quick_access(path)
+}
+
+#[cfg(not(windows))]
+pub fn sync_unpin_from_shell_quick_access(_path: &Path) -> anyhow::Result<()> {
+    Ok(())
 }
 
 fn path_key(path: &Path) -> String {

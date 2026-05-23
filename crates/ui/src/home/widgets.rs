@@ -290,7 +290,7 @@ impl HomePage {
     }
 
     fn folder_card(
-        &self,
+        &mut self,
         window: &mut Window,
         index: usize,
         prefix: &str,
@@ -300,6 +300,7 @@ impl HomePage {
         let path = entry.path.clone();
         let label = entry.label.clone();
         let pinned = entry.is_pinned;
+        self.ensure_home_thumbnail(&path, 32., window, cx);
         Button::new(SharedString::from(format!("{prefix}-folder-{index}")))
             .ghost()
             .w(FOLDER_CARD_WIDTH)
@@ -312,7 +313,7 @@ impl HomePage {
                     .child(
                         div()
                             .relative()
-                            .child(shell_icon_for_path(&entry.path, px(32.), window))
+                            .child(self.home_card_image(&path, px(32.), window))
                             .when(pinned, |el| {
                                 el.child(
                                     div()
@@ -342,7 +343,7 @@ impl HomePage {
     }
 
     fn drive_card(
-        &self,
+        &mut self,
         window: &mut Window,
         index: usize,
         prefix: &str,
@@ -353,6 +354,7 @@ impl HomePage {
         let title = drive.label.clone();
         let space = drive.space_text();
         let frac = drive.used_fraction();
+        self.ensure_home_thumbnail(&path, 32., window, cx);
         Button::new(SharedString::from(format!("{prefix}-drive-{index}")))
             .ghost()
             .w(CARD_WIDTH)
@@ -361,7 +363,7 @@ impl HomePage {
                 h_flex()
                     .w_full()
                     .gap_2()
-                    .child(shell_icon_for_path(&drive.path, px(32.), window))
+                    .child(self.home_card_image(&path, px(32.), window))
                     .child(
                         v_flex()
                             .flex_1()

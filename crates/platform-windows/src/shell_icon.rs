@@ -15,8 +15,9 @@ use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Controls::{IImageList, ILD_TRANSPARENT};
 use windows::Win32::UI::Shell::{
     IShellItem, IShellItemImageFactory, SHCreateItemFromParsingName, SHGetFileInfoW, SHGetImageList,
-    SHFILEINFOW, SHGFI_SYSICONINDEX, SHGFI_USEFILEATTRIBUTES, SIIGBF_ICONONLY,
-    SIIGBF_SCALEUP, SHIL_EXTRALARGE, SHIL_JUMBO, SHIL_LARGE, SHIL_SMALL,
+    SHFILEINFOW, SHGFI_SYSICONINDEX, SHGFI_USEFILEATTRIBUTES, SIIGBF_BIGGERSIZEOK,
+    SIIGBF_ICONONLY, SIIGBF_SCALEUP, SIIGBF_THUMBNAILONLY, SHIL_EXTRALARGE, SHIL_JUMBO,
+    SHIL_LARGE, SHIL_SMALL,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     DestroyIcon, GetIconInfo, HICON, ICONINFO,
@@ -51,6 +52,7 @@ pub fn menu_icon_pixel_size(scale_factor: f32) -> u32 {
 }
 
 static ICON_CACHE: Mutex<Option<HashMap<(PathBuf, u32), Vec<u8>>>> = Mutex::new(None);
+static THUMBNAIL_CACHE: Mutex<Option<HashMap<(PathBuf, u32), Vec<u8>>>> = Mutex::new(None);
 static LIST_KEY_CACHE: Mutex<Option<HashMap<(String, u32), Vec<u8>>>> = Mutex::new(None);
 
 /// Physical pixel size for a logical UI size at the given display scale (Files: `size * DPI`).
@@ -112,6 +114,51 @@ pub fn shell_icon_png_scaled(
     scale_factor: f32,
 ) -> anyhow::Result<Vec<u8>> {
     shell_icon_png(path, shell_icon_pixel_size(logical_px, scale_factor))
+}
+
+/// Shell **thumbnail** for Home cards (`SIIGBF_THUMBNAILONLY`). Returns `None` when unavailable.
+pub fn shell_thumbnail_png_scaled(
+    path: &Path,
+    logical_px: f32,
+    scale_factor: f32,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let size = shell_icon_pixel_size(logical_px, scale_factor);
+    let key = (path.to_path_buf(), size);
+    let mut guard = THUMBNAIL_CACHE.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let cache = guard.get_or_insert_with(HashMap::new);
+    if let Some(bytes) = cache.get(&key) {
+        return Ok(Some(bytes.clone()));
+    }
+    let Some(png) = shell_thumbnail_png_uncached(path, size)? else {
+        return Ok(None);
+    };
+    cache.insert(key, png.clone());
+    Ok(Some(png))
+}
+
+fn shell_thumbnail_png_uncached(path: &Path, size: u32) -> anyhow::Result<Option<Vec<u8>>> {
+    let path = path.to_path_buf();
+    run_sta_task(move || unsafe {
+        match shell_thumbnail_png_inner(&path, size) {
+            Ok(png) => Ok(Some(png)),
+            Err(_) => Ok(None),
+        }
+    })
+}
+
+unsafe fn shell_thumbnail_png_inner(path: &Path, size: u32) -> anyhow::Result<Vec<u8>> {
+    let parsing = shell_icon_parsing_path(path);
+    let wide = path_to_wide(&parsing);
+    let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)?;
+    let factory: IShellItemImageFactory = item.cast()?;
+    let hbitmap = factory.GetImage(
+        SIZE {
+            cx: size as i32,
+            cy: size as i32,
+        },
+        SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP,
+    )?;
+    hbitmap_to_png(hbitmap)
 }
 
 fn shell_icon_png_uncached(path: &Path, size: u32, is_folder: bool) -> anyhow::Result<Vec<u8>> {
