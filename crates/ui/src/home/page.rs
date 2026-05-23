@@ -4,7 +4,7 @@ use cyberfiles_fs::{
     load_home_file_tags, DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
 };
 use gpui::{
-    anchored, deferred, div, prelude::*, px, Anchor, App, DismissEvent, Entity,
+    anchored, deferred, div, prelude::*, px, Anchor, DismissEvent, Entity,
     MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window,
 };
 use gpui_component::{
@@ -64,10 +64,6 @@ impl HomePage {
         };
         page.schedule_load(cx);
         page
-    }
-
-    pub fn view(cx: &mut App) -> Entity<Self> {
-        cx.new(|cx| Self::new(cx))
     }
 
     pub fn reload(&mut self, cx: &mut Context<Self>) {

@@ -22,14 +22,6 @@ pub fn icon_foreground(icon: IconName, cx: &App) -> impl IntoElement {
         .child(toolbar_icon(icon))
 }
 
-/// Icon tinted for secondary / metadata text.
-pub fn icon_muted(icon: IconName, cx: &App) -> impl IntoElement {
-    div()
-        .flex_none()
-        .text_color(cx.theme().muted_foreground)
-        .child(toolbar_icon(icon))
-}
-
 pub fn sidebar_icon(icon: IconName) -> Icon {
     sized_icon(icon)
 }

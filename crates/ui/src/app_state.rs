@@ -51,16 +51,6 @@ impl AppNavigation {
         page.update(cx, |page, cx| page.open_path_in_secondary_pane(path, cx));
     }
 
-    pub fn drop_paths_on_directory(
-        dest: PathBuf,
-        paths: Vec<PathBuf>,
-        window: &mut Window,
-        cx: &mut (impl AppContext + BorrowMut<App>),
-    ) {
-        let page = cx.borrow_mut().global::<Self>().0.clone();
-        page.update(cx, |page, cx| page.drop_paths_on_directory(dest, paths, window, cx));
-    }
-
     pub fn focus_search(window: &mut Window, cx: &mut (impl AppContext + BorrowMut<App>)) {
         let page = cx.borrow_mut().global::<Self>().0.clone();
         page.update(cx, |page, cx| page.focus_search_input(window, cx));
@@ -78,17 +68,6 @@ impl AppNavigation {
                 cx.notify();
             });
         });
-    }
-
-    pub fn refresh_sidebar(cx: &mut (impl AppContext + BorrowMut<App>)) {
-        let page = cx.borrow_mut().global::<Self>().0.clone();
-        let _ = page.update(cx, |page, cx| page.refresh_sidebar_cache(cx));
-    }
-
-    pub fn navigate_breadcrumb(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {
-        let target = breadcrumb_navigation_target(&path);
-        let page = cx.borrow_mut().global::<Self>().0.clone();
-        page.update(cx, |page, cx| page.navigate_to(target, cx));
     }
 
     pub fn pin_folder(path: PathBuf, cx: &mut (impl AppContext + BorrowMut<App>)) {

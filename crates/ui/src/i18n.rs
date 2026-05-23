@@ -1,7 +1,5 @@
 use std::ops::Deref;
 
-use rust_i18n::t;
-
 /// Unified Traditional Chinese locale (HK/TW/MO/SG and `zh-Hant`).
 pub const LOCALE_ZH_HANT: &str = "zh-HK";
 
@@ -58,22 +56,4 @@ fn is_traditional_chinese(locale: &str) -> bool {
         || locale.starts_with("zh-sg")
         || locale.starts_with("zh-hant")
         || locale.contains("-hant")
-}
-
-pub fn nav_name(id: &str) -> String {
-    match id {
-        "home" => t!("nav.home").to_string(),
-        "files" => t!("nav.files").to_string(),
-        "settings" => t!("nav.settings").to_string(),
-        other => other.to_string(),
-    }
-}
-
-pub fn nav_description(id: &str) -> String {
-    match id {
-        "home" => t!("nav.home.description").to_string(),
-        "files" => t!("nav.files.description").to_string(),
-        "settings" => t!("nav.settings.description").to_string(),
-        other => other.to_string(),
-    }
 }

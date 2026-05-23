@@ -8,17 +8,6 @@ use gpui::{div, img, prelude::*, AnyElement, Image, ImageFormat, ObjectFit, Pixe
 #[cfg(windows)]
 use cyberfiles_platform_windows::shell_icon_png_scaled;
 
-/// Shell bitmap pixel size for a logical display size on the current window (DPI-aware).
-#[cfg(windows)]
-pub fn shell_icon_pixel_size(logical: Pixels, window: &Window) -> u32 {
-    cyberfiles_platform_windows::shell_icon_pixel_size(logical.as_f32(), window.scale_factor())
-}
-
-#[cfg(not(windows))]
-pub fn shell_icon_pixel_size(_logical: Pixels, _window: &Window) -> u32 {
-    16
-}
-
 #[cfg(windows)]
 pub fn shell_icon_for_path(path: &Path, logical_size: Pixels, window: &Window) -> AnyElement {
     let scale = window.scale_factor();

@@ -9,8 +9,8 @@ use std::rc::Rc;
 use gpui::{
     div,
     prelude::{FluentBuilder as _, *},
-    AnyElement, App, ClickEvent, ElementId, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, SharedString, StyleRefinement, Styled, Window, px,
+    AnyElement, App, ClickEvent, ElementId, IntoElement, MouseButton, SharedString,
+    StyleRefinement, Styled, Window, px,
 };
 use gpui_component::{
     h_flex,
@@ -76,7 +76,7 @@ fn render_item_row(
         SidebarRowIcon::Shell(path) => shell_icon_for_path(&path, px(16.), window).into_any_element(),
     };
 
-    let mut item_inner = h_flex()
+    let item_inner = h_flex()
         .id("item")
         .w_full()
         .h(SIDEBAR_ITEM_HEIGHT)
@@ -156,31 +156,6 @@ impl SidebarMenuWithDrop {
             on_middle_click,
             context_menu,
             drop_handlers: None,
-        });
-    }
-
-    pub fn push_item_with_folder_drop(
-        &mut self,
-        label: impl Into<SharedString>,
-        icon: Icon,
-        active: bool,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-        on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-        context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu>>,
-        on_drag_move: impl Fn(&mut Window, &mut App) + 'static,
-        on_drop: impl Fn(&DraggedFilePaths, &mut Window, &mut App) + 'static,
-    ) {
-        self.rows.push(SidebarRow::Item {
-            label: label.into(),
-            icon: SidebarRowIcon::App(icon),
-            active,
-            handler: Rc::new(handler),
-            on_middle_click,
-            context_menu,
-            drop_handlers: Some(FolderDropHandlers {
-                on_drag_move: Rc::new(on_drag_move),
-                on_drop: Rc::new(on_drop),
-            }),
         });
     }
 

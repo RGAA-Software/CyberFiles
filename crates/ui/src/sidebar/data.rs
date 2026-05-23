@@ -21,13 +21,11 @@ pub fn build_sidebar_sections(config: &AppConfig) -> Vec<SidebarSection> {
         title: String::new(),
         entries: vec![
             SidebarEntry {
-                id: "home".into(),
                 label: rust_i18n::t!("nav.home").to_string(),
                 target: NavigationTarget::Home,
                 pinned_in_settings: false,
             },
             SidebarEntry {
-                id: "recycle".into(),
                 label: rust_i18n::t!("nav.recycle_bin").to_string(),
                 target: NavigationTarget::RecycleBin,
                 pinned_in_settings: false,
@@ -124,7 +122,6 @@ fn load_pinned_entries(config: &AppConfig) -> Vec<SidebarEntry> {
         for item in shell {
             if item.path.exists() && seen.insert(path_key(&item.path)) {
                 entries.push(SidebarEntry {
-                    id: format!("pinned-shell-{}", entries.len()),
                     label: item.display_name,
                     target: NavigationTarget::Path(item.path),
                     pinned_in_settings: false,
@@ -144,7 +141,6 @@ fn load_pinned_entries(config: &AppConfig) -> Vec<SidebarEntry> {
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| path.to_string_lossy().to_string());
         entries.push(SidebarEntry {
-            id: format!("pinned-cfg-{path_str}"),
             label,
             target: NavigationTarget::Path(path),
             pinned_in_settings: true,
@@ -161,9 +157,7 @@ fn load_library_entries() -> Vec<SidebarEntry> {
             .unwrap_or_default()
             .into_iter()
             .filter(|e| e.path.exists())
-            .enumerate()
-            .map(|(i, e)| SidebarEntry {
-                id: format!("library-{i}"),
+            .map(|e| SidebarEntry {
                 label: e.display_name,
                 target: NavigationTarget::Path(e.path),
                 pinned_in_settings: false,
@@ -178,7 +172,6 @@ fn load_drive_entries() -> Vec<SidebarEntry> {
     list_drives()
         .into_iter()
         .map(|DriveInfo { path, label, .. }| SidebarEntry {
-            id: format!("drive-{}", label),
             label,
             target: NavigationTarget::Path(path),
             pinned_in_settings: false,
@@ -192,9 +185,7 @@ fn load_cloud_entries() -> Vec<SidebarEntry> {
         list_cloud_drive_roots()
             .into_iter()
             .filter(|e| e.path.exists())
-            .enumerate()
-            .map(|(i, e)| SidebarEntry {
-                id: format!("cloud-{i}"),
+            .map(|e| SidebarEntry {
                 label: e.display_name,
                 target: NavigationTarget::Path(e.path),
                 pinned_in_settings: false,
@@ -212,9 +203,7 @@ fn load_network_entries() -> Vec<SidebarEntry> {
             .unwrap_or_default()
             .into_iter()
             .filter(|e| !e.path.as_os_str().is_empty())
-            .enumerate()
-            .map(|(i, e)| SidebarEntry {
-                id: format!("network-{i}"),
+            .map(|e| SidebarEntry {
                 label: e.display_name,
                 target: NavigationTarget::Path(e.path),
                 pinned_in_settings: false,
@@ -231,9 +220,7 @@ fn load_wsl_entries() -> Vec<SidebarEntry> {
         list_wsl_distro_roots()
             .into_iter()
             .filter(|e| e.path.exists())
-            .enumerate()
-            .map(|(i, e)| SidebarEntry {
-                id: format!("wsl-{i}"),
+            .map(|e| SidebarEntry {
                 label: e.display_name,
                 target: NavigationTarget::Path(e.path),
                 pinned_in_settings: false,
@@ -246,10 +233,8 @@ fn load_wsl_entries() -> Vec<SidebarEntry> {
 
 fn load_file_tag_entries(tags: &[FileTagConfig]) -> Vec<SidebarEntry> {
     tags.iter()
-        .enumerate()
-        .filter(|(_, t)| !t.name.is_empty())
-        .map(|(i, tag)| SidebarEntry {
-            id: format!("tag-{i}"),
+        .filter(|t| !t.name.is_empty())
+        .map(|tag| SidebarEntry {
             label: tag.name.clone(),
             target: NavigationTarget::FileTag(tag.name.clone()),
             pinned_in_settings: false,

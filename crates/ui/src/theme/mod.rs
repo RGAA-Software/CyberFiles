@@ -47,15 +47,6 @@ impl ThemeCatalog {
         self.sets.get(id)
     }
 
-    pub fn config_for_mode(&self, set_id: &str, mode: ThemeMode) -> Option<Arc<ThemeConfig>> {
-        let entry = self.get(set_id)?;
-        Some(if mode.is_dark() {
-            entry.dark.clone()
-        } else {
-            entry.light.clone()
-        })
-    }
-
     pub fn normalize_set_id(name: &str) -> SharedString {
         let base = name
             .strip_suffix(" Light")

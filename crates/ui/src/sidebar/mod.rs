@@ -6,5 +6,5 @@ mod model;
 mod view;
 
 pub use cache::{build_sidebar_sections_cached, sidebar_cache_key};
-pub use model::{SidebarEntry, SidebarSection, SidebarSectionKind};
-pub use view::{navigation_matches, render_sidebar};
+pub use model::SidebarSection;
+pub use view::render_sidebar;

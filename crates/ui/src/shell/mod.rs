@@ -7,7 +7,6 @@ mod shell_panes;
 pub mod preferences;
 mod window;
 
-pub use navigation::NavigationTarget;
 pub use pane_shell::PaneShell;
 pub use shell_panes::{PaneSide, ShellPanes};
 pub use window::open_main_window;

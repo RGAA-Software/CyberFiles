@@ -4,7 +4,7 @@ use std::rc::Rc;
 use cyberfiles_core::{load_config, record_path_history, save_config, APP_NAME};
 use cyberfiles_fs::{
     breadcrumb_root_menu_sections, copy_items, home_navigation_path, list_drives, move_items,
-    path_breadcrumbs, DirectoryReadOptions, PathBreadcrumb,
+    path_breadcrumbs, PathBreadcrumb,
 };
 use cyberfiles_platform_windows::list_shell_quick_access_folders;
 use cyberfiles_commands::{
@@ -13,14 +13,13 @@ use cyberfiles_commands::{
 use gpui::{prelude::*, *};
 use gpui_component::{
     badge::Badge,
-    button::{Button, ButtonVariants as _},
     h_flex,
     label::Label,
     input::{Input, InputEvent, InputState},
     notification::Notification,
     resizable::{h_resizable, resizable_panel},
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, Icon, IconName, Size, ThemeMode,
+    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Size, ThemeMode,
     Sizable as _, TitleBar, WindowExt as _,
 };
 use rust_i18n::t;

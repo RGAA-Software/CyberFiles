@@ -1,7 +1,7 @@
 use cyberfiles_core::APP_NAME;
 use gpui::{App, ParentElement, SharedString, Styled};
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, ThemeMode,
+    ActiveTheme as _, IconName, ThemeMode,
     group_box::GroupBoxVariant,
     label::Label,
     setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},

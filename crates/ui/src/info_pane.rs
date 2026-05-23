@@ -12,7 +12,7 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
-use crate::icons::{icon_foreground, inline_icon};
+use crate::icons::icon_foreground;
 
 pub struct InfoPane {
     selected_tab: usize,

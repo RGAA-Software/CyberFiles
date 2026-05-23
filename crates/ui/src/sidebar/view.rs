@@ -6,7 +6,7 @@ use gpui::{prelude::*, ClickEvent, *};
 use gpui_component::{
     sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarItem, SidebarToggleButton},
     Collapsible,
-    h_flex, ActiveTheme as _, Icon, IconName,
+    h_flex, Icon, IconName,
 };
 use rust_i18n::t;
 
@@ -37,7 +37,6 @@ pub fn render_sidebar(
     };
 
     let settings_entry = SidebarEntry {
-        id: "settings".into(),
         label: t!("nav.settings").to_string(),
         target: NavigationTarget::Settings,
         pinned_in_settings: false,
@@ -116,7 +115,7 @@ impl gpui_component::Collapsible for SidebarSectionBlock {
         }
     }
 
-    fn collapsed(mut self, collapsed: bool) -> Self {
+    fn collapsed(self, collapsed: bool) -> Self {
         match self {
             Self::Flat(menu) => Self::Flat(menu.collapsed(collapsed)),
             Self::Group(group) => Self::Group(group.collapsed(collapsed)),
@@ -298,7 +297,7 @@ fn build_entry_context_menu(
     page: &Entity<MainPage>,
     entry: &SidebarEntry,
     _window: &mut Window,
-    cx: &mut App,
+    _cx: &mut App,
 ) -> PopupMenu {
     let target = entry.target.clone();
     let pinned = entry.pinned_in_settings;

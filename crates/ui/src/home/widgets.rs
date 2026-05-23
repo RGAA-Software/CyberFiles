@@ -14,13 +14,13 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     label::Label,
-    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
+    v_flex, ActiveTheme as _, IconName, Sizable as _,
 };
 use rust_i18n::t;
 
 use crate::app_state::AppNavigation;
 use crate::popup_menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
-use crate::icons::{compact_icon, inline_icon, pin_icon};
+use crate::icons::{inline_icon, pin_icon};
 use crate::home::page::HomePage;
 use crate::home::widget_shell::{
     block_home_page_context_menu, card_grid, space_progress_bar, CARD_MIN_HEIGHT, CARD_WIDTH,
@@ -645,7 +645,7 @@ fn folder_context_menu(
     path: &PathBuf,
     is_pinned: bool,
     _window: &mut Window,
-    cx: &mut App,
+    _cx: &mut App,
 ) -> PopupMenu {
     let path_string = path.to_string_lossy().to_string();
     let path_open = path.clone();
@@ -684,7 +684,7 @@ fn file_context_menu(
     menu: PopupMenu,
     path: &PathBuf,
     _window: &mut Window,
-    cx: &mut App,
+    _cx: &mut App,
 ) -> PopupMenu {
     let path_open = path.clone();
     let path_tab = path.clone();

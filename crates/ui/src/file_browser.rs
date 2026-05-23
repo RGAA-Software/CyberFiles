@@ -28,7 +28,7 @@ use cyberfiles_fs::{
 use crate::app_state::AppNavigation;
 use crate::icons::{compact_icon, toolbar_icon};
 use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
-use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry, ShellIconHint};
+use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
 use crate::app_state::AppFileClipboard;
 use crate::list_icon_cache;
 use crate::popup_menu::PopupMenu;
@@ -43,7 +43,7 @@ use gpui_component::{
     input::{Input, InputState},
     notification::Notification,
     scroll::{ScrollableElement as _, ScrollbarAxis},
-    v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
+    v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, IconName, Sizable as _,
     VirtualListScrollHandle, WindowExt as _,
 };
 use rust_i18n::t;
@@ -253,10 +253,6 @@ pub struct FileBrowser {
 }
 
 impl FileBrowser {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        Self::with_options(cx, home_navigation_path(), true, false)
-    }
-
     /// File list for embedding in MainPage (window nav + omnibar live on `MainPage`).
     pub fn for_shell(cx: &mut Context<Self>, initial_dir: PathBuf) -> Self {
         Self::with_options(cx, initial_dir, false, true)
@@ -332,10 +328,6 @@ impl FileBrowser {
             list_icon_warm_scheduled: u64::MAX,
             _subscriptions: Vec::new(),
         }
-    }
-
-    pub fn view_mode(&self) -> ViewMode {
-        self.view_mode
     }
 
     pub fn set_search_query(&mut self, query: String, cx: &mut Context<Self>) {
@@ -737,10 +729,6 @@ impl FileBrowser {
         self.refresh();
     }
 
-    pub fn open_directory(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        self.navigate_to(path, cx);
-    }
-
     pub fn open_directory_reset_history(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.browse_location = BrowseLocation::Directory;
         self.back_stack.clear();
@@ -953,7 +941,7 @@ impl FileBrowser {
         self.focused_index = None;
     }
 
-    fn handle_row_click(&mut self, index: usize, event: &ClickEvent, cx: &mut Context<Self>) {
+    fn handle_row_click(&mut self, index: usize, event: &ClickEvent, _cx: &mut Context<Self>) {
         let Some(item) = self.display_items.get(index) else {
             return;
         };
@@ -1562,7 +1550,7 @@ impl FileBrowser {
             .into_any_element()
     }
 
-    fn details_table(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn details_table(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .id("files-details-table")
             .size_full()
@@ -2611,17 +2599,6 @@ fn sort_direction_config_value(direction: SortDirection) -> &'static str {
     match direction {
         SortDirection::Ascending => "asc",
         SortDirection::Descending => "desc",
-    }
-}
-
-fn icon_for_item(item: &FileItem) -> IconName {
-    match platform::icon_hint_for_path(&item.path) {
-        ShellIconHint::Folder => IconName::Folder,
-        ShellIconHint::Symlink => IconName::ExternalLink,
-        ShellIconHint::Executable => IconName::Settings2,
-        ShellIconHint::Image => IconName::File,
-        ShellIconHint::Archive => IconName::Folder,
-        ShellIconHint::File => IconName::File,
     }
 }
 

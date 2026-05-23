@@ -3,8 +3,8 @@ pub mod path_history;
 
 pub const APP_NAME: &str = "CyberFiles";
 
-pub const WINDOW_WIDTH: f32 = 1366.;
-pub const WINDOW_HEIGHT: f32 = 768.;
+pub const WINDOW_WIDTH: f32 = 1440.;
+pub const WINDOW_HEIGHT: f32 = 900.;
 
 pub use config::{
     file_sort_prefs_from_config, file_view_mode_from_config, home_widget_prefs,

@@ -39,10 +39,6 @@ impl ShellPanes {
         self.dual_pane
     }
 
-    pub fn active_side(&self) -> PaneSide {
-        self.active
-    }
-
     pub fn toggle_dual_pane(&mut self, cx: &mut Context<Self>) {
         self.dual_pane = !self.dual_pane;
         if self.dual_pane {
@@ -63,10 +59,6 @@ impl ShellPanes {
             (true, PaneSide::Secondary) => self.secondary.clone(),
             _ => self.primary.clone(),
         }
-    }
-
-    pub fn primary(&self) -> Entity<PaneShell> {
-        self.primary.clone()
     }
 
     pub fn secondary(&self) -> Entity<PaneShell> {
