@@ -515,6 +515,14 @@ files.conflict.skip:
   en: Skip
   zh-CN: 跳过
   zh-HK: 略過
+files.conflict.replace_all:
+  en: Replace all
+  zh-CN: 全部替换
+  zh-HK: 全部取代
+files.conflict.skip_all:
+  en: Skip all
+  zh-CN: 全部跳过
+  zh-HK: 全部略過
 files.menu.open_with_choose:
   en: Choose another app…
   zh-CN: 选择其他应用…

@@ -42,8 +42,8 @@
 - **Shell 行图标**：`PopupMenuItem::icon_png`（CyberFiles fork `popup_menu`，彩色 PNG）
 - **选中预取**：左键改选时后台 `query_shell_context_menu_items`，减轻首次右键「正在加载」
 - **Shell 缓存热更新**：菜单打开期间预取完成会重建 `PopupMenu`（`shell_menu_revision`）
-- **Open with 子菜单（首轮）**：从 Shell 预取结果中提取 `openas` 子树；底部「选择其他应用…」
-- **Send to 子菜单（首轮）**：从 Shell 预取结果中提取 `sendto` /「发送到」子树；无缓存时仍为占位项
+- **Open with 子菜单**：缓存命中或冷启动 `query_shell_context_menu_items` 提取 `openas`；底部「选择其他应用…」
+- **Send to 子菜单**：同上提取 `sendto` /「发送到」；无子项时占位
 - 待做：压缩/文件标签/分享、可配置显示项（阶段 C）、毛玻璃样式、`IContextMenu2`
 
 ### 阶段 C

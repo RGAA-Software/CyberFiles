@@ -144,21 +144,11 @@ fn is_open_with_submenu_label(label: &str) -> bool {
         || lower.contains("開啟檔案")
 }
 
-fn open_with_entries_from_cache(
-    cache: &std::sync::Arc<RwLock<Option<ShellMenuCache>>>,
-    paths: &[PathBuf],
-    extended_verbs: bool,
+fn extract_labeled_submenu(
+    entries: &[ShellContextMenuEntry],
+    label_pred: fn(&str) -> bool,
 ) -> Vec<ShellContextMenuEntry> {
-    let key = normalize_paths_for_shell_cache(paths);
-    let entries = cache
-        .read()
-        .ok()
-        .and_then(|guard| guard.as_ref().cloned())
-        .filter(|cache| cache.paths == key && cache.extended_verbs == extended_verbs)
-        .map(|cache| cache.entries)
-        .unwrap_or_default();
-
-    for entry in &entries {
+    for entry in entries {
         if let ShellContextMenuEntry::Submenu {
             label,
             children,
@@ -166,7 +156,7 @@ fn open_with_entries_from_cache(
             ..
         } = entry
         {
-            if is_open_with_submenu_label(label) {
+            if label_pred(label) {
                 return resolve_submenu_entries(*lazy_parent_index, children);
             }
         }
@@ -174,13 +164,15 @@ fn open_with_entries_from_cache(
     Vec::new()
 }
 
-fn send_to_entries_from_cache(
+fn shell_feature_entries(
     cache: &std::sync::Arc<RwLock<Option<ShellMenuCache>>>,
     paths: &[PathBuf],
     extended_verbs: bool,
+    label_pred: fn(&str) -> bool,
+    icon_px: u32,
 ) -> Vec<ShellContextMenuEntry> {
     let key = normalize_paths_for_shell_cache(paths);
-    let entries = cache
+    let top_level = cache
         .read()
         .ok()
         .and_then(|guard| guard.as_ref().cloned())
@@ -188,20 +180,24 @@ fn send_to_entries_from_cache(
         .map(|cache| cache.entries)
         .unwrap_or_default();
 
-    for entry in &entries {
-        if let ShellContextMenuEntry::Submenu {
-            label,
-            children,
-            lazy_parent_index,
-            ..
-        } = entry
-        {
-            if is_send_to_submenu_label(label) {
-                return resolve_submenu_entries(*lazy_parent_index, children);
-            }
-        }
+    let from_cache = extract_labeled_submenu(&top_level, label_pred);
+    if !from_cache.is_empty() {
+        return from_cache;
     }
-    Vec::new()
+
+    let paths = paths.to_vec();
+    match std::thread::spawn(move || {
+        platform::query_shell_context_menu_items(&paths, extended_verbs, icon_px)
+    })
+    .join()
+    {
+        Ok(Ok(entries)) => extract_labeled_submenu(&entries, label_pred),
+        Ok(Err(error)) => {
+            eprintln!("[shell-menu] cold query err: {error:#}");
+            Vec::new()
+        }
+        Err(_) => Vec::new(),
+    }
 }
 
 fn append_send_to_submenu(
@@ -711,6 +707,7 @@ fn build_directory_item_menu(
     let focus = state.focus_handle.clone();
     let extended = state.context_menu_extended_verbs;
     let shell_menu_cache = state.shell_menu_cache.clone();
+    let menu_icon_px = platform::menu_icon_pixel_size(window.scale_factor());
 
     let mut menu = menu.action_context(focus);
     menu = append_clipboard_commands(menu, has_selection, can_paste);
@@ -719,8 +716,13 @@ fn build_directory_item_menu(
     menu = menu_action(menu, t!("files.menu.open"), IconName::Folder, Box::new(OpenItem));
 
     if single && !paths[0].is_dir() {
-        let open_with_children =
-            open_with_entries_from_cache(&shell_menu_cache, &paths, extended);
+        let open_with_children = shell_feature_entries(
+            &shell_menu_cache,
+            &paths,
+            extended,
+            is_open_with_submenu_label,
+            menu_icon_px,
+        );
         if open_with_children.is_empty() {
             menu = menu_action(
                 menu,
@@ -792,7 +794,13 @@ fn build_directory_item_menu(
     ));
 
     if single {
-        let send_to_children = send_to_entries_from_cache(&shell_menu_cache, &paths, extended);
+        let send_to_children = shell_feature_entries(
+            &shell_menu_cache,
+            &paths,
+            extended,
+            is_send_to_submenu_label,
+            menu_icon_px,
+        );
         if send_to_children.is_empty() {
             menu = menu.item(menu_notice_item(
                 t!("files.menu.send_to"),

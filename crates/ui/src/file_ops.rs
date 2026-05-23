@@ -7,15 +7,18 @@ use cyberfiles_fs::{
     paths_conflict, transfer_one, ClipboardOperation, ConflictResolution, FileClipboard,
     TransferOutcome,
 };
-use gpui::{AppContext, Context, Entity, SharedString, WeakEntity, Window};
+use gpui::{AppContext, Context, Entity, ParentElement, SharedString, Styled, WeakEntity, Window};
 use gpui_component::{
-    dialog::DialogButtonProps,
+    button::Button,
+    dialog::DialogFooter,
+    label::Label,
     notification::Notification,
+    v_flex,
     WindowExt as _,
 };
 use rust_i18n::t;
 
-use crate::app_state::AppFileClipboard;
+use crate::app_state::{AppFileClipboard, TransferStatusGlobal};
 use crate::file_browser::FileBrowser;
 
 #[derive(Clone, Copy)]
@@ -29,6 +32,10 @@ fn operation_for_kind(kind: FileTransferKind) -> ClipboardOperation {
         FileTransferKind::Copy => ClipboardOperation::Copy,
         FileTransferKind::Move => ClipboardOperation::Cut,
     }
+}
+
+fn set_transfer_status(message: Option<SharedString>, cx: &mut gpui::AsyncApp) {
+    let _ = cx.update(|cx| TransferStatusGlobal::set(message, cx));
 }
 
 /// Run copy/move off the UI thread; show in-progress and result notifications.
@@ -49,12 +56,15 @@ pub fn spawn_file_transfer(
         FileTransferKind::Copy => t!("files.transfer.copying", count = count),
         FileTransferKind::Move => t!("files.transfer.moving", count = count),
     };
+    let progress_status: SharedString = progress.clone().into();
     window.push_notification(Notification::info(progress), cx);
 
     let dest_for_reload = destination.clone();
     let weak = browser.downgrade();
     cx.spawn(async move |this, cx| {
+        set_transfer_status(Some(progress_status), cx);
         let result = run_transfer_with_conflicts(weak, cx, kind, sources, destination).await;
+        set_transfer_status(None, cx);
 
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
@@ -110,6 +120,8 @@ pub fn spawn_paste_from_clipboard(
     let paths = clipboard.paths;
     let paths_for_clipboard = paths.clone();
 
+    let progress_status: SharedString =
+        t!("files.transfer.pasting", count = paths.len()).into();
     window.push_notification(
         Notification::info(t!("files.transfer.pasting", count = paths.len())),
         cx,
@@ -117,7 +129,9 @@ pub fn spawn_paste_from_clipboard(
 
     let weak = browser.downgrade();
     cx.spawn(async move |this, cx| {
+        set_transfer_status(Some(progress_status), cx);
         let result = run_transfer_with_conflicts(weak, cx, kind, paths, destination).await;
+        set_transfer_status(None, cx);
 
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
@@ -240,7 +254,10 @@ async fn prompt_conflict(
         path = target_display
     ));
     let replace_label = SharedString::from(t!("files.conflict.replace"));
+    let replace_all_label = SharedString::from(t!("files.conflict.replace_all"));
     let skip_label = SharedString::from(t!("files.conflict.skip"));
+    let skip_all_label = SharedString::from(t!("files.conflict.skip_all"));
+    let cancel_label = SharedString::from(t!("files.cancel"));
 
     let _ = cx.update(|cx| {
         let Some(window) = cx.active_window() else {
@@ -248,36 +265,64 @@ async fn prompt_conflict(
             return;
         };
         let _ = window.update(cx, |_, window, cx| {
-            let tx_ok = tx.clone();
-            let tx_skip = tx.clone();
-            window.open_alert_dialog(cx, move |alert, _window, _cx| {
-                alert
-                    .title(title.clone())
-                    .description(description.clone())
-                    .button_props(
-                        DialogButtonProps::default()
-                            .ok_text(replace_label.clone())
-                            .cancel_text(skip_label.clone())
-                            .show_cancel(true),
-                    )
-                    .on_ok({
-                        let tx_ok = tx_ok.clone();
-                        move |_, _, _| {
-                            let _ = tx_ok.send(ConflictResolution::Replace);
-                            true
-                        }
-                    })
-                    .on_cancel({
-                        let tx_skip = tx_skip.clone();
-                        move |_, _, _| {
-                            let _ = tx_skip.send(ConflictResolution::Skip);
-                            true
-                        }
-                    })
+            window.open_dialog(cx, move |dialog, _window, _cx| {
+                dialog.title(title.clone()).footer(
+                    v_flex()
+                        .gap_3()
+                        .px_4()
+                        .pt_3()
+                        .child(Label::new(description.clone()))
+                        .child(
+                            DialogFooter::new().child(conflict_button(
+                                "conflict-cancel",
+                                cancel_label.clone(),
+                                ConflictResolution::Cancel,
+                                tx.clone(),
+                            ))
+                            .child(conflict_button(
+                                "conflict-skip-all",
+                                skip_all_label.clone(),
+                                ConflictResolution::SkipAll,
+                                tx.clone(),
+                            ))
+                            .child(conflict_button(
+                                "conflict-skip",
+                                skip_label.clone(),
+                                ConflictResolution::Skip,
+                                tx.clone(),
+                            ))
+                            .child(conflict_button(
+                                "conflict-replace-all",
+                                replace_all_label.clone(),
+                                ConflictResolution::ReplaceAll,
+                                tx.clone(),
+                            ))
+                            .child(conflict_button(
+                                "conflict-replace",
+                                replace_label.clone(),
+                                ConflictResolution::Replace,
+                                tx.clone(),
+                            )),
+                        ),
+                )
             });
         });
     });
 
     cx.background_spawn(async move { rx.recv().unwrap_or(ConflictResolution::Cancel) })
         .await
+}
+
+fn conflict_button(
+    id: &'static str,
+    label: SharedString,
+    resolution: ConflictResolution,
+    tx: Arc<mpsc::SyncSender<ConflictResolution>>,
+) -> Button {
+    Button::new(id)
+        .label(label)
+        .on_click(move |_, window, cx| {
+            let _ = tx.send(resolution);
+            window.close_dialog(cx);
+        })
 }

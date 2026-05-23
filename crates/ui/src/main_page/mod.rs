@@ -75,15 +75,32 @@ pub struct MainPage {
 
 impl MainPage {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let show_info_pane = load_config()
-            .map(|c| c.show_info_pane)
-            .unwrap_or(true);
-        let shell = cx.new(|cx| ShellPanes::new(cx, NavigationTarget::Home));
+        let config = load_config().unwrap_or_default();
+        let show_info_pane = config.show_info_pane;
+        let (tabs, active_tab, next_tab_id) = if config.session_tabs.is_empty() {
+            let shell = cx.new(|cx| ShellPanes::new(cx, NavigationTarget::Home));
+            (vec![TabEntry { id: 0, shell }], 0, 1)
+        } else {
+            let active = config
+                .session_active_tab
+                .min(config.session_tabs.len().saturating_sub(1));
+            let mut restored = Vec::with_capacity(config.session_tabs.len());
+            for (id, encoded) in config.session_tabs.iter().enumerate() {
+                let target = Self::decode_session_target(encoded);
+                let shell = cx.new(|cx| ShellPanes::new(cx, target));
+                restored.push(TabEntry {
+                    id: id as u64,
+                    shell,
+                });
+            }
+            let next_id = restored.len() as u64;
+            (restored, active, next_id)
+        };
         Self {
             focus_handle: cx.focus_handle(),
-            tabs: vec![TabEntry { id: 0, shell }],
-            active_tab: 0,
-            next_tab_id: 1,
+            tabs,
+            active_tab,
+            next_tab_id,
             show_info_pane,
             info_pane: cx.new(|_| InfoPane::new()),
             omnibar_show_full_path: false,
@@ -362,9 +379,69 @@ impl MainPage {
 
     pub fn view(_window: &mut Window, cx: &mut App) -> Entity<Self> {
         app_menus::init(APP_NAME, cx);
+        crate::app_state::TransferStatusGlobal::init(cx);
         let page = cx.new(|cx| Self::new(cx));
         crate::app_state::AppNavigation::set(page.clone(), cx);
         page
+    }
+
+    fn encode_session_target(target: &NavigationTarget, current_path: Option<&PathBuf>) -> String {
+        match target {
+            NavigationTarget::Home => "home".into(),
+            NavigationTarget::RecycleBin => "recycle".into(),
+            NavigationTarget::Settings => "settings".into(),
+            NavigationTarget::FileTag(name) => format!("tag:{name}"),
+            NavigationTarget::Path(_) => current_path
+                .cloned()
+                .unwrap_or_else(home_navigation_path)
+                .to_string_lossy()
+                .into_owned(),
+        }
+    }
+
+    fn decode_session_target(value: &str) -> NavigationTarget {
+        if value == "home" {
+            return NavigationTarget::Home;
+        }
+        if value == "recycle" {
+            return NavigationTarget::RecycleBin;
+        }
+        if value == "settings" {
+            return NavigationTarget::Settings;
+        }
+        if let Some(name) = value.strip_prefix("tag:") {
+            return NavigationTarget::FileTag(name.to_string());
+        }
+        let path = PathBuf::from(value);
+        if path.is_dir() {
+            NavigationTarget::Path(path)
+        } else if path.parent().is_some_and(|p| p.is_dir()) {
+            NavigationTarget::Path(path.parent().unwrap().to_path_buf())
+        } else {
+            NavigationTarget::Home
+        }
+    }
+
+    pub fn persist_session(&mut self, cx: &mut Context<Self>) {
+        let tabs: Vec<String> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(index, _)| {
+                let pane = self.tabs[index].shell.read(cx).active_pane().read(cx);
+                let current_path = match pane.target() {
+                    NavigationTarget::Path(_) => {
+                        Some(pane.file_browser().read(cx).current_directory().clone())
+                    }
+                    _ => None,
+                };
+                Self::encode_session_target(pane.target(), current_path.as_ref())
+            })
+            .collect();
+        let mut config = load_config().unwrap_or_default();
+        config.session_tabs = tabs;
+        config.session_active_tab = self.active_tab;
+        let _ = save_config(&config);
     }
 
     fn active_shell(&self) -> Entity<ShellPanes> {
@@ -397,6 +474,7 @@ impl MainPage {
             shell.navigate_active(target, cx);
         });
         self.omnibar_show_full_path = false;
+        self.persist_session(cx);
         cx.notify();
     }
 
@@ -730,6 +808,7 @@ impl MainPage {
         let shell = cx.new(|cx| ShellPanes::new(cx, target));
         self.tabs.push(TabEntry { id, shell });
         self.active_tab = self.tabs.len() - 1;
+        self.persist_session(cx);
         cx.notify();
     }
 
@@ -745,6 +824,7 @@ impl MainPage {
         } else if index < self.active_tab {
             self.active_tab -= 1;
         }
+        self.persist_session(cx);
         cx.notify();
     }
 
@@ -900,6 +980,7 @@ impl MainPage {
             }))
             .on_click(cx.listener(|this, ix: &usize, _, cx| {
                 this.active_tab = *ix;
+                this.persist_session(cx);
                 cx.notify();
             }))
     }
@@ -1193,7 +1274,11 @@ impl MainPage {
             t!("files.status.selected")
         );
 
-        h_flex()
+        let transfer_hint = cx
+            .try_global::<crate::app_state::TransferStatusGlobal>()
+            .and_then(|g| g.0.read().ok().and_then(|m| m.clone()));
+
+        let mut bar = h_flex()
             .id("status-bar")
             .h_8()
             .px_3()
@@ -1205,12 +1290,21 @@ impl MainPage {
                 Label::new(status_text)
                     .text_xs()
                     .text_color(cx.theme().muted_foreground),
-            )
-            .child(
-                Label::new(hint)
+            );
+
+        if let Some(message) = transfer_hint {
+            bar = bar.child(
+                Label::new(message)
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground),
-            )
+                    .text_color(cx.theme().accent_foreground),
+            );
+        }
+
+        bar.child(
+            Label::new(hint)
+                .text_xs()
+                .text_color(cx.theme().muted_foreground),
+        )
     }
 
 }

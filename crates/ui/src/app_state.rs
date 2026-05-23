@@ -1,11 +1,37 @@
 use std::borrow::BorrowMut;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 use cyberfiles_fs::{ClipboardOperation, FileClipboard};
-use gpui::{App, AppContext, Entity, Global, Window};
+use gpui::{App, AppContext, Entity, Global, SharedString, Window};
 
 use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;
+
+/// Status bar message while a background file transfer runs (Files StatusCenter subset).
+#[derive(Clone, Default)]
+pub struct TransferStatusGlobal(pub Arc<RwLock<Option<SharedString>>>);
+
+impl Global for TransferStatusGlobal {}
+
+impl TransferStatusGlobal {
+    pub fn init(cx: &mut App) {
+        cx.set_global(Self(Arc::new(RwLock::new(None))));
+    }
+
+    pub fn set(message: Option<SharedString>, cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else {
+            return;
+        };
+        if let Ok(mut guard) = global.0.write() {
+            *guard = message;
+        }
+        if let Some(nav) = cx.try_global::<AppNavigation>() {
+            let page = nav.main_page();
+            let _ = page.update(cx, |_, cx| cx.notify());
+        }
+    }
+}
 
 /// Global handle so Home / pinned sidebar items can request tab navigation.
 pub struct AppNavigation(Entity<MainPage>);

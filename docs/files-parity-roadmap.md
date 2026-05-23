@@ -4,6 +4,8 @@
 
 **复刻原则：** Rust + GPUI + gpui-component 一比一复刻 **Files**（非 Explorer）。右键菜单等行为见 [`files-context-menu-parity.md`](files-context-menu-parity.md)。
 
+**明确不复刻（产品决策，非 backlog）：** 见下文 [不复刻清单](#不复刻清单)。
+
 **差距专题：**
 
 | 区域 | 文档 |
@@ -41,7 +43,7 @@ MainWindow                             AppShell + open_main_window
 └─ MainPage                            └─ MainPage (main_page/mod.rs)
    ├─ TabBar                               ├─ TabBar（标题栏内嵌）           🟡
    ├─ NavigationToolbar (48px)             ├─ navigation-toolbar            🟡
-   │     Omnibar: Path / Search / Command   │     面包屑 + 路径编辑 + 过滤搜索  🟡
+   │     Omnibar: Path / Search / Command   │     面包屑 + 路径编辑 + 右侧过滤搜索 ✅（不复刻 Search/Command 模式切换）
    ├─ SidebarView                          ├─ sidebar/                      🟡
    └─ RootGrid                             └─ content + InfoPane + status
       ├─ Inner Toolbar                     ├─ file_browser content-toolbar  🟡
@@ -60,7 +62,7 @@ MainWindow                             AppShell + open_main_window
 
 | 模块 | 约 % | 说明 |
 |------|------|------|
-| MainPage 骨架 / 双栏 / 基础导航 | 70–80% | 缺 Shelf、会话恢复、Omnibar 命令/搜索模式 |
+| MainPage 骨架 / 双栏 / 基础导航 | 75–85% | 缺 Shelf、会话恢复；Omnibar 模式切换已明确不复刻 |
 | FileBrowser 三视图 + 快捷键 | 65–75% | 缺分组、悬停选中、完整 StatusCenter |
 | Omnibar 面包屑 | 80–85% | P1 基本完成，见 gap 文档 P2 |
 | 侧栏结构 | ~75% | Shell/Explorer 深度集成弱 |
@@ -78,6 +80,19 @@ MainWindow                             AppShell + open_main_window
 | ✅ | 已有可用实现 |
 | 🟡 | 部分实现 / 占位 |
 | ⬜ | 未开始 |
+| ⛔ | 明确不复刻（见下表） |
+
+---
+
+## 不复刻清单
+
+与 Files 行为对照后**刻意不做**的能力；文档保留说明以免后续重复排期。
+
+| Files 能力 | Files 参考 | CyberFiles 替代 | 原因 |
+|------------|------------|-----------------|------|
+| **Omnibar `OmnibarMode`：Search / Command 模式** | `NavigationToolbar`、`OmnibarMode` 枚举；地址栏内切换路径 / 当前夹搜索 / 命令面板 | 导航栏 **Path 面包屑** + 右侧独立 **`search_input`**（`Ctrl+F` / `Ctrl+L`）过滤当前列表 | 已有独立搜索框，无需再复刻 Files 三态 Omnibar；命令面板另项（⬜）不在 Omnibar 内做 |
+
+详见 [`omnibar-breadcrumb-files-gap.md`](omnibar-breadcrumb-files-gap.md)「不复刻」一节。
 
 ---
 
@@ -88,10 +103,11 @@ MainWindow                             AppShell + open_main_window
 | 应用级 TabBar | `main_page` | 🟡 |
 | 新建/关闭/切换标签 | Tab +/- + tooltip i18n | 🟡 |
 | 标签标题随路径更新 | `tab_title` | 🟡 |
-| 会话恢复 / 最近关闭标签 | — | ⬜ |
+| 会话恢复 / 最近关闭标签 | `session_tabs` in `settings.json` | 🟡 |
 | NavigationToolbar | `navigation-toolbar` | 🟡 |
 | InnerNavigationToolbar | `file_browser` `content-toolbar` | 🟡 |
-| 地址栏 / Omnibar | 面包屑 + 路径编辑 + 过滤（无 Command 模式） | 🟡 |
+| 地址栏 / Omnibar | 面包屑 + 路径编辑 + 右侧 `search_input` 过滤 | ✅ |
+| Omnibar Search/Command 模式切换 | — | ⛔ 不复刻 |
 | 侧栏折叠 | `h_resizable` | ✅ |
 | Sidebar 分区 | 8 区 + 设置页开关 | 🟡 |
 | 固定文件夹 | 侧栏 + Home + Pin + `settings.json` | ✅ |
@@ -147,7 +163,7 @@ MainWindow                             AppShell + open_main_window
 | 粘贴（资源管理器 CF_HDROP） | 读取 + 后台粘贴 | 🟡 |
 | 回收站删除 / 永久删除 | ✅ |
 | 拖拽 | GPUI 拖放 + 后台传输通知 | 🟡 |
-| 冲突对话框 / StatusCenter | 替换/跳过对话框（逐文件）🟡 |
+| 冲突对话框 / StatusCenter | 替换/跳过/全部替换/全部跳过 + 状态栏传输提示 🟡 |
 
 实现：`crates/ui/src/file_ops.rs`（后台 `copy_items` / `move_items` + 进行中/完成通知）。
 
@@ -202,17 +218,17 @@ MainWindow                             AppShell + open_main_window
 
 ### 第一梯队（进行中 / 当前迭代）
 
-1. **文件传输反馈** — `file_ops.rs` 后台复制/移动/粘贴 + 通知 + 冲突替换/跳过对话框 🟡。
-2. **右键菜单阶段 B** — Open with 动态子菜单 🟡；**Send to** 子菜单（Shell 提取）🟡；压缩项、可配置显示项 ⬜。
+1. **文件传输反馈** — `file_ops.rs` 后台传输 + 冲突五键对话框 + 状态栏提示 🟡。
+2. **右键菜单阶段 B** — Open with / Send to（含冷启动 Shell 查询）🟡；压缩项、可配置显示项 ⬜。
 3. **子菜单行高** — PopupMenu Submenu 与 Item 统一 32px hover ✅。
 4. **工具栏 tooltip i18n** — 全 icon button ✅。
 
 ### 第二梯队
 
-5. Omnibar **Command / Search 模式**（Files `OmnibarMode`）。
-6. **ShelfPane** 剪切暂存条。
-7. 设置扩展：Folders、Actions（热键）、Tags。
-8. 会话恢复 `LastSessionTabList`。
+5. **ShelfPane** 剪切暂存条。
+6. 设置扩展：Folders、Actions（热键）、Tags。
+7. 会话恢复增强：最近关闭标签、双栏状态。
+8. StatusCenter 完整版：进度条、取消传输。
 
 ### 第三梯队
 

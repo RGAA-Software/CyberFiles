@@ -87,6 +87,11 @@ pub struct AppConfig {
     /// When true, extra Shell verbs beyond the first few appear in a «More» submenu (Files default).
     #[serde(default = "default_true")]
     pub context_menu_shell_extensions_submenu: bool,
+    /// Last session tab targets (`home`, `recycle`, `settings`, `tag:name`, or filesystem path).
+    #[serde(default)]
+    pub session_tabs: Vec<String>,
+    #[serde(default)]
+    pub session_active_tab: usize,
 }
 
 /// Sidebar file tag entry (Files `FileTagsManager` subset).
@@ -155,6 +160,8 @@ impl Default for AppConfig {
             home_file_tags_expanded: true,
             home_recent_expanded: true,
             context_menu_shell_extensions_submenu: true,
+            session_tabs: Vec::new(),
+            session_active_tab: 0,
         }
     }
 }
