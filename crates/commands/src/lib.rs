@@ -1,4 +1,8 @@
+mod shortcuts;
+
 use gpui::{actions, App, KeyBinding};
+
+pub use shortcuts::{shortcut_reference, ShortcutHelp};
 
 actions!(
     cyberfiles_commands,

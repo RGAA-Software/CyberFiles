@@ -25,6 +25,7 @@ use super::{
 };
 use crate::app_state::{AppFileClipboard, AppNavigation};
 use crate::icons::pin_icon;
+use crate::shell::preferences::assign_paths_to_file_tag;
 
 const SHELL_MENU_MAX_HEIGHT: Pixels = px(620.);
 
@@ -199,6 +200,41 @@ fn shell_feature_entries(
         }
         Err(_) => Vec::new(),
     }
+}
+
+fn append_file_tags_submenu(
+    menu: PopupMenu,
+    paths: Vec<PathBuf>,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let tags = load_config()
+        .map(|c| c.file_tags)
+        .unwrap_or_default();
+    let tag_names: Vec<String> = tags.iter().map(|t| t.name.clone()).collect();
+    menu.submenu_with_icon(
+        Some(menu_icon(IconName::Inbox)),
+        t!("files.menu.add_to_tag"),
+        window,
+        cx,
+        move |sub, _window, _cx| {
+            let tag_names = tag_names.clone();
+            if tag_names.is_empty() {
+                sub.item(PopupMenuItem::new(t!("files.menu.no_file_tags")).disabled(true))
+            } else {
+                let mut sub = sub;
+                for name in tag_names {
+                    let paths_for_tag = paths.clone();
+                    sub = sub.item(
+                        PopupMenuItem::new(name.clone()).on_click(move |_, _, cx| {
+                            assign_paths_to_file_tag(&name, &paths_for_tag, cx);
+                        }),
+                    );
+                }
+                sub
+            }
+        },
+    )
 }
 
 fn append_send_to_submenu(
@@ -866,13 +902,9 @@ fn build_directory_item_menu(
         IconName::File,
         Box::new(OpenInTerminal),
     );
-    menu = menu
-        .item(menu_notice_item(
-            t!("files.menu.edit_file_tags"),
-            IconName::File,
-            not_implemented.clone(),
-        ))
-        .separator();
+    menu = menu.separator();
+    menu = append_file_tags_submenu(menu, paths.clone(), window, cx);
+    menu = menu.separator();
 
     if has_selection {
         menu = append_show_more_options(

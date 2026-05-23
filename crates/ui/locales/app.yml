@@ -659,6 +659,14 @@ files.menu.send_to:
   en: Send to
   zh-CN: 发送到
   zh-HK: 傳送到
+files.menu.add_to_tag:
+  en: Add to tag
+  zh-CN: 添加到标签
+  zh-HK: 新增至標籤
+files.menu.no_file_tags:
+  en: No tags — create one in Settings → Tags
+  zh-CN: 无标签 — 请在设置 → 标签 中创建
+  zh-HK: 無標籤 — 請在設定 → 標籤 中建立
 files.menu.edit_file_tags:
   en: Edit file tags
   zh-CN: 编辑文件标签
@@ -895,6 +903,102 @@ settings.page.tags:
   en: Tags
   zh-CN: 标签
   zh-HK: 標籤
+settings.page.actions:
+  en: Actions
+  zh-CN: 快捷键
+  zh-HK: 快速鍵
+settings.group.actions:
+  en: Keyboard shortcuts
+  zh-CN: 键盘快捷键
+  zh-HK: 鍵盤快速鍵
+settings.actions.description:
+  en: Default bindings for the file list (global shortcuts shown where applicable).
+  zh-CN: 文件列表默认快捷键（全局快捷键单独标注）。
+  zh-HK: 檔案列表預設快速鍵（全域快速鍵另行標註）。
+settings.actions.navigate_back:
+  en: Back
+  zh-CN: 后退
+  zh-HK: 後退
+settings.actions.navigate_forward:
+  en: Forward
+  zh-CN: 前进
+  zh-HK: 前進
+settings.actions.navigate_up:
+  en: Up
+  zh-CN: 上级
+  zh-HK: 上層
+settings.actions.refresh:
+  en: Refresh
+  zh-CN: 刷新
+  zh-HK: 重新整理
+settings.actions.open:
+  en: Open
+  zh-CN: 打开
+  zh-HK: 開啟
+settings.actions.rename:
+  en: Rename
+  zh-CN: 重命名
+  zh-HK: 重新命名
+settings.actions.delete:
+  en: Delete (recycle)
+  zh-CN: 删除（回收站）
+  zh-HK: 刪除（資源回收筒）
+settings.actions.delete_permanent:
+  en: Delete permanently
+  zh-CN: 永久删除
+  zh-HK: 永久刪除
+settings.actions.select_all:
+  en: Select all
+  zh-CN: 全选
+  zh-HK: 全選
+settings.actions.copy:
+  en: Copy
+  zh-CN: 复制
+  zh-HK: 複製
+settings.actions.cut:
+  en: Cut
+  zh-CN: 剪切
+  zh-HK: 剪下
+settings.actions.paste:
+  en: Paste
+  zh-CN: 粘贴
+  zh-HK: 貼上
+settings.actions.copy_path:
+  en: Copy path
+  zh-CN: 复制路径
+  zh-HK: 複製路徑
+settings.actions.new_folder:
+  en: New folder
+  zh-CN: 新建文件夹
+  zh-HK: 新建資料夾
+settings.actions.new_file:
+  en: New file
+  zh-CN: 新建文件
+  zh-HK: 新建檔案
+settings.actions.focus_search:
+  en: Focus search
+  zh-CN: 聚焦搜索
+  zh-HK: 聚焦搜尋
+settings.actions.focus_omnibar:
+  en: Focus path bar
+  zh-CN: 聚焦路径栏
+  zh-HK: 聚焦路徑列
+settings.actions.reopen_tab:
+  en: Reopen closed tab
+  zh-CN: 重新打开已关闭的标签
+  zh-HK: 重新開啟已關閉的標籤
+settings.actions.view_details:
+  en: Details view
+  zh-CN: 详细信息视图
+  zh-HK: 詳細資料檢視
+settings.actions.view_grid:
+  en: Grid view
+  zh-CN: 网格视图
+  zh-HK: 網格檢視
+settings.actions.view_columns:
+  en: Columns view
+  zh-CN: 分栏视图
+  zh-HK: 分欄檢視
 settings.group.folders:
   en: Pinned folders
   zh-CN: 固定文件夹

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use cyberfiles_core::{self, AppConfig, WINDOW_HEIGHT, WINDOW_WIDTH, save_config};
 use gpui::{App, SharedString, px};
 use gpui_component::{ActiveTheme as _, Theme, ThemeMode, scroll::ScrollbarShow};
@@ -220,6 +222,31 @@ pub fn add_file_tag(name: SharedString, cx: &mut App) {
 
 pub fn new_file_tag_name(_cx: &App) -> SharedString {
     String::new().into()
+}
+
+pub fn assign_paths_to_file_tag(tag_name: &str, paths: &[PathBuf], cx: &mut App) {
+    if paths.is_empty() {
+        return;
+    }
+    let path_strings: Vec<String> = paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    mutate_config(cx, |c| {
+        let Some(tag) = c.file_tags.iter_mut().find(|t| t.name == tag_name) else {
+            return;
+        };
+        for path in path_strings {
+            if !tag.paths.iter().any(|p| p == &path) {
+                tag.paths.push(path);
+            }
+        }
+    });
+    refresh_home_if_active(cx);
+    if let Some(nav) = cx.try_global::<crate::app_state::AppNavigation>() {
+        let page = nav.main_page();
+        let _ = page.update(cx, |page, cx| page.refresh_sidebar_cache(cx));
+    }
 }
 
 pub fn remove_file_tag(name: &str, cx: &mut App) {

@@ -17,6 +17,7 @@ fn ts(text: impl AsRef<str>) -> SharedString {
 
 use crate::icons::sidebar_icon;
 use crate::theme;
+use cyberfiles_commands::shortcut_reference;
 use crate::app_state::AppNavigation;
 use crate::shell::preferences::{
     apply_border_radius, apply_font_size, apply_locale, apply_scrollbar_show,
@@ -33,6 +34,36 @@ use crate::shell::preferences::{
     sidebar_section_file_tags, sidebar_section_library, sidebar_section_network,
     sidebar_section_pinned, sidebar_section_wsl,
 };
+
+fn actions_settings_group() -> SettingGroup {
+    SettingGroup::new()
+        .title(ts(t!("settings.group.actions")))
+        .item(SettingItem::render(|_, _, cx| {
+            v_flex()
+                .gap_1()
+                .w_full()
+                .child(
+                    Label::new(ts(t!("settings.actions.description")))
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground),
+                )
+                .children(shortcut_reference().iter().enumerate().map(|(index, entry)| {
+                    let label = t!(entry.message_key);
+                    h_flex()
+                        .id(("shortcut-row", index))
+                        .w_full()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(Label::new(label).text_sm())
+                        .child(
+                            Label::new(entry.keystroke)
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground),
+                        )
+                }))
+        }))
+}
 
 fn folders_settings_group() -> SettingGroup {
     SettingGroup::new()
@@ -384,6 +415,9 @@ pub fn build_settings(cx: &App) -> Settings {
             SettingPage::new(ts(t!("settings.page.tags")))
                 .icon(sidebar_icon(IconName::Inbox))
                 .groups(vec![tags_settings_group()]),
+            SettingPage::new(ts(t!("settings.page.actions")))
+                .icon(sidebar_icon(IconName::Redo2))
+                .groups(vec![actions_settings_group()]),
             SettingPage::new(ts(t!("settings.page.home")))
                 .icon(sidebar_icon(IconName::LayoutDashboard))
                 .groups(vec![
