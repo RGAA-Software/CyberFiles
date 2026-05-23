@@ -14,6 +14,7 @@ use crate::file_ops::{
 use crate::icons::{compact_icon, toolbar_icon};
 use crate::list_icon_cache;
 use crate::popup_menu::PopupMenu;
+use crate::shell::navigation::NavigationTarget;
 use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
 use chrono::{DateTime, Local};
 use cyberfiles_commands::{
@@ -694,6 +695,14 @@ impl FileBrowser {
 
     pub fn current_directory(&self) -> &PathBuf {
         &self.current_dir
+    }
+
+    pub fn navigation_target(&self) -> NavigationTarget {
+        match &self.browse_location {
+            BrowseLocation::Directory => NavigationTarget::Path(self.current_dir.clone()),
+            BrowseLocation::RecycleBin => NavigationTarget::RecycleBin,
+            BrowseLocation::FileTag { tag_name } => NavigationTarget::FileTag(tag_name.clone()),
+        }
     }
 
     pub fn item_count(&self) -> usize {

@@ -677,7 +677,7 @@ impl MainPage {
 
     fn omnibar_full_path_text(&self, cx: &App) -> String {
         let pane = self.active_pane(cx);
-        match pane.read(cx).target() {
+        match pane.read(cx).current_navigation_target(cx) {
             NavigationTarget::Path(_) | NavigationTarget::RecycleBin => pane
                 .read(cx)
                 .file_browser()
@@ -691,7 +691,7 @@ impl MainPage {
 
     fn omnibar_breadcrumbs(&self, cx: &App) -> Vec<PathBreadcrumb> {
         let pane = self.active_pane(cx);
-        let target = pane.read(cx).target().clone();
+        let target = pane.read(cx).current_navigation_target(cx);
         match target {
             NavigationTarget::Path(_) => {
                 let dir = pane
@@ -806,7 +806,7 @@ impl MainPage {
     }
 
     pub fn active_navigation_target(&self, cx: &App) -> NavigationTarget {
-        self.active_pane(cx).read(cx).target().clone()
+        self.active_pane(cx).read(cx).current_navigation_target(cx)
     }
 
     pub fn toggle_sidebar_collapsed(&mut self, cx: &mut Context<Self>) {
@@ -1275,7 +1275,7 @@ impl MainPage {
         let show_info_pane = self.show_info_pane;
         let sidebar_collapsed = load_config().map(|c| c.sidebar_collapsed).unwrap_or(false);
         let pane = self.active_pane(cx);
-        let target = pane.read(cx).target().clone();
+        let target = pane.read(cx).current_navigation_target(cx);
         let browser = pane.read(cx).file_browser();
         let (can_back, can_forward, can_up) = if matches!(
             target,

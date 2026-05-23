@@ -44,9 +44,10 @@ impl RenderOnce for BreadcrumbChevronTrigger {
                 Button::new(self.id)
                     .with_size(Size::Small)
                     .ghost()
+                    .compact()
                     .tooltip(self.tooltip)
                     .selected(self.open)
-                    .child(
+                    .icon(
                         inline_icon(IconName::ChevronRight)
                             .when(self.open, |icon| icon.rotate(percentage(90. / 360.))),
                     ),

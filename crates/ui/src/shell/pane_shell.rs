@@ -30,6 +30,15 @@ impl PaneShell {
         &self.target
     }
 
+    pub fn current_navigation_target(&self, cx: &App) -> NavigationTarget {
+        match self.target {
+            NavigationTarget::Home | NavigationTarget::Settings => self.target.clone(),
+            NavigationTarget::Path(_)
+            | NavigationTarget::RecycleBin
+            | NavigationTarget::FileTag(_) => self.file_browser.read(cx).navigation_target(),
+        }
+    }
+
     pub fn file_browser(&self) -> Entity<FileBrowser> {
         self.file_browser.clone()
     }

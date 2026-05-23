@@ -389,10 +389,6 @@ fn paths_match(sidebar: &Path, current: &Path) -> bool {
     if paths_equal(sidebar, current) {
         return true;
     }
-    // Drive roots (C:\) highlight only when browsing that root, not the whole tree.
-    if is_windows_drive_root(sidebar) {
-        return false;
-    }
     if let (Ok(a), Ok(b)) = (
         std::fs::canonicalize(sidebar),
         std::fs::canonicalize(current),
@@ -421,26 +417,4 @@ fn is_strict_descendant(ancestor: &Path, path: &Path) -> bool {
     }
     path_components.truncate(ancestor_components.len());
     path_components == ancestor_components
-}
-
-#[cfg(windows)]
-fn is_windows_drive_root(path: &Path) -> bool {
-    use std::path::Component;
-    let components: Vec<_> = path.components().collect();
-    match components.as_slice() {
-        [Component::Prefix(prefix)] => {
-            let s = prefix.as_os_str().to_string_lossy();
-            s.len() == 2 && s.ends_with(':')
-        }
-        [Component::Prefix(prefix), Component::RootDir] => {
-            let s = prefix.as_os_str().to_string_lossy();
-            s.len() == 2 && s.ends_with(':')
-        }
-        _ => false,
-    }
-}
-
-#[cfg(not(windows))]
-fn is_windows_drive_root(_path: &Path) -> bool {
-    false
 }
