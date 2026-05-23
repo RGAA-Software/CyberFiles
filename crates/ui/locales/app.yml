@@ -831,6 +831,10 @@ menu.about:
   en: About
   zh-CN: 关于
   zh-HK: 關於
+menu.view:
+  en: View
+  zh-CN: 查看
+  zh-HK: 檢視
 menu.appearance:
   en: Appearance
   zh-CN: 外观

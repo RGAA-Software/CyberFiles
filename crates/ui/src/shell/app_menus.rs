@@ -3,6 +3,8 @@ use gpui_component::{GlobalState, menu::AppMenuBar};
 
 use rust_i18n::t;
 
+use cyberfiles_commands::ReopenClosedTab;
+
 use super::actions::{About, Quit};
 
 struct AppMenuState {
@@ -54,13 +56,23 @@ fn update_app_menu(cx: &mut App) {
 }
 
 fn build_menus(title: impl Into<SharedString>) -> Vec<Menu> {
-    vec![Menu {
-        name: title.into(),
-        items: vec![
-            MenuItem::action(t!("menu.about"), About),
-            MenuItem::Separator,
-            MenuItem::action(t!("menu.quit"), Quit),
-        ],
-        disabled: false,
-    }]
+    vec![
+        Menu {
+            name: title.into(),
+            items: vec![
+                MenuItem::action(t!("menu.about"), About),
+                MenuItem::Separator,
+                MenuItem::action(t!("menu.quit"), Quit),
+            ],
+            disabled: false,
+        },
+        Menu {
+            name: t!("menu.view").into(),
+            items: vec![MenuItem::action(
+                t!("nav.reopen_closed_tab"),
+                ReopenClosedTab,
+            )],
+            disabled: false,
+        },
+    ]
 }

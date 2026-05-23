@@ -226,7 +226,7 @@ MainWindow                             AppShell + open_main_window
 ### 第二梯队
 
 5. **ShelfPane** 剪切暂存条。🟡
-6. 设置扩展：Folders、Tags。🟡；Actions（热键）⬜。
+6. 设置扩展：Folders、Tags、Actions（热键列表）。🟡。
 7. 会话恢复增强：双栏状态 + 最近关闭标签。🟡。
 8. StatusCenter：进度条、逐项取消。🟡；大文件中断 ⬜。
 
