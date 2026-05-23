@@ -12,7 +12,8 @@ use cyberfiles_fs::{
 };
 use cyberfiles_platform_windows::list_shell_quick_access_folders;
 use cyberfiles_commands::{
-    FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, ReopenClosedTab, FILE_BROWSER,
+    FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, PasteItems, ReopenClosedTab,
+    FILE_BROWSER,
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -992,7 +993,7 @@ impl MainPage {
         }
 
         let count = clipboard.paths.len();
-        let label = match clipboard.operation {
+        let operation_label = match clipboard.operation {
             cyberfiles_fs::ClipboardOperation::Copy => {
                 t!("files.shelf.copying", count = count).to_string()
             }
@@ -1000,6 +1001,20 @@ impl MainPage {
                 t!("files.shelf.cutting", count = count).to_string()
             }
         };
+        let preview = clipboard
+            .paths
+            .first()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .filter(|name| !name.is_empty())
+            .map(|name| {
+                if count <= 1 {
+                    t!("files.shelf.preview_one", name = name).to_string()
+                } else {
+                    t!("files.shelf.preview_many", name = name, rest = count - 1).to_string()
+                }
+            })
+            .unwrap_or_default();
 
         h_flex()
             .id("shelf-pane")
@@ -1011,9 +1026,33 @@ impl MainPage {
             .border_color(cx.theme().border)
             .bg(cx.theme().muted)
             .child(
-                Label::new(label)
-                    .text_xs()
-                    .text_color(cx.theme().foreground),
+                v_flex()
+                    .gap_0p5()
+                    .flex_shrink_0()
+                    .child(
+                        Label::new(operation_label)
+                            .text_xs()
+                            .text_color(cx.theme().foreground),
+                    )
+                    .when(!preview.is_empty(), |col| {
+                        col.child(
+                            Label::new(preview)
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .truncate(),
+                        )
+                    }),
+            )
+            .flex_1()
+            .min_w_0()
+            .child(div().flex_1())
+            .child(
+                Button::new("shelf-paste")
+                    .label(t!("files.shelf.paste"))
+                    .with_size(Size::Small)
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(PasteItems), cx);
+                    }),
             )
             .child(
                 Button::new("shelf-clear")

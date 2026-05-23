@@ -567,6 +567,46 @@ files.shelf.clear:
   en: Clear shelf
   zh-CN: 清空剪贴板
   zh-HK: 清空剪貼簿
+files.shelf.paste:
+  en: Paste
+  zh-CN: 粘贴
+  zh-HK: 貼上
+files.shelf.preview_one:
+  en: "%{name}"
+  zh-CN: "%{name}"
+  zh-HK: "%{name}"
+files.shelf.preview_many:
+  en: "%{name} +%{rest}"
+  zh-CN: "%{name} 等 %{rest} 项"
+  zh-HK: "%{name} 等 %{rest} 項"
+settings.group.context_menu:
+  en: Context menu
+  zh-CN: 右键菜单
+  zh-HK: 右鍵選單
+settings.context_menu.compress:
+  en: Compress to ZIP
+  zh-CN: 压缩为 ZIP
+  zh-HK: 壓縮為 ZIP
+settings.context_menu.send_to:
+  en: Send to
+  zh-CN: 发送到
+  zh-HK: 傳送到
+settings.context_menu.pin:
+  en: Pin to sidebar
+  zh-CN: 固定到侧栏
+  zh-HK: 固定到側欄
+settings.context_menu.open_in_terminal:
+  en: Open in terminal
+  zh-CN: 在终端中打开
+  zh-HK: 在終端機中開啟
+settings.context_menu.file_tags:
+  en: Add / remove file tags
+  zh-CN: 添加 / 移除文件标签
+  zh-HK: 新增 / 移除檔案標籤
+settings.context_menu.create_shortcut:
+  en: Create shortcut
+  zh-CN: 创建快捷方式
+  zh-HK: 建立捷徑
 files.conflict.title:
   en: File already exists
   zh-CN: 文件已存在

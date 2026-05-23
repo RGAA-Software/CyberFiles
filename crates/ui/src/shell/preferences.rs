@@ -308,6 +308,66 @@ pub fn apply_context_menu_shell_submenu(enabled: bool, cx: &mut App) {
     mutate_config(cx, |c| c.context_menu_shell_extensions_submenu = enabled);
 }
 
+pub fn context_menu_show_compress(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.context_menu_show_compress)
+        .unwrap_or(true)
+}
+
+pub fn apply_context_menu_show_compress(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.context_menu_show_compress = enabled);
+}
+
+pub fn context_menu_show_send_to(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.context_menu_show_send_to)
+        .unwrap_or(true)
+}
+
+pub fn apply_context_menu_show_send_to(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.context_menu_show_send_to = enabled);
+}
+
+pub fn context_menu_show_pin(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.context_menu_show_pin)
+        .unwrap_or(true)
+}
+
+pub fn apply_context_menu_show_pin(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.context_menu_show_pin = enabled);
+}
+
+pub fn context_menu_show_open_in_terminal(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.context_menu_show_open_in_terminal)
+        .unwrap_or(true)
+}
+
+pub fn apply_context_menu_show_open_in_terminal(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.context_menu_show_open_in_terminal = enabled);
+}
+
+pub fn context_menu_show_file_tags(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.context_menu_show_file_tags)
+        .unwrap_or(true)
+}
+
+pub fn apply_context_menu_show_file_tags(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.context_menu_show_file_tags = enabled);
+}
+
+pub fn context_menu_show_create_shortcut(_cx: &App) -> bool {
+    cyberfiles_core::load_config()
+        .map(|c| c.context_menu_show_create_shortcut)
+        .unwrap_or(true)
+}
+
+pub fn apply_context_menu_show_create_shortcut(enabled: bool, cx: &mut App) {
+    mutate_config(cx, |c| c.context_menu_show_create_shortcut = enabled);
+}
+
 pub fn home_widget_quick_access(_cx: &App) -> bool {
     cyberfiles_core::load_config()
         .map(|c| c.show_home_quick_access)
@@ -441,6 +501,12 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         home_recent_expanded: prior.home_recent_expanded,
         home_widget_order: prior.home_widget_order,
         context_menu_shell_extensions_submenu: prior.context_menu_shell_extensions_submenu,
+        context_menu_show_compress: prior.context_menu_show_compress,
+        context_menu_show_send_to: prior.context_menu_show_send_to,
+        context_menu_show_pin: prior.context_menu_show_pin,
+        context_menu_show_open_in_terminal: prior.context_menu_show_open_in_terminal,
+        context_menu_show_file_tags: prior.context_menu_show_file_tags,
+        context_menu_show_create_shortcut: prior.context_menu_show_create_shortcut,
         session_tabs: prior.session_tabs,
         session_active_tab: prior.session_active_tab,
         session_pane_layouts: prior.session_pane_layouts,

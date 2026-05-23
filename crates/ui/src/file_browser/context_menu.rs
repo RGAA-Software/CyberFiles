@@ -8,7 +8,7 @@ use cyberfiles_commands::{
     NewFolder, OpenItem,
     PasteItems, RefreshDirectory, RenameItem, ShellProperties, ViewColumns, ViewDetails, ViewGrid,
 };
-use cyberfiles_core::load_config;
+use cyberfiles_core::{context_menu_item_prefs, load_config};
 use cyberfiles_fs::SortOption;
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
 use gpui::{Context, Entity, Pixels, SharedString, Window, px};
@@ -780,6 +780,7 @@ fn build_directory_item_menu(
     let extended = state.context_menu_extended_verbs;
     let shell_menu_cache = state.shell_menu_cache.clone();
     let menu_icon_px = platform::menu_icon_pixel_size(window.scale_factor());
+    let item_prefs = context_menu_item_prefs();
 
     let mut menu = menu.action_context(focus);
     menu = append_clipboard_commands(menu, has_selection, can_paste);
@@ -849,7 +850,7 @@ fn build_directory_item_menu(
         );
     }
 
-    if single && !paths[0].is_dir() {
+    if item_prefs.create_shortcut && single && !paths[0].is_dir() {
         menu = menu_action(
             menu,
             t!("files.menu.create_shortcut"),
@@ -858,16 +859,18 @@ fn build_directory_item_menu(
         );
     }
 
-    menu = menu_action(
-        menu,
-        t!("files.menu.compress"),
-        IconName::Folder,
-        Box::new(CompressItems),
-    );
+    if item_prefs.compress {
+        menu = menu_action(
+            menu,
+            t!("files.menu.compress"),
+            IconName::Folder,
+            Box::new(CompressItems),
+        );
+    }
 
     let not_implemented: SharedString = t!("files.menu.not_implemented").into();
 
-    if single {
+    if item_prefs.send_to && single {
         let send_to_children = shell_feature_entries(
             &shell_menu_cache,
             &paths,
@@ -894,7 +897,7 @@ fn build_directory_item_menu(
         }
     }
 
-    if single_dir {
+    if item_prefs.pin && single_dir {
         let path = paths[0].clone();
         let path_string = path.to_string_lossy().to_string();
         let pin_label = if path_is_pinned(&path_string) {
@@ -930,16 +933,20 @@ fn build_directory_item_menu(
         }
     }
 
-    menu = menu.separator();
-    menu = menu_action(
-        menu,
-        t!("files.menu.open_in_terminal"),
-        IconName::File,
-        Box::new(OpenInTerminal),
-    );
-    menu = menu.separator();
-    menu = append_file_tags_submenu(menu, paths.clone(), window, cx);
-    menu = append_remove_from_tags_submenu(menu, paths.clone(), window, cx);
+    if item_prefs.open_in_terminal {
+        menu = menu.separator();
+        menu = menu_action(
+            menu,
+            t!("files.menu.open_in_terminal"),
+            IconName::File,
+            Box::new(OpenInTerminal),
+        );
+    }
+    if item_prefs.file_tags {
+        menu = menu.separator();
+        menu = append_file_tags_submenu(menu, paths.clone(), window, cx);
+        menu = append_remove_from_tags_submenu(menu, paths.clone(), window, cx);
+    }
     menu = menu.separator();
 
     if has_selection {

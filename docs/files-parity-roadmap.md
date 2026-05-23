@@ -116,7 +116,7 @@ MainWindow                             AppShell + open_main_window
 | 单栏 Shell | `PaneShell` | 🟡 |
 | 双栏 ShellPanesPage | `ShellPanes` | ✅ |
 | InfoPane | Details + 文本/图片预览 | 🟡 |
-| ShelfPane | 剪贴板暂存条（复制/剪切）+ 清空 | 🟡 |
+| ShelfPane | 暂存条：计数、首项预览、粘贴、清空 | 🟡 |
 | StatusBar | `status_bar` | 🟡 |
 | 设置全页 | General / Sidebar / Home / About | 🟡 |
 
@@ -223,14 +223,14 @@ MainWindow                             AppShell + open_main_window
 ### 第一梯队（进行中 / 当前迭代）
 
 1. **文件传输反馈** — `file_ops.rs` 后台传输 + 冲突五键对话框 + 状态栏提示 🟡。
-2. **右键菜单阶段 B** — Open with / Send to（含冷启动 Shell 查询）🟡；压缩项 🟡、可配置显示项 ⬜。
+2. **右键菜单** — 阶段 B ✅；阶段 C：内置项可配置 🟡、分享项 ⬜。
 3. **子菜单行高** — PopupMenu Submenu 与 Item 统一 32px hover ✅。
 4. **工具栏 tooltip i18n** — 全 icon button ✅。
 
 ### 第二梯队
 
-5. **ShelfPane** 剪切暂存条。🟡
-6. 设置扩展：Folders、Tags、Actions（热键列表）。🟡。
+5. **ShelfPane** 暂存条（粘贴 + 预览）🟡；拖放进 Shelf ⬜。
+6. 设置扩展：Folders、Tags、Actions、Context menu 开关。🟡。
 7. 会话恢复增强：双栏状态 + 最近关闭标签（View 菜单列表）。🟡。
 8. StatusCenter：进度条、逐项/大文件取消。🟡。
 

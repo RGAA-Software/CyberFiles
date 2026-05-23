@@ -33,7 +33,7 @@
 4. 回收站虚拟页不合并 Shell（同 Files）
 5. 已移除默认 `TrackPopupMenu` 路径（`ShellContextMenu` 动作）
 
-### 阶段 B（当前）
+### 阶段 B（已完成）
 
 - **空白区域** `BaseContextMenuFlyout`：粘贴、布局/排序子菜单、新建、刷新
 - **项菜单（Files 布局）**：顶栏图标快捷操作（剪切/复制/粘贴/重命名/删除/属性）→ 打开/新标签/新窗格 → 复制路径/用所选建文件夹/固定 → 终端 → **显示更多选项**（全部 Shell 扩展，含嵌套子菜单）
@@ -45,11 +45,12 @@
 - **Open with 子菜单**：缓存命中或冷启动 `query_shell_context_menu_items` 提取 `openas`；底部「选择其他应用…」
 - **Send to 子菜单**：同上提取 `sendto` /「发送到」；无子项时占位
 - **压缩到 ZIP**：右键 / `CompressItems`（Windows `Compress-Archive`）
-- 待做：文件标签/分享、可配置显示项（阶段 C）、毛玻璃样式、`IContextMenu2`
 
-### 阶段 C
+### 阶段 C（进行中）
 
-- 与 `commands` 注册表统一生成；可配置显示项（对齐 Files 设置 → Context menu）
+- **设置 → 右键菜单**：开关内置项（压缩、发送到、固定、终端、文件标签、快捷方式）+ Shell 子菜单模式（`settings.json` / `ContextMenuItemPrefs`）
+- **ShelfPane**：状态栏上方暂存条（复制/剪切计数、首项预览、粘贴、清空）
+- 待做：与 `commands` 注册表统一生成、分享项、毛玻璃样式、`IContextMenu2`
 
 ## 代码落点
 

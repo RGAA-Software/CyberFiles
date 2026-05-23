@@ -100,6 +100,19 @@ pub struct AppConfig {
     /// When true, extra Shell verbs beyond the first few appear in a «More» submenu (Files default).
     #[serde(default = "default_true")]
     pub context_menu_shell_extensions_submenu: bool,
+    /// Built-in item visibility in the file list context menu (Files Settings → Context menu).
+    #[serde(default = "default_true")]
+    pub context_menu_show_compress: bool,
+    #[serde(default = "default_true")]
+    pub context_menu_show_send_to: bool,
+    #[serde(default = "default_true")]
+    pub context_menu_show_pin: bool,
+    #[serde(default = "default_true")]
+    pub context_menu_show_open_in_terminal: bool,
+    #[serde(default = "default_true")]
+    pub context_menu_show_file_tags: bool,
+    #[serde(default = "default_true")]
+    pub context_menu_show_create_shortcut: bool,
     /// Last session tab targets (`home`, `recycle`, `settings`, `tag:name`, or filesystem path).
     #[serde(default)]
     pub session_tabs: Vec<String>,
@@ -204,6 +217,12 @@ impl Default for AppConfig {
             home_recent_expanded: true,
             home_widget_order: default_home_widget_order(),
             context_menu_shell_extensions_submenu: true,
+            context_menu_show_compress: true,
+            context_menu_show_send_to: true,
+            context_menu_show_pin: true,
+            context_menu_show_open_in_terminal: true,
+            context_menu_show_file_tags: true,
+            context_menu_show_create_shortcut: true,
             session_tabs: Vec::new(),
             session_active_tab: 0,
             session_pane_layouts: Vec::new(),
@@ -328,6 +347,49 @@ impl From<AppConfig> for HomeWidgetPrefs {
             widget_order: normalize_home_widget_order(&c.home_widget_order),
         }
     }
+}
+
+/// Built-in CyberFiles context menu entries (not Shell verbs).
+#[derive(Debug, Clone, Copy)]
+pub struct ContextMenuItemPrefs {
+    pub compress: bool,
+    pub send_to: bool,
+    pub pin: bool,
+    pub open_in_terminal: bool,
+    pub file_tags: bool,
+    pub create_shortcut: bool,
+}
+
+impl Default for ContextMenuItemPrefs {
+    fn default() -> Self {
+        Self {
+            compress: true,
+            send_to: true,
+            pin: true,
+            open_in_terminal: true,
+            file_tags: true,
+            create_shortcut: true,
+        }
+    }
+}
+
+impl From<&AppConfig> for ContextMenuItemPrefs {
+    fn from(c: &AppConfig) -> Self {
+        Self {
+            compress: c.context_menu_show_compress,
+            send_to: c.context_menu_show_send_to,
+            pin: c.context_menu_show_pin,
+            open_in_terminal: c.context_menu_show_open_in_terminal,
+            file_tags: c.context_menu_show_file_tags,
+            create_shortcut: c.context_menu_show_create_shortcut,
+        }
+    }
+}
+
+pub fn context_menu_item_prefs() -> ContextMenuItemPrefs {
+    load_config()
+        .map(|c| ContextMenuItemPrefs::from(&c))
+        .unwrap_or_default()
 }
 
 pub fn save_home_widget_prefs(prefs: &HomeWidgetPrefs) -> anyhow::Result<()> {
