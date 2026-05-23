@@ -674,8 +674,10 @@ impl PopupMenu {
     ) -> Self {
         let submenu = PopupMenu::build(window, cx, f);
         let parent_menu = cx.entity().downgrade();
+        let item_row_height = self.item_row_height;
         submenu.update(cx, |view, _| {
             view.parent_menu = Some(parent_menu);
+            view.item_row_height = item_row_height;
         });
 
         self.menu_items.push(
@@ -1236,11 +1238,12 @@ impl PopupMenu {
             } => this
                 .selected(selected)
                 .disabled(*disabled)
-                .items_start()
+                .h(item_height)
+                .gap_x_1()
                 .child(
                     h_flex()
-                        .h(item_height)
-                        .size_full()
+                        .w_full()
+                        .h_full()
                         .items_center()
                         .gap_x_1()
                         .children(Self::render_icon_slot(
