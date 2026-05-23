@@ -14,6 +14,7 @@ mod settings_view;
 mod shell;
 mod shell_icon;
 mod sidebar;
+mod tab;
 mod theme;
 mod toolbar_button;
 

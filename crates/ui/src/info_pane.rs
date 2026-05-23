@@ -7,12 +7,12 @@ use gpui_component::{
     description_list::{DescriptionItem, DescriptionList},
     h_flex,
     label::Label,
-    tab::{Tab, TabBar},
     v_flex, ActiveTheme as _, IconName,
 };
 use rust_i18n::t;
 
 use crate::icons::icon_foreground;
+use crate::tab::{Tab, TabBar};
 
 pub struct InfoPane {
     selected_tab: usize,

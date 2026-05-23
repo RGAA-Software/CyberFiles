@@ -24,7 +24,6 @@ use gpui_component::{
     label::Label,
     progress::Progress,
     resizable::{h_resizable, resizable_panel},
-    tab::{Tab, TabBar},
     v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Sizable as _, Size,
     ThemeMode, TitleBar, WindowExt as _,
 };
@@ -43,13 +42,13 @@ use crate::shell::preferences::{apply_theme_mode, persist_window_bounds};
 use crate::shell::ReopenClosedTabAt;
 use crate::shell::{PaneShell, ShellPanes};
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
+use crate::tab::{Tab, TabBar};
 use crate::toolbar_button::toolbar_icon_button;
 
 /// Matches Files `NavigationToolbar` height.
 const NAV_TOOLBAR_HEIGHT: Pixels = px(48.);
-/// Default `Tab` + medium `TabBar` height; bottom 1px is the variant's full-width border line.
-const TITLE_TAB_BAR_HEIGHT: Pixels = px(32.);
-const TITLE_TAB_BAR_VISIBLE_HEIGHT: Pixels = px(31.);
+/// Default medium `TabBar` height in the integrated title bar.
+const TITLE_TAB_BAR_HEIGHT: Pixels = px(34.);
 /// Fixed width per document tab in the title bar (label truncates inside).
 const TITLE_TAB_WIDTH: Pixels = px(200.);
 const TITLE_TAB_CLOSE_RIGHT_INSET: Pixels = px(5.);
@@ -1130,6 +1129,8 @@ impl MainPage {
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> TabBar {
         let active = self.active_tab;
         TabBar::new("main-tab-bar")
+            .medium_titlebar()
+            .hide_bottom_border()
             .selected_index(active)
             .last_empty_space(
                 h_flex().gap_1().pr_1().child(
@@ -1206,16 +1207,12 @@ impl MainPage {
                         .flex_1()
                         .min_w_0()
                         .h_full()
-                        .overflow_hidden()
                         .flex()
                         .items_center()
                         .child(
                             div()
-                                .id("title-bar-tabs-clip")
                                 .w_full()
-                                .h(TITLE_TAB_BAR_VISIBLE_HEIGHT)
-                                .max_h(TITLE_TAB_BAR_VISIBLE_HEIGHT)
-                                .overflow_hidden()
+                                .h(TITLE_TAB_BAR_HEIGHT)
                                 .child(tab_bar.h(TITLE_TAB_BAR_HEIGHT)),
                         ),
                 )
