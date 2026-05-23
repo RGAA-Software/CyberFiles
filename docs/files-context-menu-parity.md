@@ -42,7 +42,9 @@
 - **Shell 行图标**：`PopupMenuItem::icon_png`（CyberFiles fork `popup_menu`，彩色 PNG）
 - **选中预取**：左键改选时后台 `query_shell_context_menu_items`，减轻首次右键「正在加载」
 - **Shell 缓存热更新**：菜单打开期间预取完成会重建 `PopupMenu`（`shell_menu_revision`）
-- 待做：Open with 动态列表、压缩/发送到/文件标签/分享、毛玻璃样式、`IContextMenu2`
+- **Open with 子菜单（首轮）**：从 Shell 预取结果中提取 `openas` 子树（`BaseLayoutPage` / `GetOpenWithItems` 对标）；子项 invoke Shell；底部「选择其他应用…」→ `show_open_with_dialog`；无缓存时回退 `OpenWithDialog` action
+- **子菜单行 hover 高度**：`PopupMenuItem::Submenu` 外层 `.h(item_row_height)` 与普通项对齐
+- 待做：Send to 子菜单（`sendto` 提取）、压缩/发送到/文件标签/分享、可配置显示项（阶段 C）、毛玻璃样式、`IContextMenu2`
 
 ### 阶段 C
 

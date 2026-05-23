@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use cyberfiles_core::{load_config, record_path_history, save_config, APP_NAME};
 use cyberfiles_fs::{
-    breadcrumb_root_menu_sections, copy_items, home_navigation_path, list_drives, move_items,
+    breadcrumb_root_menu_sections, home_navigation_path, list_drives,
     path_breadcrumbs, PathBreadcrumb,
 };
 use cyberfiles_platform_windows::list_shell_quick_access_folders;
@@ -16,7 +16,6 @@ use gpui_component::{
     h_flex,
     label::Label,
     input::{Input, InputEvent, InputState},
-    notification::Notification,
     resizable::{h_resizable, resizable_panel},
     tab::{Tab, TabBar},
     v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Size, ThemeMode,
@@ -24,6 +23,7 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
+use crate::file_ops::{spawn_file_transfer, FileTransferKind};
 use crate::icons::{compact_icon, pin_icon, toolbar_icon};
 use crate::toolbar_button::toolbar_icon_button;
 use crate::info_pane::InfoPane;
@@ -308,31 +308,17 @@ impl MainPage {
             return;
         }
         let copy = window.modifiers().control;
-        let result = if copy {
-            copy_items(&paths, &dest)
+        let kind = if copy {
+            FileTransferKind::Copy
         } else {
-            move_items(&paths, &dest)
+            FileTransferKind::Move
         };
-        match result {
-            Ok(()) => {
-                let pane = self.active_pane(cx);
-                pane.update(cx, |shell, cx| {
-                    shell.file_browser().update(cx, |browser, cx| {
-                        if *browser.current_directory() == dest {
-                            browser.reload();
-                        }
-                        cx.notify();
-                    });
-                });
-                cx.notify();
-            }
-            Err(error) => {
-                window.push_notification(
-                    Notification::error(format!("{}: {error}", t!("files.drop.error"))),
-                    cx,
-                );
-            }
-        }
+        let pane = self.active_pane(cx);
+        let browser = pane.read(cx).file_browser().clone();
+        browser.update(cx, |_, cx| {
+            spawn_file_transfer(browser.clone(), window, cx, kind, paths, dest);
+        });
+        cx.notify();
     }
 
     fn ensure_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {

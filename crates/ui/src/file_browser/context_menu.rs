@@ -18,9 +18,9 @@ use rust_i18n::t;
 
 use super::{
     BrowseLocation, CreateFolderFromSelection, CreateShortcut, FileBrowser, OpenInNewPane,
-    OpenInNewWindow, OpenInTerminal, OpenWithDialog, ShellSubmenuSnapshot, SortByCreated,
-    SortByModified, SortByName, SortBySize, SortByType, ToggleShowHidden, ToggleSortDirection,
-    ViewMode, shell_submenu_snapshot,
+    OpenInNewWindow, OpenInTerminal, OpenWithDialog, ShellMenuCache, ShellSubmenuSnapshot,
+    SortByCreated, SortByModified, SortByName, SortBySize, SortByType, ToggleShowHidden,
+    ToggleSortDirection, ViewMode, normalize_paths_for_shell_cache, shell_submenu_snapshot,
 };
 use crate::app_state::{AppFileClipboard, AppNavigation};
 use crate::icons::pin_icon;
@@ -126,6 +126,93 @@ fn shell_menu_click_item(
         item = item.icon_png(std::sync::Arc::new(png));
     }
     item.on_click(invoke)
+}
+
+fn is_open_with_submenu_label(label: &str) -> bool {
+    let lower = label.to_ascii_lowercase();
+    lower.contains("open with")
+        || lower.contains("打开方式")
+        || lower.contains("開啟方式")
+        || lower.contains("開啟檔案")
+}
+
+fn open_with_entries_from_cache(
+    cache: &std::sync::Arc<RwLock<Option<ShellMenuCache>>>,
+    paths: &[PathBuf],
+    extended_verbs: bool,
+) -> Vec<ShellContextMenuEntry> {
+    let key = normalize_paths_for_shell_cache(paths);
+    let entries = cache
+        .read()
+        .ok()
+        .and_then(|guard| guard.as_ref().cloned())
+        .filter(|cache| cache.paths == key && cache.extended_verbs == extended_verbs)
+        .map(|cache| cache.entries)
+        .unwrap_or_default();
+
+    for entry in &entries {
+        if let ShellContextMenuEntry::Submenu {
+            label,
+            children,
+            lazy_parent_index,
+            ..
+        } = entry
+        {
+            if is_open_with_submenu_label(label) {
+                return resolve_submenu_entries(*lazy_parent_index, children);
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn append_open_with_submenu(
+    menu: PopupMenu,
+    children: &[ShellContextMenuEntry],
+    paths: &[PathBuf],
+    extended_verbs: bool,
+    browser: Entity<FileBrowser>,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let paths_for_sub = paths.to_vec();
+    let browser_sub = browser.clone();
+    let children_stash = children.to_vec();
+    let choose_path = paths[0].clone();
+    menu.submenu_with_icon(
+        Some(menu_icon(IconName::Settings2)),
+        t!("files.menu.open_with"),
+        window,
+        cx,
+        move |sub, window, cx| {
+            let loaded = resolve_submenu_entries(None, &children_stash);
+            let sub = if loaded.is_empty() {
+                sub.item(PopupMenuItem::new(t!("files.menu.shell_empty")).disabled(true))
+            } else {
+                append_shell_entries(
+                    sub,
+                    &loaded,
+                    &paths_for_sub,
+                    extended_verbs,
+                    browser_sub.clone(),
+                    window,
+                    cx,
+                )
+            };
+            sub.item(
+                PopupMenuItem::new(t!("files.menu.open_with_choose"))
+                    .icon(menu_icon(IconName::Settings2))
+                    .on_click({
+                        let choose_path = choose_path.clone();
+                        move |_, _, _| {
+                            if let Err(error) = platform::show_open_with_dialog(&choose_path) {
+                                eprintln!("[shell-menu] open-with dialog: {error:#}");
+                            }
+                        }
+                    }),
+            )
+        },
+    )
 }
 
 fn resolve_submenu_entries(
@@ -549,6 +636,7 @@ fn build_directory_item_menu(
     let multi = paths.len() > 1;
     let focus = state.focus_handle.clone();
     let extended = state.context_menu_extended_verbs;
+    let shell_menu_cache = state.shell_menu_cache.clone();
 
     let mut menu = menu.action_context(focus);
     menu = append_clipboard_commands(menu, has_selection, can_paste);
@@ -557,7 +645,26 @@ fn build_directory_item_menu(
     menu = menu_action(menu, t!("files.menu.open"), IconName::Folder, Box::new(OpenItem));
 
     if single && !paths[0].is_dir() {
-        menu = menu_action(menu, t!("files.menu.open_with"), IconName::Settings2, Box::new(OpenWithDialog));
+        let open_with_children =
+            open_with_entries_from_cache(&shell_menu_cache, &paths, extended);
+        if open_with_children.is_empty() {
+            menu = menu_action(
+                menu,
+                t!("files.menu.open_with"),
+                IconName::Settings2,
+                Box::new(OpenWithDialog),
+            );
+        } else {
+            menu = append_open_with_submenu(
+                menu,
+                &open_with_children,
+                &paths,
+                extended,
+                browser.clone(),
+                window,
+                cx,
+            );
+        }
     }
 
     if single {
@@ -672,7 +779,7 @@ fn build_directory_item_menu(
             menu,
             paths,
             extended,
-            state.shell_menu_cache.clone(),
+            shell_menu_cache,
             browser,
             window,
             cx,

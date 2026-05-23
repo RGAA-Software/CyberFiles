@@ -18,7 +18,7 @@ use cyberfiles_core::{
     VIEW_COLUMNS, VIEW_DETAILS, VIEW_GRID,
 };
 use cyberfiles_fs::{
-    column_trail_for, copy_items, create_directory, create_file, delete_paths,
+    column_trail_for, create_directory, create_file, delete_paths,
     file_items_for_tag_paths, filter_items_by_query, home_navigation_path, move_items,
     read_directory, read_recycle_bin,
     recycle_paths, rename_path, unique_new_file_name, unique_new_folder_name, ClipboardOperation,
@@ -26,6 +26,7 @@ use cyberfiles_fs::{
     SortOption, SortPreferences,
 };
 use crate::app_state::AppNavigation;
+use crate::file_ops::{spawn_file_transfer, spawn_paste_from_clipboard, FileTransferKind};
 use crate::icons::{compact_icon, toolbar_icon};
 use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
@@ -828,23 +829,13 @@ impl FileBrowser {
             return;
         }
         let copy = window.modifiers().control;
-        let result = if copy {
-            copy_items(&paths, &dest)
+        let kind = if copy {
+            FileTransferKind::Copy
         } else {
-            move_items(&paths, &dest)
+            FileTransferKind::Move
         };
-        match result {
-            Ok(()) => {
-                self.refresh();
-                cx.notify();
-            }
-            Err(error) => {
-                window.push_notification(
-                    Notification::error(format!("{}: {error}", t!("files.drop.error"))),
-                    cx,
-                );
-            }
-        }
+        let browser = cx.entity();
+        spawn_file_transfer(browser, window, cx, kind, paths, dest);
     }
 
     fn drag_paths_for_item(&self, _index: usize, path: &Path) -> Vec<PathBuf> {
@@ -1259,29 +1250,9 @@ impl FileBrowser {
             return;
         }
 
-        let destination = self.current_dir.clone();
-        let result = match clipboard.operation {
-            ClipboardOperation::Copy => copy_items(&clipboard.paths, &destination),
-            ClipboardOperation::Cut => move_items(&clipboard.paths, &destination),
-        };
-
-        match result {
-            Ok(()) => {
-                if clipboard.operation == ClipboardOperation::Copy {
-                    AppFileClipboard::store(clipboard.operation, clipboard.paths, cx);
-                }
-                self.refresh();
-                window.push_notification(Notification::success(t!("files.paste.success")), cx);
-            }
-            Err(error) => {
-                AppFileClipboard::set(clipboard, cx);
-                window.push_notification(
-                    Notification::error(format!("{}: {error}", t!("files.paste.error"))),
-                    cx,
-                );
-            }
-        }
-        cx.notify();
+        let destination = self.current_directory().clone();
+        let browser = cx.entity();
+        spawn_paste_from_clipboard(browser, window, cx, clipboard, destination);
     }
 
     fn confirm_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
