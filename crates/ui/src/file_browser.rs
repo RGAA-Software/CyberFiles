@@ -1744,6 +1744,12 @@ impl FileBrowser {
                                 compact_icon(IconName::ExternalLink)
                             }
                         })
+                        .tooltip(match kind {
+                            FileItemKind::Folder => t!("files.open.folder"),
+                            FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
+                                t!("files.open.file")
+                            }
+                        })
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.open_item(open_path.clone(), kind, cx);
                         })),
@@ -1816,6 +1822,12 @@ impl FileBrowser {
             .child(
                 toolbar_icon_button(format!("grid-open-{index}"))
                     .icon(toolbar_icon(IconName::ExternalLink))
+                    .tooltip(match kind {
+                        FileItemKind::Folder => t!("files.open.folder"),
+                        FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
+                            t!("files.open.file")
+                        }
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.open_item(open_path.clone(), kind, cx);
                     })),
@@ -2157,6 +2169,7 @@ impl FileBrowser {
             .child(
                 toolbar_icon_button("content-view-details")
                     .icon(toolbar_icon(IconName::GalleryVerticalEnd))
+                    .tooltip(t!("files.view.details"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Details, cx);
                     })),
@@ -2164,6 +2177,7 @@ impl FileBrowser {
             .child(
                 toolbar_icon_button("content-view-grid")
                     .icon(toolbar_icon(IconName::LayoutDashboard))
+                    .tooltip(t!("files.view.grid"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Grid, cx);
                     })),
@@ -2171,6 +2185,7 @@ impl FileBrowser {
             .child(
                 toolbar_icon_button("content-view-columns")
                     .icon(toolbar_icon(IconName::PanelLeft))
+                    .tooltip(t!("files.view.columns"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Columns, cx);
                     })),
@@ -2178,6 +2193,7 @@ impl FileBrowser {
             .child(
                 toolbar_icon_button("content-delete")
                     .icon(toolbar_icon(IconName::Delete))
+                    .tooltip(t!("files.menu.delete"))
                     .disabled(selected_count == 0)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.perform_delete(window, cx);
@@ -2186,7 +2202,11 @@ impl FileBrowser {
             )
             .child(
                 toolbar_dropdown_button("content-sort")
-                    .button(toolbar_labeled_button("content-sort-btn").label(sort_label))
+                    .button(
+                        toolbar_labeled_button("content-sort-btn")
+                            .label(sort_label)
+                            .tooltip(t!("files.menu.sort")),
+                    )
                     .dropdown_menu(move |menu, _, _| {
                         let hidden_label = if show_hidden {
                             t!("files.show_hidden.off")
@@ -2284,6 +2304,7 @@ impl Render for FileBrowser {
                     .child(
                         toolbar_icon_button("files-back")
                             .icon(toolbar_icon(IconName::ArrowLeft))
+                            .tooltip(t!("nav.back"))
                             .disabled(!can_go_back)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.navigate_back(cx);
@@ -2292,6 +2313,7 @@ impl Render for FileBrowser {
                     .child(
                         toolbar_icon_button("files-forward")
                             .icon(toolbar_icon(IconName::ArrowRight))
+                            .tooltip(t!("nav.forward"))
                             .disabled(!can_go_forward)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.navigate_forward(cx);
@@ -2300,6 +2322,7 @@ impl Render for FileBrowser {
                     .child(
                         toolbar_icon_button("files-up")
                             .icon(toolbar_icon(IconName::ArrowUp))
+                            .tooltip(t!("nav.up"))
                             .disabled(!can_go_up)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.navigate_parent(cx);
@@ -2308,6 +2331,7 @@ impl Render for FileBrowser {
                     .child(
                         toolbar_icon_button("files-refresh")
                             .icon(toolbar_icon(IconName::Redo2))
+                            .tooltip(t!("nav.refresh"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.refresh();
                                 cx.notify();
@@ -2334,6 +2358,7 @@ impl Render for FileBrowser {
                     .child(
                         toolbar_icon_button("files-view-details")
                             .icon(toolbar_icon(IconName::GalleryVerticalEnd))
+                            .tooltip(t!("files.view.details"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_view_mode(ViewMode::Details, cx);
                             })),
@@ -2341,6 +2366,7 @@ impl Render for FileBrowser {
                     .child(
                         toolbar_icon_button("files-view-grid")
                             .icon(toolbar_icon(IconName::LayoutDashboard))
+                            .tooltip(t!("files.view.grid"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_view_mode(ViewMode::Grid, cx);
                             })),
@@ -2348,6 +2374,7 @@ impl Render for FileBrowser {
                     .child(
                         toolbar_icon_button("files-view-columns")
                             .icon(toolbar_icon(IconName::PanelLeft))
+                            .tooltip(t!("files.view.columns"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_view_mode(ViewMode::Columns, cx);
                             })),
@@ -2355,6 +2382,7 @@ impl Render for FileBrowser {
                     .child(
                         toolbar_icon_button("files-delete-btn")
                             .icon(toolbar_icon(IconName::Delete))
+                            .tooltip(t!("files.menu.delete"))
                             .disabled(selected_count == 0)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.perform_delete(window, cx);
@@ -2363,7 +2391,11 @@ impl Render for FileBrowser {
                     )
                     .child(
                         toolbar_dropdown_button("files-sort")
-                            .button(toolbar_labeled_button("files-sort-btn").label(sort_label))
+                            .button(
+                                toolbar_labeled_button("files-sort-btn")
+                                    .label(sort_label)
+                                    .tooltip(t!("files.menu.sort")),
+                            )
                             .dropdown_menu(move |menu, _, _| {
                                 let hidden_label = if show_hidden {
                                     t!("files.show_hidden.off")

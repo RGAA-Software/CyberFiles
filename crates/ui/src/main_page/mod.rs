@@ -876,6 +876,7 @@ impl MainPage {
                     .child(
                         toolbar_icon_button("main-new-tab")
                             .icon(compact_icon(IconName::Plus))
+                            .tooltip(t!("nav.new_tab"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.add_tab(
                                     NavigationTarget::Path(home_navigation_path()),
@@ -904,6 +905,7 @@ impl MainPage {
                         toolbar_icon_button(format!("main-tab-close-{}", tab.id))
                             .mr(TITLE_TAB_CLOSE_RIGHT_INSET)
                             .icon(compact_icon(IconName::Close))
+                            .tooltip(t!("nav.close_tab"))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
                                 this.close_tab(index, cx);
@@ -968,6 +970,7 @@ impl MainPage {
                             .child(
                                 toolbar_icon_button("theme-toggle")
                                     .icon(toolbar_icon(theme_icon))
+                                    .tooltip(t!("nav.theme_toggle"))
                                     .on_click(move |_, _, cx| {
                                         let mode = if cx.theme().mode.is_dark() {
                                             ThemeMode::Light
@@ -980,6 +983,7 @@ impl MainPage {
                             .child(
                                 toolbar_icon_button("github")
                                     .icon(toolbar_icon(IconName::Github))
+                                    .tooltip(t!("nav.github"))
                                     .on_click(|_, _, cx| {
                                         cx.open_url("https://github.com/RGAA-Software/CyberFiles")
                                     }),
@@ -988,7 +992,8 @@ impl MainPage {
                                 div().relative().child(
                                     Badge::new().count(notifications_count).max(99).child(
                                         toolbar_icon_button("bell")
-                                            .icon(toolbar_icon(IconName::Bell)),
+                                            .icon(toolbar_icon(IconName::Bell))
+                                            .tooltip(t!("nav.notifications")),
                                     ),
                                 ),
                             ),
@@ -1051,6 +1056,7 @@ impl MainPage {
                             } else {
                                 IconName::PanelLeftClose
                             }))
+                            .tooltip(t!("sidebar.toggle"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_sidebar_collapsed(cx);
                             })),
@@ -1058,6 +1064,7 @@ impl MainPage {
                     .child(
                         toolbar_icon_button("nav-back")
                             .icon(toolbar_icon(IconName::ArrowLeft))
+                            .tooltip(t!("nav.back"))
                             .disabled(!can_back)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let browser =
@@ -1068,6 +1075,7 @@ impl MainPage {
                     .child(
                         toolbar_icon_button("nav-forward")
                             .icon(toolbar_icon(IconName::ArrowRight))
+                            .tooltip(t!("nav.forward"))
                             .disabled(!can_forward)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let browser =
@@ -1078,6 +1086,7 @@ impl MainPage {
                     .child(
                         toolbar_icon_button("nav-up")
                             .icon(toolbar_icon(IconName::ArrowUp))
+                            .tooltip(t!("nav.up"))
                             .disabled(!can_up)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let browser =
@@ -1088,6 +1097,7 @@ impl MainPage {
                     .child(
                         toolbar_icon_button("nav-refresh")
                             .icon(toolbar_icon(IconName::Redo2))
+                            .tooltip(t!("nav.refresh"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let pane = this.active_pane(cx);
                                 pane.update(cx, |shell, cx| {
@@ -1131,6 +1141,11 @@ impl MainPage {
                             } else {
                                 IconName::PanelRightOpen
                             }))
+                            .tooltip(if show_info_pane {
+                                t!("nav.hide_info_pane")
+                            } else {
+                                t!("nav.show_info_pane")
+                            })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_info_pane(cx);
                             })),
@@ -1141,6 +1156,7 @@ impl MainPage {
                         .child(
                             toolbar_icon_button("nav-pin-folder")
                                 .icon(pin_icon())
+                                .tooltip(t!("nav.pin_folder"))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.pin_current_folder(cx);
                                 })),

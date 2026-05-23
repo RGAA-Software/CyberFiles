@@ -67,6 +67,62 @@ nav.split_pane:
   en: Toggle dual pane
   zh-CN: 切换双栏
   zh-HK: 切換雙欄
+nav.new_tab:
+  en: New tab
+  zh-CN: 新建标签页
+  zh-HK: 新增分頁
+nav.close_tab:
+  en: Close tab
+  zh-CN: 关闭标签页
+  zh-HK: 關閉分頁
+nav.theme_toggle:
+  en: Toggle light/dark theme
+  zh-CN: 切换浅色/深色主题
+  zh-HK: 切換淺色/深色主題
+nav.github:
+  en: Open GitHub repository
+  zh-CN: 打开 GitHub 仓库
+  zh-HK: 開啟 GitHub 儲存庫
+nav.notifications:
+  en: Notifications
+  zh-CN: 通知
+  zh-HK: 通知
+nav.back:
+  en: Back
+  zh-CN: 后退
+  zh-HK: 後退
+nav.forward:
+  en: Forward
+  zh-CN: 前进
+  zh-HK: 前進
+nav.up:
+  en: Up
+  zh-CN: 上级
+  zh-HK: 上層
+nav.refresh:
+  en: Refresh
+  zh-CN: 刷新
+  zh-HK: 重新整理
+nav.show_info_pane:
+  en: Show details pane
+  zh-CN: 显示详细信息窗格
+  zh-HK: 顯示詳細資訊窗格
+nav.hide_info_pane:
+  en: Hide details pane
+  zh-CN: 隐藏详细信息窗格
+  zh-HK: 隱藏詳細資訊窗格
+nav.pin_folder:
+  en: Pin folder to sidebar
+  zh-CN: 将文件夹固定到侧栏
+  zh-HK: 將資料夾固定到側欄
+files.open.folder:
+  en: Open folder
+  zh-CN: 打开文件夹
+  zh-HK: 開啟資料夾
+files.open.file:
+  en: Open file
+  zh-CN: 打开文件
+  zh-HK: 開啟檔案
 sidebar.workspace:
   en: Workspace
   zh-CN: 工作区
