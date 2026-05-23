@@ -203,6 +203,15 @@ impl AppNavigation {
         nav.update(cx, |page, cx| page.refresh_home_widgets(cx));
     }
 
+    /// Refresh Home quick-access widgets and sidebar QA entries after Shell changes.
+    pub fn refresh_quick_access(cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, cx| {
+            page.refresh_sidebar_cache(cx);
+            page.refresh_home_widgets(cx);
+        });
+    }
+
 }
 
 pub fn breadcrumb_navigation_target(path: &std::path::Path) -> NavigationTarget {

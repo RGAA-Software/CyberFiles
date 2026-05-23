@@ -1,11 +1,14 @@
 use cyberfiles_core::{home_widget_prefs, save_home_widget_prefs, HomeWidgetPrefs};
 use cyberfiles_fs::{
     file_tag_previews, list_drives, list_quick_access_entries, list_recent_files,
-    load_home_file_tags, DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
+    load_home_file_tags, quick_access_automatic_destinations_dir, DirectoryWatcher,
+    DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
 };
+use std::time::Duration;
+
 use gpui::{
     anchored, deferred, div, prelude::*, px, Anchor, DismissEvent, Entity,
-    MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window,
+    MouseButton, MouseDownEvent, Pixels, Point, Subscription, Task, Window,
 };
 use gpui_component::{
     v_flex,
@@ -51,6 +54,10 @@ pub struct HomePage {
     loading: bool,
     load_generation: u64,
     widget_prefs_menu: Option<WidgetPrefsMenuState>,
+    #[cfg(windows)]
+    _qa_watcher: Option<DirectoryWatcher>,
+    #[cfg(windows)]
+    _qa_watch_task: Option<Task<()>>,
 }
 
 impl HomePage {
@@ -61,9 +68,39 @@ impl HomePage {
             loading: false,
             load_generation: 0,
             widget_prefs_menu: None,
+            #[cfg(windows)]
+            _qa_watcher: None,
+            #[cfg(windows)]
+            _qa_watch_task: None,
         };
         page.schedule_load(cx);
+        #[cfg(windows)]
+        page.start_quick_access_watcher(cx);
         page
+    }
+
+    #[cfg(windows)]
+    fn start_quick_access_watcher(&mut self, cx: &mut Context<Self>) {
+        let Some(dir) = quick_access_automatic_destinations_dir() else {
+            return;
+        };
+        if !dir.is_dir() {
+            return;
+        }
+        let Ok((watcher, events)) =
+            DirectoryWatcher::watch_recursive(&dir, Duration::from_millis(800))
+        else {
+            return;
+        };
+        self._qa_watcher = Some(watcher);
+        self._qa_watch_task = Some(cx.spawn(async move |page, cx| {
+            while events.recv_async().await.is_ok() {
+                let _ = page.update(cx, |page, cx| {
+                    page.reload(cx);
+                    AppNavigation::refresh_quick_access(cx);
+                });
+            }
+        }));
     }
 
     pub fn reload(&mut self, cx: &mut Context<Self>) {

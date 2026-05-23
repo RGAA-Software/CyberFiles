@@ -23,6 +23,8 @@ mod recycle;
 #[cfg(windows)]
 mod shell;
 #[cfg(windows)]
+mod eject;
+#[cfg(windows)]
 mod volume;
 
 #[cfg(windows)]
@@ -48,6 +50,7 @@ pub use shell_folder::{
 #[cfg(windows)]
 pub use recycle::{list_recycle_bin_entries, RecycleBinEntry};
 #[cfg(windows)]
+pub use eject::eject_volume;
 pub use volume::{DriveKind, VolumeDetails, volume_details};
 #[cfg(windows)]
 pub use shell::{

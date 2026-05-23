@@ -147,7 +147,7 @@ MainWindow                             AppShell + open_main_window
 |--------|------|
 | H0–H4 子系统 / 卡片 / 设置开关 | ✅ |
 | Quick Access / Drives / Network / Tags / Recent | 🟡 |
-| H5 缩略图 / QA 监听 / Eject / pintohome | ⬜ |
+| H5 缩略图 / QA 监听 / Eject / pintohome | 🟡（QA 监听 + Eject ✅） |
 
 ---
 
@@ -232,7 +232,7 @@ MainWindow                             AppShell + open_main_window
 
 ### 第三梯队
 
-9. Home H5（缩略图、QA 监听、Eject、pintohome）。
+9. Home H5（缩略图 ⬜；QA 监听、Eject ✅；pintohome ⬜）。
 10. 侧栏 Shell 位图、Eject、Explorer 固定同步。
 11. 新 crate：`tags`、`archive`、`git`。
 

@@ -91,6 +91,36 @@ pub fn load_home_file_tags() -> Vec<FileTagConfig> {
     load_config().map(|c| c.file_tags).unwrap_or_default()
 }
 
+/// `%AppData%\Microsoft\Windows\Recent\AutomaticDestinations` (Quick Access jumps).
+#[cfg(windows)]
+pub fn quick_access_automatic_destinations_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("APPDATA").map(|appdata| {
+        std::path::PathBuf::from(appdata)
+            .join("Microsoft")
+            .join("Windows")
+            .join("Recent")
+            .join("AutomaticDestinations")
+    })
+}
+
+#[cfg(not(windows))]
+pub fn quick_access_automatic_destinations_dir() -> Option<std::path::PathBuf> {
+    None
+}
+
+#[cfg(windows)]
+pub fn eject_drive(drive: &crate::drives::DriveInfo) -> anyhow::Result<()> {
+    if !drive.is_removable && !drive.is_network {
+        anyhow::bail!("drive does not support eject");
+    }
+    cyberfiles_platform_windows::eject_volume(&drive.path, drive.is_network)
+}
+
+#[cfg(not(windows))]
+pub fn eject_drive(_drive: &crate::drives::DriveInfo) -> anyhow::Result<()> {
+    anyhow::bail!("eject is only supported on Windows")
+}
+
 fn path_key(path: &Path) -> String {
     std::fs::canonicalize(path)
         .unwrap_or_else(|_| path.to_path_buf())

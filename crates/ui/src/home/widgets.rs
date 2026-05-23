@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
 use cyberfiles_fs::{
-    DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
+    eject_drive, DriveInfo, FileTagPreview, QuickAccessEntry, RecentItem,
 };
 use cyberfiles_platform_windows::open_item_properties;
 use gpui::{prelude::*, *};
@@ -14,7 +14,8 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     label::Label,
-    v_flex, ActiveTheme as _, IconName, Sizable as _,
+    notification::Notification,
+    v_flex, ActiveTheme as _, IconName, Sizable as _, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -394,10 +395,8 @@ impl HomePage {
             }))
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .context_menu({
-                let path = path.clone();
-                move |menu, window, cx| {
-                    folder_context_menu(menu, &path, false, window, cx)
-                }
+                let drive = drive.clone();
+                move |menu, window, cx| drive_context_menu(menu, &drive, window, cx)
             })
     }
 
@@ -638,6 +637,42 @@ fn format_system_time(time: Option<SystemTime>) -> String {
     };
     let local_time: DateTime<Local> = time.into();
     local_time.format("%Y-%m-%d %H:%M").to_string()
+}
+
+fn drive_context_menu(
+    menu: PopupMenu,
+    drive: &DriveInfo,
+    window: &mut Window,
+    cx: &mut App,
+) -> PopupMenu {
+    let path = drive.path.clone();
+    let is_pinned = false;
+    let can_eject = drive.is_removable || drive.is_network;
+    let eject_drive_info = drive.clone();
+    let mut menu = folder_context_menu(menu, &path, is_pinned, window, cx);
+    if can_eject {
+        let label = if drive.is_network {
+            t!("home.menu.disconnect")
+        } else {
+            t!("home.menu.eject")
+        };
+        menu = menu.item(PopupMenuItem::new(label).on_click(move |_, window, cx| {
+            match eject_drive(&eject_drive_info) {
+                Ok(()) => {
+                    AppNavigation::refresh_quick_access(cx);
+                    window.push_notification(Notification::success(t!("home.eject.done")), cx);
+                }
+                Err(error) => {
+                    window.push_notification(
+                        Notification::error(format!("{}: {error}", t!("home.eject.failed"))),
+                        cx,
+                    );
+                }
+            }
+            cx.stop_propagation();
+        }));
+    }
+    menu
 }
 
 fn folder_context_menu(

@@ -231,6 +231,22 @@ home.widget.quick_access.empty:
   en: Pin a folder from the toolbar (star) while browsing.
   zh-CN: 浏览文件夹时点击工具栏星标即可固定。
   zh-HK: 瀏覽資料夾時點擊工具列星號即可固定。
+home.menu.eject:
+  en: Eject
+  zh-CN: 弹出
+  zh-HK: 退出
+home.menu.disconnect:
+  en: Disconnect
+  zh-CN: 断开连接
+  zh-HK: 中斷連線
+home.eject.done:
+  en: Drive ejected
+  zh-CN: 已弹出驱动器
+  zh-HK: 已退出磁碟機
+home.eject.failed:
+  en: Could not eject drive
+  zh-CN: 无法弹出驱动器
+  zh-HK: 無法退出磁碟機
 info_pane.tab.details:
   en: Details
   zh-CN: 详细信息

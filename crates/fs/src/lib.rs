@@ -24,8 +24,8 @@ pub use clipboard::{
 pub use columns::column_trail_for;
 pub use drives::{default_user_profile, home_navigation_path, list_drives, DriveInfo};
 pub use home::{
-    file_tag_previews, list_quick_access_entries, load_home_file_tags, FileTagPreview,
-    QuickAccessEntry,
+    eject_drive, file_tag_previews, list_quick_access_entries, load_home_file_tags,
+    quick_access_automatic_destinations_dir, FileTagPreview, QuickAccessEntry,
 };
 pub use file_tag::file_items_for_tag_paths;
 pub use item::{DirectoryReadOptions, FileItem, FileItemKind};
