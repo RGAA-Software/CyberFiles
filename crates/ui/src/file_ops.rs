@@ -2,6 +2,8 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc};
+use std::thread;
+use std::time::Duration;
 
 use cyberfiles_fs::{
     compress_paths_to_zip_cancellable, paths_conflict, transfer_one_cancellable,
@@ -217,8 +219,9 @@ pub fn spawn_compress(
         cx,
     );
     let dest_for_reload = destination.clone();
+    let total = count as u32;
     cx.spawn(async move |this, cx| {
-        let cancel = begin_transfer_status(message, 1, cx);
+        let cancel = begin_transfer_status(message, total, cx);
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
             end_transfer_status(cx);
             return;
@@ -226,13 +229,40 @@ pub fn spawn_compress(
         let sources_for_task = sources.clone();
         let dest = destination.clone();
         let cancel_for_task = cancel.clone();
-        let result = cx
-            .background_spawn(async move {
-                compress_paths_to_zip_cancellable(&sources_for_task, &dest, &cancel_for_task)
-            })
-            .await;
+        let (progress_tx, progress_rx) = mpsc::channel::<u32>();
+        let join = thread::spawn(move || {
+            compress_paths_to_zip_cancellable(
+                &sources_for_task,
+                &dest,
+                &cancel_for_task,
+                |completed, _total| {
+                    let _ = progress_tx.send(completed);
+                },
+            )
+        });
+
+        while !join.is_finished() {
+            while let Ok(completed) = progress_rx.try_recv() {
+                set_transfer_progress(completed, cx);
+            }
+            let _ = cx
+                .background_spawn(async move {
+                    thread::sleep(Duration::from_millis(50));
+                })
+                .await;
+        }
+        while let Ok(completed) = progress_rx.try_recv() {
+            set_transfer_progress(completed, cx);
+        }
+
+        let result = join
+            .join()
+            .map_err(|_| anyhow::anyhow!("compress thread panicked"))
+            .and_then(|inner| inner);
         let done_ok = matches!(&result, Ok(_));
-        set_transfer_progress(1, cx);
+        if done_ok {
+            set_transfer_progress(total, cx);
+        }
         end_transfer_status(cx);
 
         let _ = this.update(cx, |browser, cx| {

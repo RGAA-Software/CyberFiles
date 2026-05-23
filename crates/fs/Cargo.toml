@@ -9,6 +9,7 @@ publish.workspace = true
 anyhow.workspace = true
 cyberfiles-core.workspace = true
 unicode-width.workspace = true
+zip = "2.2"
 
 [target.'cfg(windows)'.dependencies]
 cyberfiles-platform-windows.workspace = true

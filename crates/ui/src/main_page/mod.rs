@@ -1437,18 +1437,21 @@ impl MainPage {
 
         let mut bar = h_flex()
             .id("status-bar")
-            .h_8()
+            .h(if transfer.is_some() { px(36.) } else { px(32.) })
             .px_3()
             .items_center()
             .justify_between()
             .gap_3()
             .border_t_1()
-            .border_color(cx.theme().border)
-            .child(
+            .border_color(cx.theme().border);
+
+        if transfer.is_none() {
+            bar = bar.child(
                 Label::new(status_text)
                     .text_xs()
                     .text_color(cx.theme().muted_foreground),
             );
+        }
 
         if let Some(job) = transfer {
             let progress_label = t!(
@@ -1463,21 +1466,47 @@ impl MainPage {
                     .min_w_0()
                     .gap_2()
                     .items_center()
-                    .justify_center()
                     .child(
-                        Progress::new("status-transfer-progress")
-                            .w(px(140.))
-                            .h(px(4.))
-                            .value(job.fraction() * 100.),
-                    )
-                    .child(
-                        Label::new(format!("{} · {progress_label}", job.message))
-                            .text_xs()
-                            .text_color(cx.theme().accent_foreground),
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_1()
+                            .child(
+                                Progress::new("status-transfer-progress")
+                                    .w_full()
+                                    .h(px(4.))
+                                    .value(job.fraction() * 100.),
+                            )
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .min_w_0()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .child(
+                                                Label::new(job.message.clone())
+                                                    .text_xs()
+                                                    .text_color(cx.theme().accent_foreground)
+                                                    .truncate(),
+                                            ),
+                                    )
+                                    .child(
+                                        Label::new(progress_label)
+                                            .flex_shrink_0()
+                                            .text_xs()
+                                            .text_color(cx.theme().accent_foreground),
+                                    ),
+                            ),
                     )
                     .child(
                         Button::new("status-transfer-cancel")
                             .label(t!("files.transfer.cancel"))
+                            .flex_shrink_0()
                             .with_size(Size::Small)
                             .on_click(|_, _, cx| {
                                 TransferStatusGlobal::request_cancel(cx);

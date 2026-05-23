@@ -1,8 +1,12 @@
-//! Create zip archives (Windows: Compress-Archive; aligns with Files «Compress»).
+//! Create zip archives (Rust `zip` crate; per-item progress for the status bar).
 
+use std::fs::File;
+use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipWriter};
 
 /// Returned when the user cancels during compression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,29 +22,27 @@ impl std::error::Error for CompressCancelled {}
 
 /// Builds `destination_dir / {name}.zip` containing all `sources`.
 pub fn compress_paths_to_zip(sources: &[PathBuf], destination_dir: &Path) -> anyhow::Result<PathBuf> {
-    compress_paths_to_zip_cancellable(sources, destination_dir, &AtomicBool::new(false))
+    compress_paths_to_zip_cancellable(sources, destination_dir, &AtomicBool::new(false), |_, _| {})
 }
 
-/// Like [`compress_paths_to_zip`], but polls `cancel` and kills the compressor process.
+/// Like [`compress_paths_to_zip`], but checks `cancel` and reports `on_progress(completed, total)`.
 pub fn compress_paths_to_zip_cancellable(
     sources: &[PathBuf],
     destination_dir: &Path,
     cancel: &AtomicBool,
+    mut on_progress: impl FnMut(u32, u32),
 ) -> anyhow::Result<PathBuf> {
     if cancel.load(Ordering::Relaxed) {
         return Err(CompressCancelled.into());
     }
-    compress_paths_to_zip_impl(sources, destination_dir, cancel)
+    compress_paths_to_zip_impl(sources, destination_dir, cancel, &mut on_progress)
 }
 
-#[cfg(windows)]
-use std::process::{Command, Stdio};
-
-#[cfg(windows)]
 fn compress_paths_to_zip_impl(
     sources: &[PathBuf],
     destination_dir: &Path,
     cancel: &AtomicBool,
+    on_progress: &mut dyn FnMut(u32, u32),
 ) -> anyhow::Result<PathBuf> {
     if sources.is_empty() {
         anyhow::bail!("no paths to compress");
@@ -49,67 +51,82 @@ fn compress_paths_to_zip_impl(
         anyhow::bail!("destination is not a directory");
     }
 
-    let zip_name = zip_file_name(sources);
-    let zip_path = destination_dir.join(&zip_name);
+    for source in sources {
+        if !source.exists() {
+            anyhow::bail!("path not found: {}", source.display());
+        }
+    }
+
+    let total = sources.len() as u32;
+    on_progress(0, total);
+
+    let zip_path = destination_dir.join(zip_file_name(sources));
     if zip_path.exists() {
         std::fs::remove_file(&zip_path)?;
     }
 
-    let mut script = String::from("$ErrorActionPreference='Stop'; Compress-Archive -Force");
-    script.push_str(" -DestinationPath ");
-    script.push_str(&powershell_literal(&zip_path));
-    script.push_str(" -LiteralPath ");
-    let literals: Vec<String> = sources
-        .iter()
-        .map(|p| powershell_literal(p))
-        .collect();
-    script.push_str(&literals.join(","));
+    let file = File::create(&zip_path)?;
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
-    let mut child = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &script,
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-
-    loop {
+    for (index, source) in sources.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
-            let _ = child.kill();
-            let _ = child.wait();
-            if zip_path.exists() {
-                let _ = std::fs::remove_file(&zip_path);
-            }
+            let _ = std::fs::remove_file(&zip_path);
             return Err(CompressCancelled.into());
         }
-        match child.try_wait()? {
-            Some(status) => {
-                if !status.success() {
-                    anyhow::bail!("Compress-Archive failed ({status})");
-                }
-                return Ok(zip_path);
-            }
-            None => std::thread::sleep(Duration::from_millis(200)),
-        }
+        let entry_name = source
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("invalid source path {}", source.display()))?
+            .to_string_lossy()
+            .into_owned();
+        write_zip_tree(&mut zip, source, &entry_name, &options, cancel)?;
+        on_progress((index + 1) as u32, total);
     }
+
+    zip.finish()?;
+    Ok(zip_path)
 }
 
-#[cfg(not(windows))]
-fn compress_paths_to_zip_impl(
-    _sources: &[PathBuf],
-    _destination_dir: &Path,
-    _cancel: &AtomicBool,
-) -> anyhow::Result<PathBuf> {
-    anyhow::bail!("compress is only supported on Windows")
+fn write_zip_tree<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    path: &Path,
+    name_in_archive: &str,
+    options: &SimpleFileOptions,
+    cancel: &AtomicBool,
+) -> anyhow::Result<()> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(CompressCancelled.into());
+    }
+
+    if path.is_file() {
+        zip.start_file(name_in_archive, *options)?;
+        let mut file = File::open(path)?;
+        std::io::copy(&mut file, zip)?;
+        return Ok(());
+    }
+
+    if path.is_dir() {
+        let mut entries = std::fs::read_dir(path)?.collect::<Result<Vec<_>, _>>()?;
+        entries.sort_by_key(|e| e.file_name());
+        if entries.is_empty() {
+            zip.add_directory(format!("{name_in_archive}/"), *options)?;
+            return Ok(());
+        }
+        for entry in entries {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(CompressCancelled.into());
+            }
+            let child_path = entry.path();
+            let child_name = entry.file_name().to_string_lossy().into_owned();
+            let relative = format!("{name_in_archive}/{child_name}");
+            write_zip_tree(zip, &child_path, &relative, options, cancel)?;
+        }
+        return Ok(());
+    }
+
+    anyhow::bail!("unsupported path type: {}", path.display())
 }
 
-#[cfg(windows)]
 fn zip_file_name(sources: &[PathBuf]) -> String {
     if sources.len() == 1 {
         let stem = sources[0]
@@ -120,10 +137,4 @@ fn zip_file_name(sources: &[PathBuf]) -> String {
         return format!("{stem}.zip");
     }
     "Archive.zip".into()
-}
-
-#[cfg(windows)]
-fn powershell_literal(path: &Path) -> String {
-    let raw = path.to_string_lossy();
-    format!("'{}'", raw.replace('\'', "''"))
 }
