@@ -67,7 +67,7 @@ MainWindow                             AppShell + open_main_window
 | Omnibar 面包屑 | 80–85% | P1 基本完成，见 gap 文档 P2 |
 | 侧栏结构 | ~75% | Shell/Explorer 深度集成弱 |
 | 右键菜单 | 55–65% | Flyout + Shell 合并；Open with 子菜单已首轮 |
-| Home | ~60% | H0–H4 ✅，H5–H6 ⬜ |
+| Home | ~70% | H0–H6 ✅（拖放 widget 重排、Expander 动画明确不做） |
 | 设置 | 25–30% | 4 页 vs Files 8+ |
 | 标签 / Git / 压缩 / FTP | &lt;15% | 大多 ⬜ |
 
@@ -108,6 +108,8 @@ MainWindow                             AppShell + open_main_window
 | InnerNavigationToolbar | `file_browser` `content-toolbar` | 🟡 |
 | 地址栏 / Omnibar | 面包屑 + 路径编辑 + 右侧 `search_input` 过滤 | ✅ |
 | Omnibar Search/Command 模式切换 | — | ⛔ 不复刻 |
+| Home widget 拖放重排 | 标题右键上移/下移 + `home_widget_order` | ⛔ 不做 |
+| Home Expander 折叠动画 | 即时展开/收起 | ⛔ 不做 |
 | 侧栏折叠 | `h_resizable` | ✅ |
 | Sidebar 分区 | 8 区 + 设置页开关 | 🟡 |
 | 固定文件夹 | 侧栏 + Home + Pin + `settings.json` | ✅ |
@@ -147,7 +149,9 @@ MainWindow                             AppShell + open_main_window
 |--------|------|
 | H0–H4 子系统 / 卡片 / 设置开关 | ✅ |
 | Quick Access / Drives / Network / Tags / Recent | 🟡 |
-| H5 缩略图 / QA 监听 / Eject / pintohome | 🟡（H5 四项 ✅；Storage Sense ⬜） |
+| H5 缩略图 / QA 监听 / Eject / pintohome / Storage Sense | ✅ |
+| H6 InfoBar / Shell 菜单设置 / widget 顺序（右键上移下移） | ✅ |
+| H6 拖放 widget 重排、Expander 动画 | ⛔ 不做（见 [`home-files-parity.md`](home-files-parity.md)） |
 
 ---
 
@@ -232,12 +236,12 @@ MainWindow                             AppShell + open_main_window
 
 ### 第三梯队
 
-9. Home H5 ✅；Home H6（Recent 提示、Storage Sense、Shell 菜单设置）🟡。
-10. 侧栏 Shell 位图、Eject、Explorer 固定同步。
+9. Home H5–H6 ✅（拖放重排、Expander 动画见 [`home-files-parity.md`](home-files-parity.md) 明确不做）。
+10. 侧栏 Shell 位图深度、库/云分区 polish。
 11. 新 crate：`tags`、`archive`、`git`。
 
 ### 已完成里程碑（归档）
 
-- MainPage 骨架、Home H0–H4、双栏 + InfoPane、列/网格/详情、回收站列表、Files 式右键首轮、Omnibar 面包屑 P1、Pinned 持久化、窗口 bounds 防抖保存。
+- MainPage 骨架、Home H0–H6、双栏 + InfoPane、列/网格/详情、回收站列表、Files 式右键首轮、Omnibar 面包屑 P1、Pinned 持久化、窗口 bounds 防抖保存、设置标签 Enter 提交、Home widget 顺序。
 
 每步保持 `cargo check` / `cargo run -p cyberfiles` 通过。

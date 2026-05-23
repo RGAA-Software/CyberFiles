@@ -17,7 +17,7 @@ CyberFiles 实现：`crates/ui/src/home/`（`page.rs`、`widgets.rs`、`widget_s
 | **H3 交互** | 左键打开、Ctrl+新标签、右键 Pin/属性、标签预览容器 | ✅ |
 | **H4 可配置** | 设置页开关 widget、页面右键切换显示、展开状态写入 `settings.json` | ✅ |
 | **H5 深度** | Shell 缩略图、QA FileSystemWatcher、`pintohome` 同步、Eject、Storage Sense | ✅ |
-| **H6 打磨** | Recent 禁用检测 InfoBar、widget 重排（标题右键上移/下移）、拖放、动画 Expander | 🟡 |
+| **H6 打磨** | Recent InfoBar、Storage Sense、Shell 子菜单设置、widget 顺序（标题右键上移/下移） | ✅ |
 
 ---
 
@@ -42,6 +42,7 @@ CyberFiles 实现：`crates/ui/src/home/`（`page.rs`、`widgets.rs`、`widget_s
 
 - `show_home_quick_access` / `show_home_drives` / `show_home_network` / `show_home_file_tags` / `show_home_recent`
 - `home_*_expanded` — 各区块折叠状态
+- `home_widget_order` — 区块显示顺序（`quick_access`、`drives`、`network`、`file_tags`、`recent`）
 
 设置页：**Settings → Home**。
 
@@ -54,9 +55,24 @@ CyberFiles 实现：`crates/ui/src/home/`（`page.rs`、`widgets.rs`、`widget_s
 3. **Eject** / 断开网络盘（驱动器/网络卡片右键）✅
 4. Explorer **pintohome** 固定/取消固定同步（Pin 时调用 Shell `pintohome`）✅
 
-## H6（进行中）
+## H6（已完成）
 
 1. Recent 隐私关闭时显示 **InfoBar** ✅
 2. 驱动器右键 **Storage Sense**（打开系统设置）✅
 3. 设置「Shell 扩展子菜单」开关接入右键菜单 ✅
-4. widget 重排（`home_widget_order` + 标题右键上移/下移）✅；拖放、Expander 动画 ⬜
+4. widget 重排：`home_widget_order` + 区块标题右键 **上移 / 下移** ✅
+
+### H6 明确不做（产品决策）
+
+与 Files 对照后**刻意不做**，避免重复排期：
+
+| Files 能力 | CyberFiles 替代 | 原因 |
+|------------|-----------------|------|
+| Home widget **拖放重排** | 标题右键上移/下移（持久化 `home_widget_order`） | GPUI 拖放成本高；菜单重排已满足排序需求 |
+| Expander **折叠/展开动画** | 即时显示/隐藏内容 | 优先级低；GPUI 动画投入产出比不足 |
+
+---
+
+## 建议下一批（Home 打磨之外）
+
+Home H0–H6 主线已收口；后续 Home 仅做体验抛光（缩略图质量、卡片密度等），见 [`files-parity-roadmap.md`](files-parity-roadmap.md) 第二梯队。
