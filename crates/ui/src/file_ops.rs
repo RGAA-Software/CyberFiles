@@ -10,7 +10,7 @@ use cyberfiles_fs::{
     ClipboardOperation, CompressCancelled, ConflictResolution, FileClipboard, TransferCancelled,
     TransferOutcome,
 };
-use gpui::{AppContext, Context, Entity, ParentElement, SharedString, Styled, WeakEntity, Window};
+use gpui::{px, AppContext, Context, Entity, ParentElement, SharedString, Styled, WeakEntity, Window};
 use gpui_component::{
     button::Button, dialog::DialogFooter, label::Label, notification::Notification, v_flex,
     WindowExt as _,
@@ -86,6 +86,14 @@ pub fn spawn_file_transfer(
         let result =
             run_transfer_with_conflicts(weak, cx, kind, sources, destination, cancel, job_id).await;
 
+        // Update status on AsyncApp first — does not depend on window visibility.
+        let _ = cx.update(|cx| match &result {
+            Ok(outcome) if outcome.cancelled => TransferStatusGlobal::cancel(job_id, cx),
+            Ok(outcome) if outcome.transferred > 0 => TransferStatusGlobal::end(job_id, cx),
+            Ok(_) => TransferStatusGlobal::end(job_id, cx),
+            Err(_) => TransferStatusGlobal::fail(job_id, cx),
+        });
+
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
                 cx.notify();
@@ -93,19 +101,14 @@ pub fn spawn_file_transfer(
             };
             let _ = window.update(cx, |_, window, cx| match &result {
                 Ok(outcome) if outcome.cancelled => {
-                    TransferStatusGlobal::cancel(job_id, cx);
                     window
                         .push_notification(Notification::info(t!("files.transfer.cancelled")), cx);
                 }
                 Ok(outcome) if outcome.transferred > 0 => {
-                    TransferStatusGlobal::end(job_id, cx);
                     window.push_notification(Notification::success(t!("files.transfer.done")), cx);
                 }
-                Ok(_) => {
-                    TransferStatusGlobal::end(job_id, cx);
-                }
+                Ok(_) => {}
                 Err(error) => {
-                    TransferStatusGlobal::fail(job_id, cx);
                     window.push_notification(
                         Notification::error(format!("{}: {error}", t!("files.transfer.failed"))),
                         cx,
@@ -155,6 +158,14 @@ pub fn spawn_paste_from_clipboard(
         let (job_id, cancel) = begin_transfer_status(progress_status, total, cx);
         let result = run_transfer_with_conflicts(weak, cx, kind, paths, destination, cancel, job_id).await;
 
+        // Update status on AsyncApp first — does not depend on window visibility.
+        let _ = cx.update(|cx| match &result {
+            Ok(outcome) if outcome.cancelled => TransferStatusGlobal::cancel(job_id, cx),
+            Ok(outcome) if outcome.transferred > 0 => TransferStatusGlobal::end(job_id, cx),
+            Ok(_) => TransferStatusGlobal::end(job_id, cx),
+            Err(_) => TransferStatusGlobal::fail(job_id, cx),
+        });
+
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
                 cx.notify();
@@ -162,7 +173,6 @@ pub fn spawn_paste_from_clipboard(
             };
             let _ = window.update(cx, |_, window, cx| match &result {
                 Ok(outcome) if outcome.cancelled => {
-                    TransferStatusGlobal::cancel(job_id, cx);
                     AppFileClipboard::set(
                         FileClipboard::new(operation, paths_for_clipboard.clone()),
                         cx,
@@ -171,21 +181,18 @@ pub fn spawn_paste_from_clipboard(
                         .push_notification(Notification::info(t!("files.transfer.cancelled")), cx);
                 }
                 Ok(outcome) if outcome.transferred > 0 => {
-                    TransferStatusGlobal::end(job_id, cx);
                     if operation == ClipboardOperation::Copy {
                         AppFileClipboard::store(operation, paths_for_clipboard.clone(), cx);
                     }
                     window.push_notification(Notification::success(t!("files.paste.success")), cx);
                 }
                 Ok(_) => {
-                    TransferStatusGlobal::end(job_id, cx);
                     AppFileClipboard::set(
                         FileClipboard::new(operation, paths_for_clipboard.clone()),
                         cx,
                     );
                 }
                 Err(error) => {
-                    TransferStatusGlobal::fail(job_id, cx);
                     AppFileClipboard::set(
                         FileClipboard::new(operation, paths_for_clipboard.clone()),
                         cx,
@@ -410,7 +417,10 @@ async fn prompt_conflict(
         };
         let _ = window.update(cx, |_, window, cx| {
             window.open_dialog(cx, move |dialog, _window, _cx| {
-                dialog.title(title.clone()).footer(
+                dialog
+                    .title(title.clone())
+                    .w(px(600.))
+                    .footer(
                     v_flex()
                         .gap_3()
                         .px_4()
@@ -418,6 +428,7 @@ async fn prompt_conflict(
                         .child(Label::new(description.clone()))
                         .child(
                             DialogFooter::new()
+                                .justify_center()
                                 .child(conflict_button(
                                     "conflict-cancel",
                                     cancel_label.clone(),

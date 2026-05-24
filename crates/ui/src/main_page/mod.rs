@@ -22,6 +22,7 @@ use gpui_component::{
     h_flex,
     input::{Input, InputEvent, InputState},
     label::Label,
+
     resizable::{h_resizable, resizable_panel},
     v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Sizable as _, Size,
     ThemeMode, WindowExt as _,
@@ -29,7 +30,7 @@ use gpui_component::{
 use rust_i18n::t;
 
 use crate::app_state::{
-    breadcrumb_navigation_target, AppFileClipboard, AppNavigation, TransferJobStatus,
+    breadcrumb_navigation_target, AppFileClipboard, AppNavigation,
     TransferStatusGlobal,
 };
 use crate::file_ops::{spawn_file_transfer, FileTransferKind};
@@ -83,6 +84,7 @@ pub struct MainPage {
     sidebar_cache_key: u64,
     sidebar_cache_generation: u64,
     sidebar_cache_loading: bool,
+    show_status_center: bool,
 }
 
 impl MainPage {
@@ -136,6 +138,7 @@ impl MainPage {
             sidebar_cache_key: 0,
             sidebar_cache_generation: 0,
             sidebar_cache_loading: false,
+            show_status_center: false,
         }
     }
 
@@ -973,11 +976,12 @@ impl MainPage {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let _ = window;
-        v_flex()
+        let mut col = v_flex()
             .id("content-column")
             .size_full()
             .min_h_0()
             .min_w_0()
+            .relative()
             .child(
                 div()
                     .id("main-content")
@@ -988,7 +992,28 @@ impl MainPage {
                     .child(active_shell),
             )
             .child(self.render_shelf_pane(cx))
-            .child(div().flex_shrink_0().child(self.render_status_bar(cx)))
+            .child(div().flex_shrink_0().child(self.render_status_bar(cx)));
+
+        if self.show_status_center {
+            let page = cx.entity();
+            let on_close = move |_window: &mut Window, cx: &mut App| {
+                let _ = page.update(cx, |page, cx| {
+                    page.show_status_center = false;
+                    cx.notify();
+                });
+            };
+            col = col.child(
+                div()
+                    .id("status-center-overlay")
+                    .absolute()
+                    .bottom(px(36.))
+                    .right(px(8.))
+                    .on_any_mouse_down(|_, _, cx| cx.stop_propagation())
+                    .child(crate::status_center::render_status_center_panel(cx, on_close)),
+            );
+        }
+
+        col
     }
 
     /// Files `ShelfPane`: shows in-app clipboard staging above the status bar.
@@ -1027,7 +1052,7 @@ impl MainPage {
         h_flex()
             .id("shelf-pane")
             .flex_shrink_0()
-            .h(px(32.))
+            .h(px(36.))
             .w_full()
             .px_3()
             .gap_2()
@@ -1482,12 +1507,12 @@ impl MainPage {
 
         let jobs = TransferStatusGlobal::all_jobs(cx);
         let has_jobs = !jobs.is_empty();
-        let has_finished = TransferStatusGlobal::has_finished(cx);
+        let active_count = jobs.iter().filter(|j| j.is_active()).count();
 
         let mut bar = h_flex()
             .id("status-bar")
             .flex_shrink_0()
-            .h(if has_jobs { px(36.) } else { px(32.) })
+            .h(px(32.))
             .px_3()
             .items_center()
             .justify_between()
@@ -1495,114 +1520,29 @@ impl MainPage {
             .border_t_1()
             .border_color(cx.theme().border);
 
-        if !has_jobs {
-            bar = bar.child(
-                Label::new(status_text)
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground),
-            );
-        }
+        bar = bar.child(
+            Label::new(status_text)
+                .text_xs()
+                .text_color(cx.theme().muted_foreground),
+        );
 
         if has_jobs {
+
             bar = bar.child(
-                h_flex()
-                    .id("status-center")
-                    .flex_1()
-                    .min_w_0()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_1()
-                            .children(jobs.iter().map(|job| {
-                                let is_active = job.is_active();
-                                let progress_label = if is_active {
-                                    t!(
-                                        "files.transfer.progress",
-                                        completed = job.completed(),
-                                        total = job.total
-                                    )
-                                    .to_string()
-                                } else {
-                                    match job.status() {
-                                        TransferJobStatus::Completed => {
-                                            t!("files.status.completed").to_string()
-                                        }
-                                        TransferJobStatus::Failed => {
-                                            t!("files.status.failed").to_string()
-                                        }
-                                        TransferJobStatus::Cancelled => {
-                                            t!("files.status.cancelled").to_string()
-                                        }
-                                        _ => t!(
-                                            "files.transfer.progress",
-                                            completed = job.completed(),
-                                            total = job.total
-                                        )
-                                        .to_string(),
-                                    }
-                                };
-                                let job_id = job.id;
-                                h_flex()
-                                    .w_full()
-                                    .min_w_0()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        div()
-                                            .flex_1()
-                                            .min_w_0()
-                                            .overflow_hidden()
-                                            .child(
-                                                Label::new(job.message.clone())
-                                                    .text_xs()
-                                                    .text_color(if is_active {
-                                                        cx.theme().accent_foreground
-                                                    } else {
-                                                        cx.theme().muted_foreground
-                                                    })
-                                                    .truncate(),
-                                            ),
-                                    )
-                                    .child(
-                                        Label::new(progress_label)
-                                            .flex_shrink_0()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground),
-                                    )
-                                    .child(if is_active {
-                                        Button::new(format!("cancel-{}", job_id.0))
-                                            .label(t!("files.transfer.cancel"))
-                                            .flex_shrink_0()
-                                            .with_size(Size::Small)
-                                            .on_click(move |_, _, cx| {
-                                                TransferStatusGlobal::request_cancel(job_id, cx);
-                                            })
-                                            .into_any_element()
-                                    } else {
-                                        Button::new(format!("dismiss-{}", job_id.0))
-                                            .label(t!("files.status.clear"))
-                                            .flex_shrink_0()
-                                            .with_size(Size::Small)
-                                            .on_click(move |_, _, cx| {
-                                                TransferStatusGlobal::dismiss(job_id, cx);
-                                            })
-                                            .into_any_element()
-                                    })
-                            }))
-                            .when(has_finished, |col| {
-                                col.child(
-                                    Button::new("status-dismiss-all")
-                                        .label(t!("files.status.clear_all"))
-                                        .with_size(Size::Small)
-                                        .on_click(|_, _, cx| {
-                                            TransferStatusGlobal::dismiss_completed(cx);
-                                        }),
-                                )
-                            }),
-                    ),
+                Button::new("status-center-toggle")
+                    .label(if active_count > 0 {
+                        format!("{} {}", active_count, t!("files.status_center.badge"))
+                    } else {
+                        t!("files.status_center.title").to_string()
+                    })
+                    .with_size(Size::Small)
+                    .when(active_count > 0, |b| {
+                        b.icon(crate::icons::compact_icon(gpui_component::IconName::ArrowUp))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.show_status_center = !this.show_status_center;
+                        cx.notify();
+                    })),
             );
         }
 
@@ -1671,7 +1611,12 @@ impl Render for MainPage {
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 if event.keystroke.key.as_str() == "escape" {
-                    this.dismiss_omnibar_path_edit(cx);
+                    if this.show_status_center {
+                        this.show_status_center = false;
+                        cx.notify();
+                    } else {
+                        this.dismiss_omnibar_path_edit(cx);
+                    }
                 }
             }))
             .child(self.render_title_bar(window, cx))

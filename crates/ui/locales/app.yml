@@ -559,6 +559,22 @@ files.status.cancelled:
   en: Cancelled
   zh-CN: 已取消
   zh-HK: 已取消
+files.status_center.title:
+  en: Status Center
+  zh-CN: 状态中心
+  zh-HK: 狀態中心
+files.status_center.clear_completed:
+  en: Clear completed
+  zh-CN: 清除已完成
+  zh-HK: 清除已完成
+files.status_center.empty:
+  en: No file operations
+  zh-CN: 没有文件操作
+  zh-HK: 沒有檔案操作
+files.status_center.badge:
+  en: operations
+  zh-CN: 个操作
+  zh-HK: 個操作
 files.transfer.progress:
   en: "%{completed} / %{total}"
   zh-CN: "%{completed} / %{total}"

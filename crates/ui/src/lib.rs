@@ -13,6 +13,7 @@ mod omnibar;
 mod popup_menu;
 mod settings_view;
 mod shell;
+mod status_center;
 mod shell_icon;
 mod sidebar;
 mod tab;
