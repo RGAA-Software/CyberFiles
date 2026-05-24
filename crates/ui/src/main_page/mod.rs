@@ -22,7 +22,6 @@ use gpui_component::{
     h_flex,
     input::{Input, InputEvent, InputState},
     label::Label,
-    progress::Progress,
     resizable::{h_resizable, resizable_panel},
     v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Sizable as _, Size,
     ThemeMode, WindowExt as _,
@@ -30,7 +29,8 @@ use gpui_component::{
 use rust_i18n::t;
 
 use crate::app_state::{
-    breadcrumb_navigation_target, AppFileClipboard, AppNavigation, TransferStatusGlobal,
+    breadcrumb_navigation_target, AppFileClipboard, AppNavigation, TransferJobStatus,
+    TransferStatusGlobal,
 };
 use crate::file_ops::{spawn_file_transfer, FileTransferKind};
 use crate::icons::{compact_icon, pin_icon, toolbar_icon};
@@ -1480,12 +1480,14 @@ impl MainPage {
             t!("files.status.selected")
         );
 
-        let transfer = TransferStatusGlobal::active(cx);
+        let jobs = TransferStatusGlobal::all_jobs(cx);
+        let has_jobs = !jobs.is_empty();
+        let has_finished = TransferStatusGlobal::has_finished(cx);
 
         let mut bar = h_flex()
             .id("status-bar")
             .flex_shrink_0()
-            .h(if transfer.is_some() { px(36.) } else { px(32.) })
+            .h(if has_jobs { px(36.) } else { px(32.) })
             .px_3()
             .items_center()
             .justify_between()
@@ -1493,7 +1495,7 @@ impl MainPage {
             .border_t_1()
             .border_color(cx.theme().border);
 
-        if transfer.is_none() {
+        if !has_jobs {
             bar = bar.child(
                 Label::new(status_text)
                     .text_xs()
@@ -1501,12 +1503,7 @@ impl MainPage {
             );
         }
 
-        if let Some(job) = transfer {
-            let progress_label = t!(
-                "files.transfer.progress",
-                completed = job.completed(),
-                total = job.total
-            );
+        if has_jobs {
             bar = bar.child(
                 h_flex()
                     .id("status-center")
@@ -1519,41 +1516,91 @@ impl MainPage {
                             .flex_1()
                             .min_w_0()
                             .gap_1()
-                            .child(
-                                Progress::new("status-transfer-progress")
-                                    .w_full()
-                                    .h(px(4.))
-                                    .value(job.fraction() * 100.),
-                            )
-                            .child(
+                            .children(jobs.iter().map(|job| {
+                                let is_active = job.is_active();
+                                let progress_label = if is_active {
+                                    t!(
+                                        "files.transfer.progress",
+                                        completed = job.completed(),
+                                        total = job.total
+                                    )
+                                    .to_string()
+                                } else {
+                                    match job.status() {
+                                        TransferJobStatus::Completed => {
+                                            t!("files.status.completed").to_string()
+                                        }
+                                        TransferJobStatus::Failed => {
+                                            t!("files.status.failed").to_string()
+                                        }
+                                        TransferJobStatus::Cancelled => {
+                                            t!("files.status.cancelled").to_string()
+                                        }
+                                        _ => t!(
+                                            "files.transfer.progress",
+                                            completed = job.completed(),
+                                            total = job.total
+                                        )
+                                        .to_string(),
+                                    }
+                                };
+                                let job_id = job.id;
                                 h_flex()
                                     .w_full()
                                     .min_w_0()
                                     .gap_2()
                                     .items_center()
                                     .child(
-                                        div().flex_1().min_w_0().overflow_hidden().child(
-                                            Label::new(job.message.clone())
-                                                .text_xs()
-                                                .text_color(cx.theme().accent_foreground)
-                                                .truncate(),
-                                        ),
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .child(
+                                                Label::new(job.message.clone())
+                                                    .text_xs()
+                                                    .text_color(if is_active {
+                                                        cx.theme().accent_foreground
+                                                    } else {
+                                                        cx.theme().muted_foreground
+                                                    })
+                                                    .truncate(),
+                                            ),
                                     )
                                     .child(
                                         Label::new(progress_label)
                                             .flex_shrink_0()
                                             .text_xs()
-                                            .text_color(cx.theme().accent_foreground),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        Button::new("status-transfer-cancel")
-                            .label(t!("files.transfer.cancel"))
-                            .flex_shrink_0()
-                            .with_size(Size::Small)
-                            .on_click(|_, _, cx| {
-                                TransferStatusGlobal::request_cancel(cx);
+                                            .text_color(cx.theme().muted_foreground),
+                                    )
+                                    .child(if is_active {
+                                        Button::new(format!("cancel-{}", job_id.0))
+                                            .label(t!("files.transfer.cancel"))
+                                            .flex_shrink_0()
+                                            .with_size(Size::Small)
+                                            .on_click(move |_, _, cx| {
+                                                TransferStatusGlobal::request_cancel(job_id, cx);
+                                            })
+                                            .into_any_element()
+                                    } else {
+                                        Button::new(format!("dismiss-{}", job_id.0))
+                                            .label(t!("files.status.clear"))
+                                            .flex_shrink_0()
+                                            .with_size(Size::Small)
+                                            .on_click(move |_, _, cx| {
+                                                TransferStatusGlobal::dismiss(job_id, cx);
+                                            })
+                                            .into_any_element()
+                                    })
+                            }))
+                            .when(has_finished, |col| {
+                                col.child(
+                                    Button::new("status-dismiss-all")
+                                        .label(t!("files.status.clear_all"))
+                                        .with_size(Size::Small)
+                                        .on_click(|_, _, cx| {
+                                            TransferStatusGlobal::dismiss_completed(cx);
+                                        }),
+                                )
                             }),
                     ),
             );

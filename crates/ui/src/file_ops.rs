@@ -17,7 +17,7 @@ use gpui_component::{
 };
 use rust_i18n::t;
 
-use crate::app_state::{AppFileClipboard, TransferStatusGlobal};
+use crate::app_state::{AppFileClipboard, TransferJobId, TransferStatusGlobal};
 use crate::file_browser::FileBrowser;
 
 #[derive(Clone, Copy)]
@@ -37,16 +37,24 @@ fn begin_transfer_status(
     message: SharedString,
     total: u32,
     cx: &mut gpui::AsyncApp,
-) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+) -> (TransferJobId, std::sync::Arc<std::sync::atomic::AtomicBool>) {
     cx.update(|cx| TransferStatusGlobal::begin(message, total, cx))
 }
 
-fn set_transfer_progress(completed: u32, cx: &mut gpui::AsyncApp) {
-    let _ = cx.update(|cx| TransferStatusGlobal::set_progress(completed, cx));
+fn set_transfer_progress(id: TransferJobId, completed: u32, cx: &mut gpui::AsyncApp) {
+    let _ = cx.update(|cx| TransferStatusGlobal::set_progress(id, completed, cx));
 }
 
-fn end_transfer_status(cx: &mut gpui::AsyncApp) {
-    let _ = cx.update(|cx| TransferStatusGlobal::end(cx));
+fn end_transfer_status(id: TransferJobId, cx: &mut gpui::AsyncApp) {
+    let _ = cx.update(|cx| TransferStatusGlobal::end(id, cx));
+}
+
+fn fail_transfer_status(id: TransferJobId, cx: &mut gpui::AsyncApp) {
+    let _ = cx.update(|cx| TransferStatusGlobal::fail(id, cx));
+}
+
+fn cancel_transfer_status(id: TransferJobId, cx: &mut gpui::AsyncApp) {
+    let _ = cx.update(|cx| TransferStatusGlobal::cancel(id, cx));
 }
 
 /// Run copy/move off the UI thread; show in-progress and result notifications.
@@ -74,10 +82,9 @@ pub fn spawn_file_transfer(
     let total = count as u32;
     let weak = browser.downgrade();
     cx.spawn(async move |this, cx| {
-        let cancel = begin_transfer_status(progress_status, total, cx);
+        let (job_id, cancel) = begin_transfer_status(progress_status, total, cx);
         let result =
-            run_transfer_with_conflicts(weak, cx, kind, sources, destination, cancel).await;
-        end_transfer_status(cx);
+            run_transfer_with_conflicts(weak, cx, kind, sources, destination, cancel, job_id).await;
 
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
@@ -86,14 +93,19 @@ pub fn spawn_file_transfer(
             };
             let _ = window.update(cx, |_, window, cx| match &result {
                 Ok(outcome) if outcome.cancelled => {
+                    TransferStatusGlobal::cancel(job_id, cx);
                     window
                         .push_notification(Notification::info(t!("files.transfer.cancelled")), cx);
                 }
                 Ok(outcome) if outcome.transferred > 0 => {
+                    TransferStatusGlobal::end(job_id, cx);
                     window.push_notification(Notification::success(t!("files.transfer.done")), cx);
                 }
-                Ok(_) => {}
+                Ok(_) => {
+                    TransferStatusGlobal::end(job_id, cx);
+                }
                 Err(error) => {
+                    TransferStatusGlobal::fail(job_id, cx);
                     window.push_notification(
                         Notification::error(format!("{}: {error}", t!("files.transfer.failed"))),
                         cx,
@@ -140,9 +152,8 @@ pub fn spawn_paste_from_clipboard(
     let total = paths_for_clipboard.len() as u32;
     let weak = browser.downgrade();
     cx.spawn(async move |this, cx| {
-        let cancel = begin_transfer_status(progress_status, total, cx);
-        let result = run_transfer_with_conflicts(weak, cx, kind, paths, destination, cancel).await;
-        end_transfer_status(cx);
+        let (job_id, cancel) = begin_transfer_status(progress_status, total, cx);
+        let result = run_transfer_with_conflicts(weak, cx, kind, paths, destination, cancel, job_id).await;
 
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
@@ -151,6 +162,7 @@ pub fn spawn_paste_from_clipboard(
             };
             let _ = window.update(cx, |_, window, cx| match &result {
                 Ok(outcome) if outcome.cancelled => {
+                    TransferStatusGlobal::cancel(job_id, cx);
                     AppFileClipboard::set(
                         FileClipboard::new(operation, paths_for_clipboard.clone()),
                         cx,
@@ -159,18 +171,21 @@ pub fn spawn_paste_from_clipboard(
                         .push_notification(Notification::info(t!("files.transfer.cancelled")), cx);
                 }
                 Ok(outcome) if outcome.transferred > 0 => {
+                    TransferStatusGlobal::end(job_id, cx);
                     if operation == ClipboardOperation::Copy {
                         AppFileClipboard::store(operation, paths_for_clipboard.clone(), cx);
                     }
                     window.push_notification(Notification::success(t!("files.paste.success")), cx);
                 }
                 Ok(_) => {
+                    TransferStatusGlobal::end(job_id, cx);
                     AppFileClipboard::set(
                         FileClipboard::new(operation, paths_for_clipboard.clone()),
                         cx,
                     );
                 }
                 Err(error) => {
+                    TransferStatusGlobal::fail(job_id, cx);
                     AppFileClipboard::set(
                         FileClipboard::new(operation, paths_for_clipboard.clone()),
                         cx,
@@ -211,9 +226,9 @@ pub fn spawn_compress(
     let dest_for_reload = destination.clone();
     let total = count as u32;
     cx.spawn(async move |this, cx| {
-        let cancel = begin_transfer_status(message, total, cx);
+        let (job_id, cancel) = begin_transfer_status(message, total, cx);
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-            end_transfer_status(cx);
+            cancel_transfer_status(job_id, cx);
             return;
         }
         let sources_for_task = sources.clone();
@@ -233,7 +248,7 @@ pub fn spawn_compress(
 
         while !join.is_finished() {
             while let Ok(completed) = progress_rx.try_recv() {
-                set_transfer_progress(completed, cx);
+                set_transfer_progress(job_id, completed, cx);
             }
             let _ = cx
                 .background_spawn(async move {
@@ -242,7 +257,7 @@ pub fn spawn_compress(
                 .await;
         }
         while let Ok(completed) = progress_rx.try_recv() {
-            set_transfer_progress(completed, cx);
+            set_transfer_progress(job_id, completed, cx);
         }
 
         let result = join
@@ -251,9 +266,13 @@ pub fn spawn_compress(
             .and_then(|inner| inner);
         let done_ok = matches!(&result, Ok(_));
         if done_ok {
-            set_transfer_progress(total, cx);
+            set_transfer_progress(job_id, total, cx);
+            end_transfer_status(job_id, cx);
+        } else if result.as_ref().is_err_and(|e| e.is::<CompressCancelled>()) {
+            cancel_transfer_status(job_id, cx);
+        } else {
+            fail_transfer_status(job_id, cx);
         }
-        end_transfer_status(cx);
 
         let _ = this.update(cx, |browser, cx| {
             let Some(window) = cx.active_window() else {
@@ -291,6 +310,7 @@ async fn run_transfer_with_conflicts(
     sources: Vec<PathBuf>,
     destination: PathBuf,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    job_id: TransferJobId,
 ) -> anyhow::Result<TransferOutcome> {
     let operation = operation_for_kind(kind);
     let mut skip_all = false;
@@ -346,7 +366,7 @@ async fn run_transfer_with_conflicts(
         {
             Ok(()) => {
                 outcome.transferred += 1;
-                set_transfer_progress((index + 1) as u32, cx);
+                set_transfer_progress(job_id, (index + 1) as u32, cx);
             }
             Err(error) if error.is::<TransferCancelled>() => {
                 outcome.cancelled = true;

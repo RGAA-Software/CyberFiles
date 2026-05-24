@@ -1,7 +1,8 @@
 use std::borrow::BorrowMut;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 use cyberfiles_fs::{ClipboardOperation, FileClipboard};
 use gpui::{App, AppContext, Entity, Global, SharedString, Window};
@@ -9,22 +10,41 @@ use gpui::{App, AppContext, Entity, Global, SharedString, Window};
 use crate::main_page::MainPage;
 use crate::shell::navigation::NavigationTarget;
 
-/// Active background file operation shown in the status bar (Files StatusCenter subset).
+/// Unique identifier for a background transfer job.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TransferJobId(pub u64);
+
+/// Lifecycle of a transfer job shown in StatusCenter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransferJobStatus {
+    Running,
+    Completed,
+    Cancelled,
+    Failed,
+}
+
+/// A single background file operation (copy, move, compress, paste).
 #[derive(Clone)]
-pub struct ActiveTransfer {
+pub struct TransferJob {
+    pub id: TransferJobId,
     pub message: SharedString,
+    status: Arc<RwLock<TransferJobStatus>>,
     completed: Arc<AtomicU32>,
     pub total: u32,
     cancel: Arc<AtomicBool>,
+    pub created_at: Instant,
 }
 
-impl ActiveTransfer {
-    pub fn new(message: SharedString, total: u32) -> Self {
+impl TransferJob {
+    pub fn new(id: TransferJobId, message: SharedString, total: u32) -> Self {
         Self {
+            id,
             message,
+            status: Arc::new(RwLock::new(TransferJobStatus::Running)),
             completed: Arc::new(AtomicU32::new(0)),
             total: total.max(1),
             cancel: Arc::new(AtomicBool::new(false)),
+            created_at: Instant::now(),
         }
     }
 
@@ -47,68 +67,144 @@ impl ActiveTransfer {
     pub fn fraction(&self) -> f32 {
         (self.completed() as f32 / self.total as f32).clamp(0., 1.)
     }
+
+    pub fn status(&self) -> TransferJobStatus {
+        self.status.read().ok().map(|g| *g).unwrap_or(TransferJobStatus::Running)
+    }
+
+    fn set_status(&self, status: TransferJobStatus) {
+        if let Ok(mut guard) = self.status.write() {
+            *guard = status;
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.status() == TransferJobStatus::Running
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        self.created_at.elapsed()
+    }
 }
 
-/// Status bar transfer progress and cancel (Files StatusCenter subset).
+/// StatusCenter queue: multiple concurrent background file operations.
 #[derive(Clone, Default)]
-pub struct TransferStatusGlobal(pub Arc<RwLock<Option<ActiveTransfer>>>);
+pub struct TransferStatusGlobal {
+    jobs: Arc<RwLock<Vec<TransferJob>>>,
+    next_id: Arc<AtomicU64>,
+}
 
 impl Global for TransferStatusGlobal {}
 
 impl TransferStatusGlobal {
     pub fn init(cx: &mut App) {
-        cx.set_global(Self(Arc::new(RwLock::new(None))));
+        cx.set_global(Self::default());
     }
 
-    pub fn begin(message: SharedString, total: u32, cx: &mut App) -> Arc<AtomicBool> {
-        let job = ActiveTransfer::new(message, total);
+    /// Start a new job and return its ID + cancel flag.
+    pub fn begin(message: SharedString, total: u32, cx: &mut App) -> (TransferJobId, Arc<AtomicBool>) {
+        let Some(global) = cx.try_global::<Self>() else {
+            let cancel = Arc::new(AtomicBool::new(false));
+            return (TransferJobId(0), cancel);
+        };
+        let id = TransferJobId(global.next_id.fetch_add(1, Ordering::Relaxed));
+        let job = TransferJob::new(id, message, total);
         let cancel = job.cancel_flag();
-        if let Some(global) = cx.try_global::<Self>() {
-            if let Ok(mut guard) = global.0.write() {
-                *guard = Some(job);
-            }
+        if let Ok(mut guard) = global.jobs.write() {
+            guard.push(job);
         }
         Self::notify_main_page(cx);
-        cancel
+        (id, cancel)
     }
 
-    pub fn set_progress(completed: u32, cx: &mut App) {
-        let Some(global) = cx.try_global::<Self>() else {
-            return;
-        };
-        if let Ok(guard) = global.0.read() {
-            if let Some(job) = guard.as_ref() {
+    pub fn set_progress(id: TransferJobId, completed: u32, cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else { return };
+        if let Ok(guard) = global.jobs.read() {
+            if let Some(job) = guard.iter().find(|j| j.id == id) {
                 job.set_completed(completed);
             }
         }
         Self::notify_main_page(cx);
     }
 
-    pub fn end(cx: &mut App) {
-        let Some(global) = cx.try_global::<Self>() else {
-            return;
-        };
-        if let Ok(mut guard) = global.0.write() {
-            *guard = None;
+    pub fn end(id: TransferJobId, cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else { return };
+        if let Ok(guard) = global.jobs.read() {
+            if let Some(job) = guard.iter().find(|j| j.id == id) {
+                job.set_status(TransferJobStatus::Completed);
+                job.set_completed(job.total);
+            }
         }
         Self::notify_main_page(cx);
     }
 
-    pub fn request_cancel(cx: &mut App) {
-        let Some(global) = cx.try_global::<Self>() else {
-            return;
-        };
-        if let Ok(guard) = global.0.read() {
-            if let Some(job) = guard.as_ref() {
+    pub fn fail(id: TransferJobId, cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else { return };
+        if let Ok(guard) = global.jobs.read() {
+            if let Some(job) = guard.iter().find(|j| j.id == id) {
+                job.set_status(TransferJobStatus::Failed);
+            }
+        }
+        Self::notify_main_page(cx);
+    }
+
+    pub fn cancel(id: TransferJobId, cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else { return };
+        if let Ok(guard) = global.jobs.read() {
+            if let Some(job) = guard.iter().find(|j| j.id == id) {
+                job.request_cancel();
+                job.set_status(TransferJobStatus::Cancelled);
+            }
+        }
+        Self::notify_main_page(cx);
+    }
+
+    pub fn request_cancel(id: TransferJobId, cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else { return };
+        if let Ok(guard) = global.jobs.read() {
+            if let Some(job) = guard.iter().find(|j| j.id == id) {
                 job.request_cancel();
             }
         }
         Self::notify_main_page(cx);
     }
 
-    pub fn active(cx: &App) -> Option<ActiveTransfer> {
+    /// Remove a single finished job from the list.
+    pub fn dismiss(id: TransferJobId, cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else { return };
+        if let Ok(mut guard) = global.jobs.write() {
+            guard.retain(|j| j.id != id);
+        }
+        Self::notify_main_page(cx);
+    }
+
+    /// Remove all finished jobs (Completed / Cancelled / Failed).
+    pub fn dismiss_completed(cx: &mut App) {
+        let Some(global) = cx.try_global::<Self>() else { return };
+        if let Ok(mut guard) = global.jobs.write() {
+            guard.retain(|j| j.is_active());
+        }
+        Self::notify_main_page(cx);
+    }
+
+    pub fn active_jobs(cx: &App) -> Vec<TransferJob> {
         cx.try_global::<Self>()
-            .and_then(|g| g.0.read().ok().and_then(|j| j.clone()))
+            .and_then(|g| g.jobs.read().ok().map(|j| j.iter().filter(|j| j.is_active()).cloned().collect()))
+            .unwrap_or_default()
+    }
+
+    pub fn all_jobs(cx: &App) -> Vec<TransferJob> {
+        cx.try_global::<Self>()
+            .and_then(|g| g.jobs.read().ok().map(|j| j.clone()))
+            .unwrap_or_default()
+    }
+
+    pub fn has_active(cx: &App) -> bool {
+        Self::active_jobs(cx).iter().any(|j| j.is_active())
+    }
+
+    pub fn has_finished(cx: &App) -> bool {
+        Self::all_jobs(cx).iter().any(|j| !j.is_active())
     }
 
     fn notify_main_page(cx: &mut App) {

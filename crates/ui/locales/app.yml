@@ -539,6 +539,26 @@ files.transfer.cancel:
   en: Cancel
   zh-CN: 取消
   zh-HK: 取消
+files.status.clear:
+  en: Clear
+  zh-CN: 清除
+  zh-HK: 清除
+files.status.clear_all:
+  en: Clear all
+  zh-CN: 全部清除
+  zh-HK: 全部清除
+files.status.completed:
+  en: Completed
+  zh-CN: 已完成
+  zh-HK: 已完成
+files.status.failed:
+  en: Failed
+  zh-CN: 失败
+  zh-HK: 失敗
+files.status.cancelled:
+  en: Cancelled
+  zh-CN: 已取消
+  zh-HK: 已取消
 files.transfer.progress:
   en: "%{completed} / %{total}"
   zh-CN: "%{completed} / %{total}"
