@@ -11,6 +11,7 @@ use crate::app_state::AppNavigation;
 use crate::file_ops::{
     spawn_compress, spawn_file_transfer, spawn_paste_from_clipboard, FileTransferKind,
 };
+use crate::color_icon;
 use crate::icons::{
     compact_icon, folder_icon_element, new_file_icon_element, new_folder_icon_element, toolbar_icon,
 };
@@ -1021,7 +1022,7 @@ impl FileBrowser {
         }
     }
 
-    /// List row icon: GPUI fallback always visible; Shell PNG when type cache is warm.
+    /// List row icon: custom colored SVG → Shell PNG → GPUI fallback.
     fn row_list_icon(item: &FileItem, logical_size: Pixels, window: &Window) -> impl IntoElement {
         if item.kind == FileItemKind::Folder {
             return div()
@@ -1031,6 +1032,12 @@ impl FileBrowser {
                 .justify_center()
                 .child(folder_icon_element())
                 .into_any_element();
+        }
+        // Prefer app-bundled colored SVGs for known file types.
+        if let Some(ext) = item.extension.as_deref().filter(|e| !e.is_empty()) {
+            if let Some(path) = list_icon_cache::extension_svg_path(ext) {
+                return color_icon::color_icon_box(path, logical_size);
+            }
         }
         let px = platform::shell_icon_pixel_size(logical_size.as_f32(), window.scale_factor());
         let key = list_icon_cache::list_icon_key(item);

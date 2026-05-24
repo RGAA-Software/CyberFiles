@@ -1,9 +1,10 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use gpui::{
-    div, img, AnyElement, App, ImageCacheError, IntoElement, ObjectFit, ParentElement, Pixels,
-    RenderImage, Styled, StyledImage, Window,
+    div, img, AnyElement, App, AssetSource, ImageCacheError, IntoElement, ObjectFit, ParentElement,
+    Pixels, RenderImage, SharedString, Styled, StyledImage, SvgRenderer, Window,
 };
 
 use crate::Assets;
@@ -27,17 +28,30 @@ fn render_svg(
         return Ok(image);
     }
 
-    let bytes = Assets::get(path)
-        .ok_or_else(|| ImageCacheError::Asset(path.into()))?
-        .data
-        .into_owned();
-    let image = cx.svg_renderer().render_single_frame(&bytes, 1.0)?;
+    let bytes = match Assets.load(path) {
+        Ok(Some(data)) => data.into_owned(),
+        Ok(None) => {
+            eprintln!("[color_icon] Asset not found: {path}");
+            return Err(ImageCacheError::Asset(path.into()));
+        }
+        Err(e) => {
+            eprintln!("[color_icon] Asset load error for {path}: {e}");
+            return Err(ImageCacheError::Asset(path.into()));
+        }
+    };
 
-    if let Ok(mut cache) = render_cache().write() {
-        cache.insert((path.to_string(), px), image.clone());
+    match cx.svg_renderer().render_single_frame(&bytes, 1.0) {
+        Ok(image) => {
+            if let Ok(mut cache) = render_cache().write() {
+                cache.insert((path.to_string(), px), image.clone());
+            }
+            Ok(image)
+        }
+        Err(e) => {
+            eprintln!("[color_icon] SVG render error for {path}: {e}");
+            Err(e.into())
+        }
     }
-
-    Ok(image)
 }
 
 pub fn color_icon(path: &'static str, logical_px: Pixels) -> AnyElement {
@@ -45,6 +59,13 @@ pub fn color_icon(path: &'static str, logical_px: Pixels) -> AnyElement {
     img(move |_window: &mut Window, cx: &mut App| Some(render_svg(path, size, cx)))
         .size(size)
         .object_fit(ObjectFit::Contain)
+        .with_fallback(move || {
+            div()
+                .size(size)
+                .rounded_md()
+                .bg(gpui::rgb(0xff0000))
+                .into_any_element()
+        })
         .into_any_element()
 }
 
@@ -54,4 +75,46 @@ pub fn color_icon_box(path: &'static str, logical_px: Pixels) -> AnyElement {
         .flex_none()
         .child(color_icon(path, logical_px))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct DummyAssetSource;
+
+    impl AssetSource for DummyAssetSource {
+        fn load(&self, _path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
+            Ok(None)
+        }
+        fn list(&self, _path: &str) -> anyhow::Result<Vec<SharedString>> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn colored_svgs_render_non_blank_in_release() {
+        let renderer = SvgRenderer::new(Arc::new(DummyAssetSource));
+        for path in [
+            "icons/ic_folder.svg",
+            "icons/ic_home.svg",
+            "icons/ic_copy.svg",
+        ] {
+            let data = Assets::get(path).unwrap().data;
+            let image = renderer
+                .render_single_frame(&data, 1.0)
+                .unwrap_or_else(|e| panic!("render_single_frame failed for {path}: {e}"));
+            let pixels = image
+                .as_bytes(0)
+                .unwrap_or_else(|| panic!("no frame data for {path}"));
+            let mut has_opaque = false;
+            for chunk in pixels.chunks_exact(4) {
+                if chunk[3] > 0 {
+                    has_opaque = true;
+                    break;
+                }
+            }
+            assert!(has_opaque, "{path} rendered as fully transparent/blank");
+        }
+    }
 }

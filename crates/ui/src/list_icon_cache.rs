@@ -63,6 +63,45 @@ pub fn named_icon_path(name: &str) -> Option<&'static str> {
     named_icon_paths().get(name).copied()
 }
 
+/// App-bundled colored SVG path for a file extension (e.g. `"pdf"` → `"icons/ic_pdf.svg"`).
+pub fn extension_svg_path(ext: &str) -> Option<&'static str> {
+    fn extension_icon_paths() -> &'static HashMap<&'static str, &'static str> {
+        static MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+        MAP.get_or_init(|| {
+            HashMap::from([
+                ("cpp", "icons/ic_cpp.svg"),
+                ("cc", "icons/ic_cpp.svg"),
+                ("cxx", "icons/ic_cpp.svg"),
+                ("hpp", "icons/ic_cpp.svg"),
+                ("go", "icons/ic_go.svg"),
+                ("h", "icons/ic_h.svg"),
+                ("html", "icons/ic_html.svg"),
+                ("ico", "icons/ic_image.svg"),
+                ("png", "icons/ic_image.svg"),
+                ("jpg", "icons/ic_image.svg"),
+                ("jpeg", "icons/ic_image.svg"),
+                ("gif", "icons/ic_gif.svg"),
+                ("bmp", "icons/ic_image.svg"),
+                ("webp", "icons/ic_image.svg"),
+                ("java", "icons/ic_java.svg"),
+                ("js", "icons/ic_js.svg"),
+                ("json", "icons/ic_json.svg"),
+                ("kts", "icons/ic_kts.svg"),
+                ("pdf", "icons/ic_pdf.svg"),
+                ("rs", "icons/ic_rust.svg"),
+                ("svg", "icons/ic_svg.svg"),
+                ("toml", "icons/ic_toml.svg"),
+                ("ts", "icons/ic_ts.svg"),
+                ("tsx", "icons/ic_ts.svg"),
+                ("txt", "icons/ic_txt.svg"),
+                ("yml", "icons/ic_yml.svg"),
+                ("yaml", "icons/ic_yml.svg"),
+            ])
+        })
+    }
+    extension_icon_paths().get(ext.to_ascii_lowercase().as_str()).copied()
+}
+
 fn store_list_icon(key: ListIconKey, size_px: u32, png: Vec<u8>) {
     if png.is_empty() {
         return;
