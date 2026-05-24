@@ -25,7 +25,7 @@ use gpui_component::{
     progress::Progress,
     resizable::{h_resizable, resizable_panel},
     v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Sizable as _, Size,
-    ThemeMode, TitleBar, WindowExt as _,
+    ThemeMode, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -43,6 +43,7 @@ use crate::shell::ReopenClosedTabAt;
 use crate::shell::{PaneShell, ShellPanes};
 use crate::sidebar::{render_sidebar, sidebar_cache_key, SidebarSection};
 use crate::tab::{Tab, TabBar};
+use crate::title_bar::TitleBar;
 use crate::toolbar_button::toolbar_icon_button;
 
 /// Matches Files `NavigationToolbar` height.
@@ -65,6 +66,8 @@ pub struct MainPage {
     tabs: Vec<TabEntry>,
     active_tab: usize,
     next_tab_id: u64,
+    tab_bar_scroll_handle: ScrollHandle,
+    pending_tab_scroll_to_ix: Option<usize>,
     show_info_pane: bool,
     info_pane: Entity<InfoPane>,
     /// When true, show an editable path field instead of breadcrumb segments.
@@ -117,6 +120,8 @@ impl MainPage {
             tabs,
             active_tab,
             next_tab_id,
+            tab_bar_scroll_handle: ScrollHandle::new(),
+            pending_tab_scroll_to_ix: Some(active_tab),
             show_info_pane,
             info_pane: cx.new(|_| InfoPane::new()),
             omnibar_show_full_path: false,
@@ -492,6 +497,7 @@ impl MainPage {
         });
         self.tabs.push(TabEntry { id, shell });
         self.active_tab = self.tabs.len() - 1;
+        self.pending_tab_scroll_to_ix = Some(self.active_tab);
         self.persist_session(cx);
         app_menus::reload(cx);
         cx.notify();
@@ -919,6 +925,7 @@ impl MainPage {
         let shell = cx.new(|cx| ShellPanes::new(cx, target));
         self.tabs.push(TabEntry { id, shell });
         self.active_tab = self.tabs.len() - 1;
+        self.pending_tab_scroll_to_ix = Some(self.active_tab);
         self.persist_session(cx);
         cx.notify();
     }
@@ -939,6 +946,7 @@ impl MainPage {
         } else if index < self.active_tab {
             self.active_tab -= 1;
         }
+        self.pending_tab_scroll_to_ix = Some(self.active_tab);
         self.persist_session(cx);
         cx.notify();
     }
@@ -1129,6 +1137,7 @@ impl MainPage {
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> TabBar {
         let active = self.active_tab;
         TabBar::new("main-tab-bar")
+            .track_scroll(&self.tab_bar_scroll_handle)
             .with_size(Size::Medium)
             .hide_bottom_border()
             .selected_index(active)
@@ -1180,6 +1189,7 @@ impl MainPage {
             }))
             .on_click(cx.listener(|this, ix: &usize, _, cx| {
                 this.active_tab = *ix;
+                this.pending_tab_scroll_to_ix = Some(*ix);
                 this.persist_session(cx);
                 cx.notify();
             }))
@@ -1199,6 +1209,9 @@ impl MainPage {
             IconName::Sun
         };
         let app_menu_bar = app_menus::menu_bar(cx);
+        if let Some(ix) = self.pending_tab_scroll_to_ix.take() {
+            self.tab_bar_scroll_handle.scroll_to_item(ix);
+        }
         let tab_bar = self.render_tab_bar(cx);
 
         TitleBar::new().child(
@@ -1217,12 +1230,15 @@ impl MainPage {
                         .min_w_0()
                         .h_full()
                         .flex()
+                        .overflow_hidden()
                         .items_center()
                         .child(
                             div()
                                 .w_full()
+                                .min_w_0()
                                 .h(TITLE_TAB_BAR_HEIGHT)
-                                .child(tab_bar.h(TITLE_TAB_BAR_HEIGHT)),
+                                .overflow_hidden()
+                                .child(tab_bar.w_full().min_w_0().h(TITLE_TAB_BAR_HEIGHT)),
                         ),
                 )
                 .child(

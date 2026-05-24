@@ -3,10 +3,11 @@ use gpui::{
     px, size, App, AppContext, Bounds, Focusable, SharedString, Size, Window, WindowBounds,
     WindowKind, WindowOptions,
 };
-use gpui_component::{Root, TitleBar};
+use gpui_component::Root;
 
 use super::app_shell::AppShell;
 use crate::app_state::AppNavigation;
+use crate::title_bar::TitleBar;
 
 pub fn open_main_window<F, E>(crate_view_fn: F, cx: &mut App)
 where
