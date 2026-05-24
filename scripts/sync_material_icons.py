@@ -43,6 +43,14 @@ MATERIAL_ICON_MAP: dict[str, str] = {
     "hard-drive": "hard_drive",
     "globe": "public",
     "calendar": "calendar_today",
+    "content_cut": "content_cut",
+    "content_paste": "content_paste",
+    "folder_zip": "folder_zip",
+    "label": "label",
+    "label_off": "label_off",
+    "widgets": "widgets",
+    "tab": "tab",
+    "splitscreen": "splitscreen",
 }
 
 LUCIDE_PRESERVE: tuple[str, ...] = (

@@ -76,6 +76,16 @@ fn menu_click_item(
         .on_click(on_click)
 }
 
+fn menu_click_item_with_icon(
+    label: impl Into<SharedString>,
+    icon: impl Into<Icon>,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+) -> PopupMenuItem {
+    PopupMenuItem::new(label.into())
+        .icon(icon.into())
+        .on_click(on_click)
+}
+
 fn menu_notice_item(
     label: impl Into<SharedString>,
     icon: IconName,
@@ -837,21 +847,19 @@ fn build_directory_item_menu(
     if single {
         let path = paths[0].clone();
         let tab_path = path.clone();
-        menu = menu.item(menu_click_item(
+        menu = menu.item(menu_click_item_with_icon(
             t!("sidebar.menu.open_new_tab"),
-            IconName::File,
+            Icon::new(IconName::File).path("icons/tab.svg"),
             move |_, _, cx| AppNavigation::open_path_in_new_tab(tab_path.clone(), cx),
         ));
-        menu = menu_action(
-            menu,
+        menu = menu.menu_with_icon(
             t!("files.menu.open_in_new_window"),
-            IconName::ExternalLink,
+            Icon::new(IconName::ExternalLink).path("icons/external-link.svg"),
             Box::new(OpenInNewWindow),
         );
-        menu = menu_action(
-            menu,
+        menu = menu.menu_with_icon(
             t!("files.menu.open_in_new_pane"),
-            IconName::PanelLeftOpen,
+            Icon::new(IconName::PanelLeftOpen).path("icons/splitscreen.svg"),
             Box::new(OpenInNewPane),
         );
     }
@@ -1079,9 +1087,9 @@ fn build_file_tag_item_menu(
 
     if single_dir {
         let path = paths[0].clone();
-        menu = menu.item(menu_click_item(
+        menu = menu.item(menu_click_item_with_icon(
             t!("sidebar.menu.open_new_tab"),
-            IconName::Plus,
+            Icon::new(IconName::Plus).path("icons/tab.svg"),
             move |_, _, cx| AppNavigation::open_path_in_new_tab(path.clone(), cx),
         ));
     }

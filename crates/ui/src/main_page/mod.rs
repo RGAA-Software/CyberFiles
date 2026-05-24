@@ -1428,7 +1428,7 @@ impl MainPage {
                     .items_center()
                     .child(
                         toolbar_icon_button("nav-split-pane")
-                            .icon(toolbar_icon(IconName::LayoutDashboard))
+                            .icon(toolbar_icon(IconName::LayoutDashboard).path("icons/splitscreen.svg"))
                             .tooltip(t!("nav.split_pane"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_dual_pane(cx);
