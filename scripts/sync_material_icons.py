@@ -51,6 +51,10 @@ MATERIAL_ICON_MAP: dict[str, str] = {
     "widgets": "widgets",
     "tab": "tab",
     "splitscreen": "splitscreen",
+    "create_new_folder": "create_new_folder",
+    "note_add": "note_add",
+    "content_copy": "content_copy",
+    "drive_file_rename_outline": "drive_file_rename_outline",
 }
 
 LUCIDE_PRESERVE: tuple[str, ...] = (

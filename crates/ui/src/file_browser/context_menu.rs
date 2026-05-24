@@ -5,8 +5,8 @@ use std::sync::{Arc, RwLock};
 
 use cyberfiles_commands::{
     CompressItems, CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, NewFile,
-    NewFolder, OpenItem, PasteItems, RefreshDirectory, RenameItem, ShellProperties, ViewColumns,
-    ViewDetails, ViewGrid,
+    NewFolder, OpenItem, PasteItems, RefreshDirectory, RenameItem, ShellProperties, ViewCards,
+    ViewColumns, ViewDetails, ViewGrid,
 };
 use cyberfiles_core::{context_menu_item_prefs, load_config};
 use cyberfiles_fs::SortOption;
@@ -59,11 +59,11 @@ fn menu_action_enabled(
 fn menu_checked_action(
     menu: PopupMenu,
     label: impl Into<SharedString>,
-    icon: IconName,
+    icon: impl Into<Icon>,
     checked: bool,
     action: Box<dyn gpui::Action>,
 ) -> PopupMenu {
-    menu.menu_with_check_icon(label, menu_icon(icon), checked, action)
+    menu.menu_with_check_icon(label, icon, checked, action)
 }
 
 fn menu_click_item(
@@ -657,7 +657,7 @@ fn build_background_menu(
             menu = menu_checked_action(
                 menu,
                 t!("files.view.details"),
-                IconName::GalleryVerticalEnd,
+                Icon::new(IconName::GalleryVerticalEnd).path("icons/view_headline.svg"),
                 view_mode == ViewMode::Details,
                 Box::new(ViewDetails),
             );
@@ -667,6 +667,13 @@ fn build_background_menu(
                 IconName::LayoutDashboard,
                 view_mode == ViewMode::Grid,
                 Box::new(ViewGrid),
+            );
+            menu = menu_checked_action(
+                menu,
+                t!("files.view.cards"),
+                IconName::LayoutDashboard,
+                view_mode == ViewMode::Cards,
+                Box::new(ViewCards),
             );
             menu_checked_action(
                 menu,

@@ -27,11 +27,14 @@ actions!(
         FocusSearch,
         FocusOmnibar,
         ViewDetails,
+        ViewList,
         ViewGrid,
+        ViewCards,
         ViewColumns,
         ShellProperties,
         CompressItems,
         ReopenClosedTab,
+        ToggleShowFileExtensions,
     ]
 );
 
@@ -60,8 +63,10 @@ pub fn file_browser_key_bindings() -> Vec<KeyBinding> {
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-t", ReopenClosedTab, None),
         KeyBinding::new("ctrl-1", ViewDetails, Some(FILE_BROWSER)),
-        KeyBinding::new("ctrl-2", ViewGrid, Some(FILE_BROWSER)),
-        KeyBinding::new("ctrl-3", ViewColumns, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-2", ViewList, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-3", ViewGrid, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-shift-4", ViewCards, Some(FILE_BROWSER)),
+        KeyBinding::new("ctrl-4", ViewColumns, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-shift-c", CopyPath, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-c", CopyItems, Some(FILE_BROWSER)),
         KeyBinding::new("ctrl-x", CutItems, Some(FILE_BROWSER)),

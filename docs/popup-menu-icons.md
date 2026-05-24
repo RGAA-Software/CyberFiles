@@ -17,6 +17,10 @@ They are loaded via `Icon::new(IconName::X).path("icons/{filename}.svg")` so the
 | Open in New Tab | `tab` | `tab.svg` | `https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/tab/default/24px.svg` |
 | Open in New Window | `open_in_new` | `external-link.svg` | `https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/open_in_new/default/24px.svg` |
 | Open in New Pane / Split Pane | `splitscreen` | `splitscreen.svg` | `https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/splitscreen/default/24px.svg` |
+| New Folder | `create_new_folder` | `create_new_folder.svg` | `https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/create_new_folder/default/24px.svg` |
+| New File | `note_add` | `note_add.svg` | `https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/note_add/default/24px.svg` |
+| Details View | `view_headline` | `view_headline.svg` | `https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/view_headline/default/24px.svg` |
+| Cards View | `view_cozy` | `view_cozy.svg` | `https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/view_cozy/default/24px.svg` |
 
 ## gpui-component Built-in Icons Used in Menus
 

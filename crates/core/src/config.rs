@@ -18,7 +18,9 @@ static CONFIG_FLUSH_TX: OnceLock<mpsc::Sender<()>> = OnceLock::new();
 
 /// Persisted file browser view: `details`, `grid`, or `columns`.
 pub const VIEW_DETAILS: &str = "details";
+pub const VIEW_LIST: &str = "list";
 pub const VIEW_GRID: &str = "grid";
+pub const VIEW_CARDS: &str = "cards";
 pub const VIEW_COLUMNS: &str = "columns";
 
 const CONFIG_FILE: &str = "settings.json";
@@ -47,6 +49,8 @@ pub struct AppConfig {
     pub file_sort_direction: Option<String>,
     #[serde(default)]
     pub file_show_hidden: Option<bool>,
+    #[serde(default = "default_show_file_extensions")]
+    pub show_file_extensions: bool,
     /// Recently navigated paths from the omnibar (Files `PathHistoryList`).
     #[serde(default)]
     pub path_history: Vec<String>,
@@ -176,6 +180,10 @@ fn default_file_view_mode() -> String {
     VIEW_DETAILS.into()
 }
 
+fn default_show_file_extensions() -> bool {
+    true
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -194,6 +202,7 @@ impl Default for AppConfig {
             file_sort_option: None,
             file_sort_direction: None,
             file_show_hidden: None,
+            show_file_extensions: default_show_file_extensions(),
             path_history: Vec::new(),
             sidebar_display_mode: default_sidebar_display_mode(),
             sidebar_collapsed: false,
@@ -423,12 +432,14 @@ pub fn save_file_browser_prefs(
     sort_option: &str,
     sort_direction: &str,
     show_hidden: bool,
+    show_file_extensions: bool,
 ) -> anyhow::Result<()> {
     let mut config = load_config().unwrap_or_default();
     config.file_view_mode = view_mode.to_string();
     config.file_sort_option = Some(sort_option.to_string());
     config.file_sort_direction = Some(sort_direction.to_string());
     config.file_show_hidden = Some(show_hidden);
+    config.show_file_extensions = show_file_extensions;
     save_config(&config)
 }
 
@@ -438,16 +449,17 @@ pub fn file_view_mode_from_config() -> String {
         .unwrap_or_else(default_file_view_mode)
 }
 
-pub fn file_sort_prefs_from_config() -> (Option<String>, Option<String>, Option<bool>) {
+pub fn file_sort_prefs_from_config() -> (Option<String>, Option<String>, Option<bool>, bool) {
     load_config()
         .map(|c| {
             (
                 c.file_sort_option,
                 c.file_sort_direction,
                 c.file_show_hidden,
+                c.show_file_extensions,
             )
         })
-        .unwrap_or((None, None, None))
+        .unwrap_or((None, None, None, true))
 }
 
 pub fn pinned_folder_paths() -> Vec<PathBuf> {

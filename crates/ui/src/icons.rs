@@ -56,14 +56,6 @@ pub fn folder_icon() -> Icon {
     named_icon("folder", IconName::Folder)
 }
 
-pub fn new_folder_icon() -> Icon {
-    named_icon("new_folder", IconName::Folder)
-}
-
-pub fn new_file_icon() -> Icon {
-    named_icon("new_file", IconName::File)
-}
-
 pub fn home_icon() -> Icon {
     named_icon("home", IconName::LayoutDashboard)
 }
@@ -85,14 +77,6 @@ pub fn paste_icon() -> Icon {
 
 pub fn folder_icon_element() -> AnyElement {
     named_svg_icon_element("folder").unwrap_or_else(|| folder_icon().into_any_element())
-}
-
-pub fn new_folder_icon_element() -> AnyElement {
-    named_svg_icon_element("new_folder").unwrap_or_else(|| new_folder_icon().into_any_element())
-}
-
-pub fn new_file_icon_element() -> AnyElement {
-    named_svg_icon_element("new_file").unwrap_or_else(|| new_file_icon().into_any_element())
 }
 
 pub fn home_icon_element() -> AnyElement {

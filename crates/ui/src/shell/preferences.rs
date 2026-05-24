@@ -481,6 +481,7 @@ pub fn capture_config(cx: &App, window_width: f32, window_height: f32) -> AppCon
         file_sort_option: prior.file_sort_option,
         file_sort_direction: prior.file_sort_direction,
         file_show_hidden: prior.file_show_hidden,
+        show_file_extensions: prior.show_file_extensions,
         path_history: prior.path_history,
         sidebar_display_mode: prior.sidebar_display_mode,
         sidebar_collapsed: prior.sidebar_collapsed,

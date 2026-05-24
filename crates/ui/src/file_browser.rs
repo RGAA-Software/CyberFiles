@@ -13,7 +13,7 @@ use crate::file_ops::{
 };
 use crate::color_icon;
 use crate::icons::{
-    compact_icon, folder_icon_element, new_file_icon_element, new_folder_icon_element, toolbar_icon,
+    compact_icon, folder_icon_element, toolbar_icon,
 };
 use crate::list_icon_cache;
 use crate::popup_menu::PopupMenu;
@@ -24,11 +24,12 @@ use chrono::{DateTime, Local};
 use cyberfiles_commands::{
     CompressItems, CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch,
     NavigateNext, NavigatePrevious, NewFile, NewFolder, OpenItem, PasteItems, RefreshDirectory,
-    RenameItem, SelectAll, ShellProperties, ViewColumns, ViewDetails, ViewGrid, FILE_BROWSER,
+    RenameItem, SelectAll, ShellProperties, ViewCards, ViewColumns, ViewDetails, ViewGrid,
+    ViewList, FILE_BROWSER,
 };
 use cyberfiles_core::{
     file_sort_prefs_from_config, file_view_mode_from_config, load_config, save_file_browser_prefs,
-    VIEW_COLUMNS, VIEW_DETAILS, VIEW_GRID,
+    VIEW_CARDS, VIEW_COLUMNS, VIEW_DETAILS, VIEW_GRID, VIEW_LIST,
 };
 use cyberfiles_fs::{
     column_trail_for, create_directory, create_file, delete_paths, file_items_for_tag_paths,
@@ -67,6 +68,7 @@ actions!(
         SortByType,
         ToggleSortDirection,
         ToggleShowHidden,
+        ToggleShowFileExtensions,
         OpenInNewPane,
         OpenInNewWindow,
         OpenInTerminal,
@@ -76,15 +78,22 @@ actions!(
     ]
 );
 
+const FILE_ROW_SIZE_COMPACT: Size<Pixels> = size(px(1.), px(28.));
 const FILE_ROW_SIZE: Size<Pixels> = size(px(1.), px(36.));
-const GRID_CELL_SIZE: Size<Pixels> = size(px(112.), px(96.));
+const FILE_ROW_SIZE_LARGE: Size<Pixels> = size(px(1.), px(44.));
+const GRID_CELL_SIZE_SMALL: Size<Pixels> = size(px(96.), px(72.));
+const GRID_CELL_SIZE: Size<Pixels> = size(px(112.), px(80.));
+const GRID_CELL_SIZE_LARGE: Size<Pixels> = size(px(144.), px(104.));
+const CARD_CELL_SIZE: Size<Pixels> = size(px(160.), px(120.));
 const COLUMN_ROW_SIZE: Size<Pixels> = size(px(1.), px(32.));
 const COLUMN_WIDTH: Pixels = px(200.);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
     Details,
+    List,
     Grid,
+    Cards,
     Columns,
 }
 
@@ -92,6 +101,7 @@ impl ViewMode {
     fn from_config(value: &str) -> Self {
         match value {
             VIEW_GRID => Self::Grid,
+            VIEW_CARDS => Self::Cards,
             VIEW_COLUMNS => Self::Columns,
             _ => Self::Details,
         }
@@ -100,7 +110,9 @@ impl ViewMode {
     fn config_value(self) -> &'static str {
         match self {
             Self::Details => VIEW_DETAILS,
+            Self::List => VIEW_LIST,
             Self::Grid => VIEW_GRID,
+            Self::Cards => VIEW_CARDS,
             Self::Columns => VIEW_COLUMNS,
         }
     }
@@ -235,6 +247,7 @@ pub struct FileBrowser {
     /// View/sort/actions row (Files `InnerNavigationToolbar`), below window nav + omnibar.
     show_content_toolbar: bool,
     view_mode: ViewMode,
+    view_size_level: u8,
     search_query: String,
     display_items: Vec<FileItem>,
     column_trail: Vec<PathBuf>,
@@ -275,7 +288,8 @@ impl FileBrowser {
     ) -> Self {
         let mut read_options = DirectoryReadOptions::default();
         let mut sort_preferences = SortPreferences::default();
-        let (sort_option, sort_direction, show_hidden) = file_sort_prefs_from_config();
+        let (sort_option, sort_direction, show_hidden, show_file_extensions) =
+            file_sort_prefs_from_config();
         {
             if let Some(option) = sort_option {
                 sort_preferences.option = sort_option_from_config(&option);
@@ -287,6 +301,7 @@ impl FileBrowser {
                 read_options.show_hidden_items = hidden;
                 read_options.show_dot_files = hidden;
             }
+            read_options.show_file_extensions = show_file_extensions;
         }
 
         let view_mode = ViewMode::from_config(&file_view_mode_from_config());
@@ -302,7 +317,7 @@ impl FileBrowser {
             current_dir,
             back_stack: Vec::new(),
             forward_stack: Vec::new(),
-            item_sizes: item_sizes_for(display_items.len(), ViewMode::Details),
+            item_sizes: item_sizes_for(display_items.len(), ViewMode::Details, 2),
             scroll_handle: VirtualListScrollHandle::new(),
             items,
             read_options,
@@ -315,6 +330,7 @@ impl FileBrowser {
             show_toolbar,
             show_content_toolbar,
             view_mode,
+            view_size_level: 2,
             search_query: String::new(),
             display_items,
             column_trail,
@@ -351,7 +367,7 @@ impl FileBrowser {
 
     fn apply_filter(&mut self) {
         self.display_items = filter_items_by_query(&self.items, &self.search_query);
-        self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode);
+        self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode, self.view_size_level);
         if self.view_mode == ViewMode::Columns {
             self.refresh_column_listings();
         }
@@ -361,7 +377,7 @@ impl FileBrowser {
     fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         if self.view_mode != mode {
             self.view_mode = mode;
-            self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode);
+            self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode, self.view_size_level);
             if mode == ViewMode::Columns {
                 self.refresh_column_listings();
             }
@@ -376,7 +392,24 @@ impl FileBrowser {
             sort_option_config_value(self.sort_preferences.option),
             sort_direction_config_value(self.sort_preferences.direction),
             self.read_options.show_hidden_items,
+            self.read_options.show_file_extensions,
         );
+    }
+
+    fn increase_view_size(&mut self, cx: &mut Context<Self>) {
+        if self.view_size_level < 3 {
+            self.view_size_level += 1;
+            self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode, self.view_size_level);
+            cx.notify();
+        }
+    }
+
+    fn decrease_view_size(&mut self, cx: &mut Context<Self>) {
+        if self.view_size_level > 1 {
+            self.view_size_level -= 1;
+            self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode, self.view_size_level);
+            cx.notify();
+        }
     }
 
     fn refresh_column_listings(&mut self) {
@@ -1417,7 +1450,9 @@ impl FileBrowser {
         self.schedule_list_icon_warm(window, cx);
         match self.view_mode {
             ViewMode::Details => self.details_table(window, cx).into_any_element(),
+            ViewMode::List => self.list_view(window, cx).into_any_element(),
             ViewMode::Grid => self.grid_view(window, cx).into_any_element(),
+            ViewMode::Cards => self.cards_view(window, cx).into_any_element(),
             ViewMode::Columns => self.columns_view(window, cx).into_any_element(),
         }
     }
@@ -1621,7 +1656,137 @@ impl FileBrowser {
             )
     }
 
+    fn list_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .id("files-list-view")
+            .size_full()
+            .flex_1()
+            .min_h_0()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .overflow_hidden()
+            .child(
+                h_flex()
+                    .h_8()
+                    .px_3()
+                    .gap_3()
+                    .items_center()
+                    .bg(cx.theme().muted)
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(div().w(px(28.)).flex_none())
+                    .child(div().flex_1().min_w_0().child(t!("files.column.name")))
+                    .child(div().w(px(40.)).flex_none()),
+            )
+            .child(
+                v_flex()
+                    .id("files-virtual-list-wrap")
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        v_virtual_list(
+                            cx.entity().clone(),
+                            "files-virtual-list",
+                            self.item_sizes.clone(),
+                            |this, visible_range, window, cx| {
+                                visible_range
+                                    .filter_map(|index| {
+                                        let item = this.display_items.get(index)?.clone();
+                                        let selected = this.selected_paths.contains(&item.path);
+                                        let drag_paths =
+                                            this.drag_paths_for_item(index, &item.path);
+                                        Some(Self::list_row(
+                                            window, index, item, selected, drag_paths, cx,
+                                        ))
+                                    })
+                                    .collect()
+                            },
+                        )
+                        .track_scroll(&self.scroll_handle),
+                    )
+                    .scrollbar(&self.scroll_handle, ScrollbarAxis::Vertical),
+            )
+    }
+
+    fn list_row(
+        window: &mut Window,
+        index: usize,
+        item: FileItem,
+        selected: bool,
+        drag_paths: Vec<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let open_path = item.path.clone();
+        let double_click_path = item.path.clone();
+        let kind = item.kind;
+        h_flex()
+            .id(("file-list-row", index))
+            .w_full()
+            .h_9()
+            .flex_none()
+            .px_3()
+            .gap_3()
+            .items_center()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .hover(|this| this.bg(cx.theme().accent))
+            .when(selected, |this| {
+                this.bg(cx.theme().accent)
+                    .text_color(cx.theme().accent_foreground)
+            })
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                if event.click_count() == 2 {
+                    this.open_item(double_click_path.clone(), kind, cx);
+                } else {
+                    this.handle_row_click(index, event, cx);
+                    cx.notify();
+                }
+            }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
+                    this.prepare_context_menu_target(index);
+                    this.open_context_menu(event.position, window, cx);
+                }),
+            )
+            .on_drag(
+                DraggedFilePaths(drag_paths),
+                move |paths, _offset, _window, cx| {
+                    cx.new(|_| DragPathPreview {
+                        label: drag_preview_label(&paths.0).into(),
+                    })
+                },
+            )
+            .child(
+                div()
+                    .w(px(28.))
+                    .flex_none()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(Self::row_list_icon(&item, px(16.), window)),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(item.display_name.clone()),
+            )
+            .into_any_element()
+    }
+
     fn grid_view(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (cell_w, cell_h, icon_size) = match self.view_size_level {
+            1 => (px(96.), px(72.), px(18.)),
+            3 => (px(144.), px(104.), px(26.)),
+            _ => (px(112.), px(80.), px(22.)),
+        };
         let cells = self
             .display_items
             .iter()
@@ -1630,7 +1795,7 @@ impl FileBrowser {
                 let item = item.clone();
                 let selected = self.selected_paths.contains(&item.path);
                 let drag_paths = self.drag_paths_for_item(index, &item.path);
-                Self::grid_cell(window, index, item, selected, drag_paths, cx)
+                Self::grid_cell(window, index, item, selected, drag_paths, cell_w, cell_h, icon_size, cx)
             })
             .collect::<Vec<_>>();
 
@@ -1646,6 +1811,43 @@ impl FileBrowser {
             .child(
                 div()
                     .id("files-grid-wrap")
+                    .flex_1()
+                    .min_h_0()
+                    .size_full()
+                    .overflow_y_scroll()
+                    .p_2()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .children(cells),
+            )
+    }
+
+    fn cards_view(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let cells = self
+            .display_items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let item = item.clone();
+                let selected = self.selected_paths.contains(&item.path);
+                let drag_paths = self.drag_paths_for_item(index, &item.path);
+                Self::card_cell(window, index, item, selected, drag_paths, cx)
+            })
+            .collect::<Vec<_>>();
+
+        v_flex()
+            .id("files-cards-view")
+            .size_full()
+            .flex_1()
+            .min_h_0()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .overflow_hidden()
+            .child(
+                div()
+                    .id("files-cards-wrap")
                     .flex_1()
                     .min_h_0()
                     .size_full()
@@ -1777,6 +1979,9 @@ impl FileBrowser {
         item: FileItem,
         selected: bool,
         drag_paths: Vec<PathBuf>,
+        cell_w: Pixels,
+        cell_h: Pixels,
+        icon_size: Pixels,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let open_path = item.path.clone();
@@ -1785,12 +1990,13 @@ impl FileBrowser {
         let name = item.display_name.clone();
         v_flex()
             .id(("file-grid-cell", index))
-            .w(px(112.))
-            .h(px(96.))
+            .w(cell_w)
+            .h(cell_h)
             .flex_none()
             .p_2()
             .gap_1()
             .items_center()
+            .justify_center()
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
@@ -1825,7 +2031,7 @@ impl FileBrowser {
                     })
                 },
             )
-            .child(Self::row_list_icon(&item, px(16.), window))
+            .child(Self::row_list_icon(&item, icon_size, window))
             .child(
                 div()
                     .w_full()
@@ -1835,19 +2041,98 @@ impl FileBrowser {
                     .text_ellipsis()
                     .child(name),
             )
-            .child(
-                toolbar_icon_button(format!("grid-open-{index}"))
-                    .icon(toolbar_icon(IconName::ExternalLink))
-                    .tooltip(match kind {
-                        FileItemKind::Folder => t!("files.open.folder"),
-                        FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
-                            t!("files.open.file")
-                        }
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.open_item(open_path.clone(), kind, cx);
-                    })),
+            .into_any_element()
+    }
+
+    fn card_cell(
+        window: &mut Window,
+        index: usize,
+        item: FileItem,
+        selected: bool,
+        drag_paths: Vec<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let open_path = item.path.clone();
+        let double_click_path = item.path.clone();
+        let kind = item.kind;
+        let name = item.display_name.clone();
+        v_flex()
+            .id(("file-card-cell", index))
+            .w(px(160.))
+            .h(px(120.))
+            .flex_none()
+            .p_2()
+            .gap_1()
+            .items_center()
+            .justify_center()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .hover(|this| this.bg(cx.theme().accent))
+            .when(selected, |this| {
+                this.bg(cx.theme().accent)
+                    .text_color(cx.theme().accent_foreground)
+            })
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                if event.click_count() == 2 {
+                    this.open_item(double_click_path.clone(), kind, cx);
+                } else {
+                    this.handle_row_click(index, event, cx);
+                    cx.notify();
+                }
+            }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
+                    this.prepare_context_menu_target(index);
+                    this.open_context_menu(event.position, window, cx);
+                }),
             )
+            .on_drag(
+                DraggedFilePaths(drag_paths),
+                move |paths, _offset, _window, cx| {
+                    cx.new(|_| DragPathPreview {
+                        label: drag_preview_label(&paths.0).into(),
+                    })
+                },
+            )
+            .child(Self::row_list_icon(&item, px(40.), window))
+            .child(
+                div()
+                    .w_full()
+                    .text_center()
+                    .text_sm()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(name),
+            )
+            .when(item.size.is_some(), |this| {
+                this.child(
+                    div()
+                        .w_full()
+                        .text_center()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .child(format_size(item.size)),
+                )
+            })
+            .when(item.modified.is_some(), |this| {
+                this.child(
+                    div()
+                        .w_full()
+                        .text_center()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .child(format_system_time(item.modified)),
+                )
+            })
             .into_any_element()
     }
 
@@ -2030,6 +2315,18 @@ impl FileBrowser {
         cx.notify();
     }
 
+    fn on_toggle_show_file_extensions(
+        &mut self,
+        _: &ToggleShowFileExtensions,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.read_options.show_file_extensions = !self.read_options.show_file_extensions;
+        self.refresh();
+        self.persist_prefs();
+        cx.notify();
+    }
+
     fn on_open_in_new_pane(&mut self, _: &OpenInNewPane, _: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = self.primary_path() else {
             return;
@@ -2137,6 +2434,14 @@ impl FileBrowser {
         self.set_view_mode(ViewMode::Grid, cx);
     }
 
+    fn on_view_cards(&mut self, _: &ViewCards, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_view_mode(ViewMode::Cards, cx);
+    }
+
+    fn on_view_list(&mut self, _: &ViewList, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_view_mode(ViewMode::List, cx);
+    }
+
     fn on_view_columns(&mut self, _: &ViewColumns, _: &mut Window, cx: &mut Context<Self>) {
         self.set_view_mode(ViewMode::Columns, cx);
     }
@@ -2156,6 +2461,10 @@ impl FileBrowser {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.show_properties(cx);
+    }
+
+    fn show_properties(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.primary_path() else {
             return;
         };
@@ -2174,7 +2483,10 @@ impl FileBrowser {
     fn render_content_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let selected_count = self.selected_paths.len();
         let show_hidden = self.read_options.show_hidden_items;
+        let show_file_extensions = self.read_options.show_file_extensions;
         let sort_label = self.sort_label();
+
+        let can_paste = AppFileClipboard::has_items(cx);
 
         h_flex()
             .id("content-toolbar")
@@ -2187,10 +2499,60 @@ impl FileBrowser {
             .items_center()
             .border_b_1()
             .border_color(cx.theme().border)
+            // Context Commands
+            .child(
+                toolbar_icon_button("content-cut")
+                    .icon(toolbar_icon(IconName::Replace).path("icons/content_cut.svg"))
+                    .tooltip(t!("files.menu.cut"))
+                    .disabled(selected_count == 0)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.cut_items(cx);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                toolbar_icon_button("content-copy")
+                    .icon(toolbar_icon(IconName::Copy).path("icons/content_copy.svg"))
+                    .tooltip(t!("files.menu.copy"))
+                    .disabled(selected_count == 0)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.copy_items(cx);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                toolbar_icon_button("content-paste")
+                    .icon(toolbar_icon(IconName::Replace).path("icons/content_paste.svg"))
+                    .tooltip(t!("files.menu.paste"))
+                    .disabled(!can_paste)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.paste_items(window, cx);
+                    })),
+            )
+            .child(
+                toolbar_icon_button("content-rename")
+                    .icon(toolbar_icon(IconName::File).path("icons/drive_file_rename_outline.svg"))
+                    .tooltip(t!("files.menu.rename"))
+                    .disabled(selected_count == 0)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.begin_rename(window, cx);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                toolbar_icon_button("content-properties")
+                    .icon(toolbar_icon(IconName::Info))
+                    .tooltip(t!("files.menu.properties"))
+                    .disabled(selected_count == 0)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_properties(cx);
+                    })),
+            )
+            .child(div().w(px(1.)).h(px(20.)).bg(cx.theme().border))
             .child(
                 toolbar_icon_button("content-new-folder")
                     .size(TOOLBAR_BUTTON_PX)
-                    .child(new_folder_icon_element())
+                    .icon(toolbar_icon(IconName::Folder).path("icons/create_new_folder.svg"))
                     .tooltip(t!("files.new_folder"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.create_new_folder(window, cx);
@@ -2200,37 +2562,70 @@ impl FileBrowser {
             .child(
                 toolbar_icon_button("content-new-file")
                     .size(TOOLBAR_BUTTON_PX)
-                    .child(new_file_icon_element())
+                    .icon(toolbar_icon(IconName::File).path("icons/note_add.svg"))
                     .tooltip(t!("files.new_file"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.create_new_file(window, cx);
                         cx.notify();
                     })),
             )
+            .child(div().w(px(1.)).h(px(20.)).bg(cx.theme().border))
             .child(
                 toolbar_icon_button("content-view-details")
-                    .icon(toolbar_icon(IconName::GalleryVerticalEnd))
+                    .icon(toolbar_icon(IconName::GalleryVerticalEnd).path("icons/view_headline.svg"))
                     .tooltip(t!("files.view.details"))
+                    .when(self.view_mode == ViewMode::Details, |this| {
+                        this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                    })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Details, cx);
+                    })),
+            )
+            .child(
+                toolbar_icon_button("content-view-list")
+                    .icon(toolbar_icon(IconName::PanelLeftOpen))
+                    .tooltip(t!("files.view.list"))
+                    .when(self.view_mode == ViewMode::List, |this| {
+                        this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.set_view_mode(ViewMode::List, cx);
                     })),
             )
             .child(
                 toolbar_icon_button("content-view-grid")
                     .icon(toolbar_icon(IconName::LayoutDashboard))
                     .tooltip(t!("files.view.grid"))
+                    .when(self.view_mode == ViewMode::Grid, |this| {
+                        this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                    })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Grid, cx);
+                    })),
+            )
+            .child(
+                toolbar_icon_button("content-view-cards")
+                    .icon(toolbar_icon(IconName::LayoutDashboard).path("icons/view_cozy.svg"))
+                    .tooltip(t!("files.view.cards"))
+                    .when(self.view_mode == ViewMode::Cards, |this| {
+                        this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.set_view_mode(ViewMode::Cards, cx);
                     })),
             )
             .child(
                 toolbar_icon_button("content-view-columns")
                     .icon(toolbar_icon(IconName::PanelLeft))
                     .tooltip(t!("files.view.columns"))
+                    .when(self.view_mode == ViewMode::Columns, |this| {
+                        this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                    })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_view_mode(ViewMode::Columns, cx);
                     })),
             )
+            .child(div().w(px(1.)).h(px(20.)).bg(cx.theme().border))
             .child(
                 toolbar_icon_button("content-delete")
                     .icon(toolbar_icon(IconName::Delete))
@@ -2254,6 +2649,11 @@ impl FileBrowser {
                         } else {
                             t!("files.show_hidden.on")
                         };
+                        let extensions_label = if show_file_extensions {
+                            t!("files.show_extensions.off")
+                        } else {
+                            t!("files.show_extensions.on")
+                        };
                         menu.menu(t!("files.sort.name"), Box::new(SortByName))
                             .menu(t!("files.sort.modified"), Box::new(SortByModified))
                             .menu(t!("files.sort.size"), Box::new(SortBySize))
@@ -2264,6 +2664,7 @@ impl FileBrowser {
                                 Box::new(ToggleSortDirection),
                             )
                             .menu(hidden_label, Box::new(ToggleShowHidden))
+                            .menu(extensions_label, Box::new(ToggleShowFileExtensions))
                     }),
             )
     }
@@ -2282,6 +2683,7 @@ impl Render for FileBrowser {
         let can_go_up = self.current_dir.parent().is_some();
         let selected_count = self.selected_paths.len();
         let show_hidden = self.read_options.show_hidden_items;
+        let show_file_extensions = self.read_options.show_file_extensions;
         let sort_label = self.sort_label();
         let in_recycle_bin = self.browse_location == BrowseLocation::RecycleBin;
 
@@ -2307,7 +2709,9 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_new_folder))
             .on_action(cx.listener(Self::on_new_file))
             .on_action(cx.listener(Self::on_view_details))
+            .on_action(cx.listener(Self::on_view_list))
             .on_action(cx.listener(Self::on_view_grid))
+            .on_action(cx.listener(Self::on_view_cards))
             .on_action(cx.listener(Self::on_view_columns))
             .on_action(cx.listener(Self::on_focus_search_action))
             .on_action(cx.listener(Self::on_shell_properties))
@@ -2328,6 +2732,7 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_sort_type))
             .on_action(cx.listener(Self::on_toggle_sort_direction))
             .on_action(cx.listener(Self::on_toggle_show_hidden))
+            .on_action(cx.listener(Self::on_toggle_show_file_extensions))
             .on_action(cx.listener(Self::on_open_in_new_pane))
             .on_action(cx.listener(Self::on_open_in_terminal))
             .on_action(cx.listener(Self::on_create_folder_from_selection))
@@ -2382,7 +2787,7 @@ impl Render for FileBrowser {
                         .child(
                             toolbar_icon_button("files-new-folder-btn")
                                 .size(TOOLBAR_BUTTON_PX)
-                                .child(new_folder_icon_element())
+                                .icon(toolbar_icon(IconName::Folder).path("icons/create_new_folder.svg"))
                                 .tooltip(t!("files.new_folder"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.create_new_folder(window, cx);
@@ -2392,7 +2797,7 @@ impl Render for FileBrowser {
                         .child(
                             toolbar_icon_button("files-new-file-btn")
                                 .size(TOOLBAR_BUTTON_PX)
-                                .child(new_file_icon_element())
+                                .icon(toolbar_icon(IconName::File).path("icons/note_add.svg"))
                                 .tooltip(t!("files.new_file"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.create_new_file(window, cx);
@@ -2401,24 +2806,55 @@ impl Render for FileBrowser {
                         )
                         .child(
                             toolbar_icon_button("files-view-details")
-                                .icon(toolbar_icon(IconName::GalleryVerticalEnd))
+                                .icon(toolbar_icon(IconName::GalleryVerticalEnd).path("icons/view_headline.svg"))
                                 .tooltip(t!("files.view.details"))
+                                .when(self.view_mode == ViewMode::Details, |this| {
+                                    this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                                })
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.set_view_mode(ViewMode::Details, cx);
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-view-list")
+                                .icon(toolbar_icon(IconName::PanelLeftOpen))
+                                .tooltip(t!("files.view.list"))
+                                .when(self.view_mode == ViewMode::List, |this| {
+                                    this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                                })
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_view_mode(ViewMode::List, cx);
                                 })),
                         )
                         .child(
                             toolbar_icon_button("files-view-grid")
                                 .icon(toolbar_icon(IconName::LayoutDashboard))
                                 .tooltip(t!("files.view.grid"))
+                                .when(self.view_mode == ViewMode::Grid, |this| {
+                                    this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                                })
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.set_view_mode(ViewMode::Grid, cx);
+                                })),
+                        )
+                        .child(
+                            toolbar_icon_button("files-view-cards")
+                                .icon(toolbar_icon(IconName::LayoutDashboard).path("icons/view_cozy.svg"))
+                                .tooltip(t!("files.view.cards"))
+                                .when(self.view_mode == ViewMode::Cards, |this| {
+                                    this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                                })
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_view_mode(ViewMode::Cards, cx);
                                 })),
                         )
                         .child(
                             toolbar_icon_button("files-view-columns")
                                 .icon(toolbar_icon(IconName::PanelLeft))
                                 .tooltip(t!("files.view.columns"))
+                                .when(self.view_mode == ViewMode::Columns, |this| {
+                                    this.bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+                                })
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.set_view_mode(ViewMode::Columns, cx);
                                 })),
@@ -2446,6 +2882,11 @@ impl Render for FileBrowser {
                                     } else {
                                         t!("files.show_hidden.on")
                                     };
+                                    let extensions_label = if show_file_extensions {
+                                        t!("files.show_extensions.off")
+                                    } else {
+                                        t!("files.show_extensions.on")
+                                    };
                                     menu.menu(t!("files.sort.name"), Box::new(SortByName))
                                         .menu(t!("files.sort.modified"), Box::new(SortByModified))
                                         .menu(t!("files.sort.size"), Box::new(SortBySize))
@@ -2456,6 +2897,7 @@ impl Render for FileBrowser {
                                             Box::new(ToggleSortDirection),
                                         )
                                         .menu(hidden_label, Box::new(ToggleShowHidden))
+                                        .menu(extensions_label, Box::new(ToggleShowFileExtensions))
                                 }),
                         )
                         .child(
@@ -2555,10 +2997,19 @@ fn load_files_dir(
     }
 }
 
-fn item_sizes_for(count: usize, mode: ViewMode) -> Rc<Vec<Size<Pixels>>> {
+fn item_sizes_for(count: usize, mode: ViewMode, size_level: u8) -> Rc<Vec<Size<Pixels>>> {
     let size = match mode {
-        ViewMode::Details => FILE_ROW_SIZE,
-        ViewMode::Grid => GRID_CELL_SIZE,
+        ViewMode::Details | ViewMode::List => match size_level {
+            1 => FILE_ROW_SIZE_COMPACT,
+            3 => FILE_ROW_SIZE_LARGE,
+            _ => FILE_ROW_SIZE,
+        },
+        ViewMode::Grid => match size_level {
+            1 => GRID_CELL_SIZE_SMALL,
+            3 => GRID_CELL_SIZE_LARGE,
+            _ => GRID_CELL_SIZE,
+        },
+        ViewMode::Cards => CARD_CELL_SIZE,
         ViewMode::Columns => COLUMN_ROW_SIZE,
     };
     Rc::new(vec![size; count.max(1)])

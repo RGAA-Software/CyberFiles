@@ -483,6 +483,14 @@ files.show_hidden.off:
   en: Hide hidden items
   zh-CN: 隐藏隐藏项
   zh-HK: 隱藏隱藏項目
+files.show_extensions.on:
+  en: Show file extensions
+  zh-CN: 显示文件扩展名
+  zh-HK: 顯示檔案副檔名
+files.show_extensions.off:
+  en: Hide file extensions
+  zh-CN: 隐藏文件扩展名
+  zh-HK: 隱藏檔案副檔名
 files.new_folder:
   en: New folder
   zh-CN: 新建文件夹
@@ -835,6 +843,22 @@ files.view.grid:
   en: Grid
   zh-CN: 网格
   zh-HK: 格狀
+files.view.list:
+  en: List
+  zh-CN: 列表
+  zh-HK: 清單
+files.view.increase_size:
+  en: Increase icon size
+  zh-CN: 放大图标
+  zh-HK: 放大圖示
+files.view.decrease_size:
+  en: Decrease icon size
+  zh-CN: 缩小图标
+  zh-HK: 縮小圖示
+files.view.cards:
+  en: Cards
+  zh-CN: 卡片
+  zh-HK: 卡片
 files.view.columns:
   en: Columns
   zh-CN: 分栏

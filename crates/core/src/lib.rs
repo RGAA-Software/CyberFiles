@@ -12,6 +12,6 @@ pub use config::{
     normalize_home_widget_order, pinned_folder_paths, save_config, save_file_browser_prefs,
     save_home_widget_prefs, sidebar_is_compact, sidebar_is_offcanvas, window_size, AppConfig,
     ClosedTabSession, ContextMenuItemPrefs, FileTagConfig, HomeWidgetPrefs, SessionPaneLayout,
-    VIEW_COLUMNS, VIEW_DETAILS, VIEW_GRID,
+    VIEW_CARDS, VIEW_COLUMNS, VIEW_DETAILS, VIEW_GRID, VIEW_LIST,
 };
 pub use path_history::{path_history_list, record_path_history};
