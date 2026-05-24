@@ -238,6 +238,8 @@ pub struct FileBrowser {
     sort_preferences: SortPreferences,
     item_sizes: Rc<Vec<Size<Pixels>>>,
     scroll_handle: VirtualListScrollHandle,
+    grid_scroll_handle: VirtualListScrollHandle,
+    cards_scroll_handle: VirtualListScrollHandle,
     error: Option<String>,
     selected_paths: BTreeSet<PathBuf>,
     anchor_index: Option<usize>,
@@ -246,12 +248,14 @@ pub struct FileBrowser {
     show_toolbar: bool,
     /// View/sort/actions row (Files `InnerNavigationToolbar`), below window nav + omnibar.
     show_content_toolbar: bool,
+    show_info_pane: bool,
     view_mode: ViewMode,
     view_size_level: u8,
     search_query: String,
     display_items: Vec<FileItem>,
     column_trail: Vec<PathBuf>,
     column_listings: Vec<Vec<FileItem>>,
+    column_scroll_handles: Vec<VirtualListScrollHandle>,
     _directory_watcher: Option<DirectoryWatcher>,
     _watcher_task: Option<Task<()>>,
     watched_dir: Option<PathBuf>,
@@ -310,6 +314,10 @@ impl FileBrowser {
         let column_trail = column_trail_for(&current_dir);
         let column_listings =
             column_listings_for(&column_trail, &read_options, sort_preferences, "");
+        let column_scroll_handles = column_listings
+            .iter()
+            .map(|_| VirtualListScrollHandle::new())
+            .collect();
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -319,6 +327,8 @@ impl FileBrowser {
             forward_stack: Vec::new(),
             item_sizes: item_sizes_for(display_items.len(), ViewMode::Details, 2),
             scroll_handle: VirtualListScrollHandle::new(),
+            grid_scroll_handle: VirtualListScrollHandle::new(),
+            cards_scroll_handle: VirtualListScrollHandle::new(),
             items,
             read_options,
             sort_preferences,
@@ -329,12 +339,14 @@ impl FileBrowser {
             renaming: None,
             show_toolbar,
             show_content_toolbar,
+            show_info_pane: false,
             view_mode,
             view_size_level: 2,
             search_query: String::new(),
             display_items,
             column_trail,
             column_listings,
+            column_scroll_handles,
             _directory_watcher: None,
             _watcher_task: None,
             watched_dir: None,
@@ -412,6 +424,13 @@ impl FileBrowser {
         }
     }
 
+    pub fn set_show_info_pane(&mut self, show: bool, cx: &mut Context<Self>) {
+        if self.show_info_pane != show {
+            self.show_info_pane = show;
+            cx.notify();
+        }
+    }
+
     fn refresh_column_listings(&mut self) {
         self.column_trail = column_trail_for(&self.current_dir);
         self.column_listings = column_listings_for(
@@ -420,6 +439,11 @@ impl FileBrowser {
             self.sort_preferences,
             &self.search_query,
         );
+        self.column_scroll_handles = self
+            .column_listings
+            .iter()
+            .map(|_| VirtualListScrollHandle::new())
+            .collect();
     }
 
     /// Prefetch Shell context menu on the dedicated Shell STA worker (non-blocking for GPUI).
@@ -1463,28 +1487,21 @@ impl FileBrowser {
             .iter()
             .enumerate()
             .zip(self.column_listings.iter())
-            .map(|((col_index, col_path), items)| {
+            .zip(self.column_scroll_handles.iter())
+            .map(|(((col_index, col_path), items), scroll_handle)| {
                 let title = col_path
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| col_path.to_string_lossy().to_string());
                 let selected_name = self.column_selection_name(col_index);
-                let cells = items
-                    .iter()
-                    .map(|item| {
-                        let item = item.clone();
-                        let is_selected =
-                            selected_name.as_deref() == Some(item.display_name.as_str());
-                        let drag_paths = vec![item.path.clone()];
-                        Self::column_cell(window, col_index, item, is_selected, drag_paths, cx)
-                    })
-                    .collect::<Vec<_>>();
+                let item_count = items.len();
+                let item_sizes = Rc::new(vec![COLUMN_ROW_SIZE; item_count.max(1)]);
 
                 v_flex()
                     .id(("files-column", col_index))
                     .w(COLUMN_WIDTH)
                     .flex_none()
-                    .flex_1()
+                    .h_full()
                     .min_h_0()
                     .border_r_1()
                     .border_color(cx.theme().border)
@@ -1502,14 +1519,34 @@ impl FileBrowser {
                             .child(title),
                     )
                     .child(
-                        div()
-                            .flex()
-                            .flex_col()
+                        v_flex()
+                            .id(("files-column-content", col_index))
                             .flex_1()
                             .min_h_0()
-                            .overflow_y_scrollbar()
-                            .children(cells),
+                            .size_full()
+                            .child(
+                                v_virtual_list(
+                                    cx.entity().clone(),
+                                    format!("files-column-virtual-list-{col_index}"),
+                                    item_sizes,
+                                    move |this, visible_range, window, cx| {
+                                        visible_range
+                                            .filter_map(|index| {
+                                                let item = this.column_listings.get(col_index)?.get(index)?.clone();
+                                                let is_selected = selected_name.as_deref()
+                                                    == Some(item.display_name.as_str());
+                                                let drag_paths = vec![item.path.clone()];
+                                                Some(Self::column_cell(
+                                                    window, col_index, item, is_selected, drag_paths, cx,
+                                                ))
+                                            })
+                                            .collect()
+                                    },
+                                )
+                                .track_scroll(scroll_handle),
+                            ),
                     )
+                    .scrollbar(scroll_handle, ScrollbarAxis::Vertical)
             })
             .collect::<Vec<_>>();
 
@@ -1519,6 +1556,7 @@ impl FileBrowser {
             .flex_1()
             .min_h_0()
             .w_full()
+            .items_start()
             .overflow_x_scroll()
             .on_mouse_down(
                 MouseButton::Left,
@@ -1556,8 +1594,8 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                cx.stop_propagation();
                 if kind == FileItemKind::Folder {
                     this.select_column_item(col_index, &item_click, cx);
                 } else if event.click_count() == 2 {
@@ -1787,17 +1825,17 @@ impl FileBrowser {
             3 => (px(144.), px(104.), px(26.)),
             _ => (px(112.), px(80.), px(22.)),
         };
-        let cells = self
-            .display_items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let item = item.clone();
-                let selected = self.selected_paths.contains(&item.path);
-                let drag_paths = self.drag_paths_for_item(index, &item.path);
-                Self::grid_cell(window, index, item, selected, drag_paths, cell_w, cell_h, icon_size, cx)
-            })
-            .collect::<Vec<_>>();
+
+        // Approximate available width: window width minus sidebar (~240px), info pane (~300px when open), and paddings/borders
+        let sidebar_w = px(240.);
+        let info_pane_w = if self.show_info_pane { px(300.) } else { px(0.) };
+        let padding_border = px(18.); // grid-view border(2) + grid-wrap padding(16)
+        let available_width = (window.bounds().size.width - sidebar_w - info_pane_w - padding_border).max(px(200.));
+        let gap = px(8.);
+        // NOTE: GPUI width is border-box, .w(cell_w) already includes padding+border
+        let cells_per_row = ((available_width + gap) / (cell_w + gap)).max(1.) as usize;
+        let row_count = (self.display_items.len() + cells_per_row.saturating_sub(1)) / cells_per_row;
+        let item_sizes = Rc::new(vec![size(px(1.), cell_h); row_count.max(1)]);
 
         v_flex()
             .id("files-grid-view")
@@ -1809,32 +1847,64 @@ impl FileBrowser {
             .border_color(cx.theme().border)
             .overflow_hidden()
             .child(
-                div()
+                v_flex()
                     .id("files-grid-wrap")
                     .flex_1()
                     .min_h_0()
                     .size_full()
-                    .overflow_y_scroll()
                     .p_2()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .children(cells),
+                    .child(
+                        v_virtual_list(
+                            cx.entity().clone(),
+                            "files-grid-virtual-list",
+                            item_sizes,
+                            move |this, visible_range, window, cx| {
+                                visible_range
+                                    .filter_map(|row_ix| {
+                                        let start = row_ix * cells_per_row;
+                                        let end = (start + cells_per_row).min(this.display_items.len());
+                                        if start >= this.display_items.len() {
+                                            return None;
+                                        }
+                                        Some(
+                                            h_flex()
+                                                .w_full()
+                                                .gap_2()
+                                                .children(
+                                                    (start..end).map(|index| {
+                                                        let item = this.display_items[index].clone();
+                                                        let selected = this.selected_paths.contains(&item.path);
+                                                        let drag_paths = this.drag_paths_for_item(index, &item.path);
+                                                        Self::grid_cell(window, index, item, selected, drag_paths, cell_w, cell_h, icon_size, cx)
+                                                    })
+                                                )
+                                                .into_any_element(),
+                                        )
+                                    })
+                                    .collect()
+                            },
+                        )
+                        .track_scroll(&self.grid_scroll_handle)
+                        .gap_2(),
+                    )
+                    .scrollbar(&self.grid_scroll_handle, ScrollbarAxis::Vertical),
             )
     }
 
     fn cards_view(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let cells = self
-            .display_items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let item = item.clone();
-                let selected = self.selected_paths.contains(&item.path);
-                let drag_paths = self.drag_paths_for_item(index, &item.path);
-                Self::card_cell(window, index, item, selected, drag_paths, cx)
-            })
-            .collect::<Vec<_>>();
+        let cell_w = px(160.);
+        let cell_h = px(120.);
+
+        // Approximate available width: window width minus sidebar (~240px), info pane (~300px when open), and paddings/borders
+        let sidebar_w = px(240.);
+        let info_pane_w = if self.show_info_pane { px(300.) } else { px(0.) };
+        let padding_border = px(18.); // cards-view border(2) + cards-wrap padding(16)
+        let available_width = (window.bounds().size.width - sidebar_w - info_pane_w - padding_border).max(px(200.));
+        let gap = px(8.);
+        // NOTE: GPUI width is border-box, .w(cell_w) already includes padding+border
+        let cells_per_row = ((available_width + gap) / (cell_w + gap)).max(1.) as usize;
+        let row_count = (self.display_items.len() + cells_per_row.saturating_sub(1)) / cells_per_row;
+        let item_sizes = Rc::new(vec![size(px(1.), cell_h); row_count.max(1)]);
 
         v_flex()
             .id("files-cards-view")
@@ -1846,17 +1916,47 @@ impl FileBrowser {
             .border_color(cx.theme().border)
             .overflow_hidden()
             .child(
-                div()
+                v_flex()
                     .id("files-cards-wrap")
                     .flex_1()
                     .min_h_0()
                     .size_full()
-                    .overflow_y_scroll()
                     .p_2()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .children(cells),
+                    .child(
+                        v_virtual_list(
+                            cx.entity().clone(),
+                            "files-cards-virtual-list",
+                            item_sizes,
+                            move |this, visible_range, window, cx| {
+                                visible_range
+                                    .filter_map(|row_ix| {
+                                        let start = row_ix * cells_per_row;
+                                        let end = (start + cells_per_row).min(this.display_items.len());
+                                        if start >= this.display_items.len() {
+                                            return None;
+                                        }
+                                        Some(
+                                            h_flex()
+                                                .w_full()
+                                                .gap_2()
+                                                .children(
+                                                    (start..end).map(|index| {
+                                                        let item = this.display_items[index].clone();
+                                                        let selected = this.selected_paths.contains(&item.path);
+                                                        let drag_paths = this.drag_paths_for_item(index, &item.path);
+                                                        Self::card_cell(window, index, item, selected, drag_paths, cx)
+                                                    })
+                                                )
+                                                .into_any_element(),
+                                        )
+                                    })
+                                    .collect()
+                            },
+                        )
+                        .track_scroll(&self.cards_scroll_handle)
+                        .gap_2(),
+                    )
+                    .scrollbar(&self.cards_scroll_handle, ScrollbarAxis::Vertical),
             )
     }
 

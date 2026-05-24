@@ -117,7 +117,7 @@ impl MainPage {
             let next_id = restored.len() as u64;
             (restored, active, next_id)
         };
-        Self {
+        let mut this = Self {
             focus_handle: cx.focus_handle(),
             tabs,
             active_tab,
@@ -139,7 +139,26 @@ impl MainPage {
             sidebar_cache_generation: 0,
             sidebar_cache_loading: false,
             show_status_center: false,
+        };
+        // Propagate initial show_info_pane to all file browsers.
+        for tab in &this.tabs {
+            let shell = tab.shell.clone();
+            let panes = {
+                let shell_ref = shell.read(cx);
+                let mut panes = Vec::new();
+                shell_ref.for_each_pane(|pane| {
+                    panes.push(pane.clone());
+                });
+                panes
+            };
+            for pane in panes {
+                let file_browser = pane.read(cx).file_browser();
+                file_browser.update(cx, |browser, cx| {
+                    browser.set_show_info_pane(show_info_pane, cx);
+                });
+            }
         }
+        this
     }
 
     /// Rebuild sidebar section lists when settings or pins change (async when cache exists).
@@ -904,6 +923,24 @@ impl MainPage {
         let mut config = load_config().unwrap_or_default();
         config.show_info_pane = self.show_info_pane;
         let _ = save_config(&config);
+        // Notify all file browsers so they can recalculate grid/card column counts.
+        for tab in &self.tabs {
+            let shell = tab.shell.clone();
+            let panes = {
+                let shell_ref = shell.read(cx);
+                let mut panes = Vec::new();
+                shell_ref.for_each_pane(|pane| {
+                    panes.push(pane.clone());
+                });
+                panes
+            };
+            for pane in panes {
+                let file_browser = pane.read(cx).file_browser();
+                file_browser.update(cx, |browser, cx| {
+                    browser.set_show_info_pane(self.show_info_pane, cx);
+                });
+            }
+        }
         cx.notify();
     }
 
@@ -1134,27 +1171,20 @@ impl MainPage {
                         .size_full()
                         .min_h_0()
                         .min_w_0()
-                        .when(show_info_pane, |this| {
-                            this.child(
-                                h_resizable("main-with-info-pane")
-                                    .child(resizable_panel().flex_1().min_w_0().child(
-                                        self.render_content_column(
-                                            window,
-                                            active_shell.clone(),
-                                            cx,
-                                        ),
-                                    ))
-                                    .child(
-                                        resizable_panel()
-                                            .size(px(300.))
-                                            .size_range(px(220.)..px(480.))
-                                            .child(self.info_pane.clone()),
-                                    ),
-                            )
-                        })
-                        .when(!show_info_pane, |this| {
-                            this.child(self.render_content_column(window, active_shell, cx))
-                        }),
+                        .child(
+                            h_resizable("main-with-info-pane")
+                                .child(resizable_panel().flex_1().min_w_0().child(
+                                    self.render_content_column(window, active_shell, cx),
+                                ))
+                                .child(
+                                    resizable_panel()
+                                        .size(px(300.))
+                                        .size_range(px(220.)..px(480.))
+                                        .flex_none()
+                                        .visible(show_info_pane)
+                                        .child(self.info_pane.clone()),
+                                ),
+                        ),
                 ),
             )
     }
