@@ -19,7 +19,7 @@ fn ts(text: impl AsRef<str>) -> SharedString {
 }
 
 use crate::app_state::AppNavigation;
-use crate::icons::sidebar_icon;
+use crate::icons::{folder_icon, home_icon, sidebar_icon};
 use crate::shell::preferences::{
     add_file_tag, apply_border_radius, apply_context_menu_shell_submenu,
     apply_context_menu_show_compress, apply_context_menu_show_create_shortcut,
@@ -515,7 +515,7 @@ pub fn build_settings(cx: &App) -> Settings {
                         ),
                     ])]),
             SettingPage::new(ts(t!("settings.page.folders")))
-                .icon(sidebar_icon(IconName::Folder))
+                .icon(folder_icon())
                 .groups(vec![folders_settings_group()]),
             SettingPage::new(ts(t!("settings.page.tags")))
                 .icon(sidebar_icon(IconName::Inbox))
@@ -524,7 +524,7 @@ pub fn build_settings(cx: &App) -> Settings {
                 .icon(sidebar_icon(IconName::Redo2))
                 .groups(vec![actions_settings_group()]),
             SettingPage::new(ts(t!("settings.page.home")))
-                .icon(sidebar_icon(IconName::LayoutDashboard))
+                .icon(home_icon())
                 .groups(vec![SettingGroup::new()
                     .title(ts(t!("settings.group.home_widgets")))
                     .items(vec![

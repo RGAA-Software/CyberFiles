@@ -1,4 +1,5 @@
 mod app_state;
+mod color_icon;
 mod drag;
 mod file_browser;
 mod file_ops;

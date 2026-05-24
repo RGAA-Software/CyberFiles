@@ -10,14 +10,14 @@ use gpui::{prelude::*, *};
 use gpui_component::plot::label::measure_text_width;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    h_flex, ActiveTheme as _, IconName, Sizable as _, Size,
+    h_flex, ActiveTheme as _, Sizable as _, Size,
 };
 use rust_i18n::t;
 
 use super::breadcrumb_flyout::BreadcrumbFlyout;
 use crate::app_state::AppNavigation;
 use crate::file_browser::DraggedFilePaths;
-use crate::icons::toolbar_icon;
+use crate::icons::home_icon_element;
 use crate::popup_menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use crate::toolbar_button::{toolbar_icon_button, TOOLBAR_BUTTON_PX};
 
@@ -117,7 +117,9 @@ impl RenderOnce for PathBreadcrumbBar {
             .map(|(i, s)| breadcrumb_segment_block_width(&s.label, i + 1 < n, window))
             .collect();
         let root_width = if self.show_root {
-            f32::from(TOOLBAR_BUTTON_PX) + f32::from(BREADCRUMB_CHEVRON_BUTTON_PX) + f32::from(px(2.))
+            f32::from(TOOLBAR_BUTTON_PX)
+                + f32::from(BREADCRUMB_CHEVRON_BUTTON_PX)
+                + f32::from(px(2.))
         } else {
             0.0
         };
@@ -231,7 +233,7 @@ fn render_root_item(
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(
             toolbar_icon_button("breadcrumb-root-home")
-                .icon(toolbar_icon(IconName::LayoutDashboard))
+                .child(home_icon_element())
                 .tooltip(home_tip)
                 .on_click(move |_, window, cx| on_home(window, cx)),
         )

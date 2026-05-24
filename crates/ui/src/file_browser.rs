@@ -11,10 +11,13 @@ use crate::app_state::AppNavigation;
 use crate::file_ops::{
     spawn_compress, spawn_file_transfer, spawn_paste_from_clipboard, FileTransferKind,
 };
-use crate::icons::{compact_icon, toolbar_icon};
+use crate::icons::{
+    compact_icon, folder_icon_element, new_file_icon_element, new_folder_icon_element, toolbar_icon,
+};
 use crate::list_icon_cache;
 use crate::popup_menu::PopupMenu;
 use crate::shell::navigation::NavigationTarget;
+use crate::toolbar_button::TOOLBAR_BUTTON_PX;
 use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
 use chrono::{DateTime, Local};
 use cyberfiles_commands::{
@@ -1008,16 +1011,27 @@ impl FileBrowser {
         }
     }
 
-    fn file_item_kind_icon(kind: FileItemKind) -> gpui_component::Icon {
-        compact_icon(match kind {
-            FileItemKind::Folder => IconName::Folder,
-            FileItemKind::Symlink => IconName::ExternalLink,
-            FileItemKind::File | FileItemKind::Other => IconName::File,
-        })
+    fn file_item_kind_icon(kind: FileItemKind) -> AnyElement {
+        match kind {
+            FileItemKind::Folder => folder_icon_element(),
+            FileItemKind::Symlink => compact_icon(IconName::ExternalLink).into_any_element(),
+            FileItemKind::File | FileItemKind::Other => {
+                compact_icon(IconName::File).into_any_element()
+            }
+        }
     }
 
     /// List row icon: GPUI fallback always visible; Shell PNG when type cache is warm.
     fn row_list_icon(item: &FileItem, logical_size: Pixels, window: &Window) -> impl IntoElement {
+        if item.kind == FileItemKind::Folder {
+            return div()
+                .size(logical_size)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(folder_icon_element())
+                .into_any_element();
+        }
         let px = platform::shell_icon_pixel_size(logical_size.as_f32(), window.scale_factor());
         let key = list_icon_cache::list_icon_key(item);
         if let Some(png) = list_icon_cache::list_icon_png_cached(&key, px) {
@@ -2168,7 +2182,8 @@ impl FileBrowser {
             .border_color(cx.theme().border)
             .child(
                 toolbar_icon_button("content-new-folder")
-                    .icon(toolbar_icon(IconName::Folder))
+                    .size(TOOLBAR_BUTTON_PX)
+                    .child(new_folder_icon_element())
                     .tooltip(t!("files.new_folder"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.create_new_folder(window, cx);
@@ -2177,7 +2192,8 @@ impl FileBrowser {
             )
             .child(
                 toolbar_icon_button("content-new-file")
-                    .icon(toolbar_icon(IconName::File))
+                    .size(TOOLBAR_BUTTON_PX)
+                    .child(new_file_icon_element())
                     .tooltip(t!("files.new_file"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.create_new_file(window, cx);
@@ -2358,7 +2374,8 @@ impl Render for FileBrowser {
                         )
                         .child(
                             toolbar_icon_button("files-new-folder-btn")
-                                .icon(toolbar_icon(IconName::Folder))
+                                .size(TOOLBAR_BUTTON_PX)
+                                .child(new_folder_icon_element())
                                 .tooltip(t!("files.new_folder"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.create_new_folder(window, cx);
@@ -2367,7 +2384,8 @@ impl Render for FileBrowser {
                         )
                         .child(
                             toolbar_icon_button("files-new-file-btn")
-                                .icon(toolbar_icon(IconName::File))
+                                .size(TOOLBAR_BUTTON_PX)
+                                .child(new_file_icon_element())
                                 .tooltip(t!("files.new_file"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.create_new_file(window, cx);

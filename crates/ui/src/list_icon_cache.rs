@@ -9,6 +9,21 @@ use cyberfiles_platform_windows::{self as platform};
 /// Cache key (`:folder:`, `.zip`, `:noext:`) — matches Files `IconCacheService`.
 pub type ListIconKey = String;
 
+fn named_icon_paths() -> &'static HashMap<&'static str, &'static str> {
+    static NAMED_ICON_PATHS: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+    NAMED_ICON_PATHS.get_or_init(|| {
+        HashMap::from([
+            ("folder", "icons/ic_folder.svg"),
+            ("new_folder", "icons/ic_new_folder.svg"),
+            ("new_file", "icons/ic_new_file.svg"),
+            ("home", "icons/ic_home.svg"),
+            ("copy", "icons/ic_copy.svg"),
+            ("cut", "icons/ic_cut.svg"),
+            ("paste", "icons/ic_paste.svg"),
+        ])
+    })
+}
+
 fn cache() -> &'static RwLock<HashMap<(ListIconKey, u32), Arc<Vec<u8>>>> {
     static CACHE: OnceLock<RwLock<HashMap<(ListIconKey, u32), Arc<Vec<u8>>>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))
@@ -41,6 +56,11 @@ pub fn list_icon_keys_for_items(items: &[FileItem]) -> Vec<ListIconKey> {
 /// Cached PNG for a list icon key, if already loaded.
 pub fn list_icon_png_cached(key: &ListIconKey, size_px: u32) -> Option<Arc<Vec<u8>>> {
     cache().read().ok()?.get(&(key.clone(), size_px)).cloned()
+}
+
+/// App-bundled SVG path for a named UI icon.
+pub fn named_icon_path(name: &str) -> Option<&'static str> {
+    named_icon_paths().get(name).copied()
 }
 
 fn store_list_icon(key: ListIconKey, size_px: u32, png: Vec<u8>) {

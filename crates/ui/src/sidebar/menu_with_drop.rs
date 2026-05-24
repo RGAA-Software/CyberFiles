@@ -13,7 +13,7 @@ use gpui::{
     StyleRefinement, Styled, Window,
 };
 use gpui_component::{
-    h_flex, sidebar::SidebarItem, v_flex, ActiveTheme as _, Collapsible, Icon, StyledExt,
+    h_flex, sidebar::SidebarItem, v_flex, ActiveTheme as _, Collapsible, StyledExt,
 };
 
 use super::constants::SIDEBAR_ITEM_HEIGHT;
@@ -29,7 +29,7 @@ struct FolderDropHandlers {
 
 #[derive(Clone)]
 enum SidebarRowIcon {
-    App(Icon),
+    App(Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>),
     Shell(PathBuf),
 }
 
@@ -69,7 +69,7 @@ fn render_item_row(
 ) -> AnyElement {
     let is_hoverable = !active;
     let icon_element = match icon {
-        SidebarRowIcon::App(icon) => icon.into_any_element(),
+        SidebarRowIcon::App(icon) => icon(window, cx),
         SidebarRowIcon::Shell(path) => {
             shell_icon_for_path(&path, px(16.), window).into_any_element()
         }
@@ -141,7 +141,7 @@ impl SidebarMenuWithDrop {
     pub fn push_item(
         &mut self,
         label: impl Into<SharedString>,
-        icon: Icon,
+        icon: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
         active: bool,
         handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
         on_middle_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
@@ -149,7 +149,7 @@ impl SidebarMenuWithDrop {
     ) {
         self.rows.push(SidebarRow::Item {
             label: label.into(),
-            icon: SidebarRowIcon::App(icon),
+            icon: SidebarRowIcon::App(Rc::new(icon)),
             active,
             handler: Rc::new(handler),
             on_middle_click,

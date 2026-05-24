@@ -6,12 +6,14 @@ use gpui::{prelude::*, ClickEvent, *};
 use gpui_component::{
     h_flex,
     sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarItem, SidebarToggleButton},
-    Collapsible, Icon, IconName,
+    Collapsible, IconName,
 };
 use rust_i18n::t;
 
 use crate::drag::DraggedFilePaths;
-use crate::icons::sidebar_icon;
+use crate::icons::{
+    delete_icon_element, folder_icon_element, home_icon_element, inbox_icon_element, sidebar_icon,
+};
 use crate::main_page::MainPage;
 use crate::popup_menu::{PopupMenu, PopupMenuItem};
 use crate::shell::navigation::NavigationTarget;
@@ -362,13 +364,16 @@ fn build_entry_context_menu(
     menu
 }
 
-fn icon_for_target(target: &NavigationTarget) -> Icon {
-    match target {
-        NavigationTarget::Home => sidebar_icon(IconName::LayoutDashboard),
-        NavigationTarget::RecycleBin => sidebar_icon(IconName::Delete),
-        NavigationTarget::Settings => sidebar_icon(IconName::Settings2),
-        NavigationTarget::FileTag(_) => sidebar_icon(IconName::Inbox),
-        NavigationTarget::Path(_) => sidebar_icon(IconName::Folder),
+fn icon_for_target(
+    target: &NavigationTarget,
+) -> impl Fn(&mut Window, &mut App) -> AnyElement + 'static {
+    let target = target.clone();
+    move |_window: &mut Window, _cx: &mut App| match &target {
+        NavigationTarget::Home => home_icon_element(),
+        NavigationTarget::RecycleBin => delete_icon_element(),
+        NavigationTarget::Settings => sidebar_icon(IconName::Settings2).into_any_element(),
+        NavigationTarget::FileTag(_) => inbox_icon_element(),
+        NavigationTarget::Path(_) => folder_icon_element(),
     }
 }
 

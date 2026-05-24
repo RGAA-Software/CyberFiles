@@ -50,6 +50,7 @@ pub enum PopupMenuItem {
     /// A standard menu item.
     Item {
         icon: Option<Icon>,
+        icon_element: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
         /// Full-color Shell (or other) bitmap; rendered with GPUI `img`, not [`Icon`] tinting.
         icon_png: Option<Arc<Vec<u8>>>,
         label: SharedString,
@@ -63,6 +64,7 @@ pub enum PopupMenuItem {
     /// A menu item with custom element render.
     ElementItem {
         icon: Option<Icon>,
+        icon_element: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
         disabled: bool,
         checked: bool,
         action: Option<Box<dyn Action>>,
@@ -74,6 +76,7 @@ pub enum PopupMenuItem {
     /// NOTE: This is only supported when the parent menu is not `scrollable`.
     Submenu {
         icon: Option<Icon>,
+        icon_element: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
         label: SharedString,
         disabled: bool,
         menu: Entity<PopupMenu>,
@@ -87,6 +90,7 @@ impl PopupMenuItem {
     pub fn new(label: impl Into<SharedString>) -> Self {
         PopupMenuItem::Item {
             icon: None,
+            icon_element: None,
             icon_png: None,
             label: label.into(),
             disabled: false,
@@ -106,6 +110,7 @@ impl PopupMenuItem {
     {
         PopupMenuItem::ElementItem {
             icon: None,
+            icon_element: None,
             disabled: false,
             checked: false,
             action: None,
@@ -119,6 +124,7 @@ impl PopupMenuItem {
     pub fn submenu(label: impl Into<SharedString>, menu: Entity<PopupMenu>) -> Self {
         PopupMenuItem::Submenu {
             icon: None,
+            icon_element: None,
             label: label.into(),
             disabled: false,
             menu,
@@ -146,10 +152,12 @@ impl PopupMenuItem {
             PopupMenuItem::Item {
                 icon_png: p,
                 icon: i,
+                icon_element: e,
                 ..
             } => {
                 *p = Some(png);
                 *i = None;
+                *e = None;
             }
             _ => {}
         }
@@ -160,17 +168,62 @@ impl PopupMenuItem {
         match &mut self {
             PopupMenuItem::Item {
                 icon: i,
+                icon_element: e,
                 icon_png: p,
                 ..
             } => {
                 *i = Some(icon.into());
+                *e = None;
                 *p = None;
             }
-            PopupMenuItem::ElementItem { icon: i, .. } => {
+            PopupMenuItem::ElementItem {
+                icon: i,
+                icon_element: e,
+                ..
+            } => {
                 *i = Some(icon.into());
+                *e = None;
             }
-            PopupMenuItem::Submenu { icon: i, .. } => {
+            PopupMenuItem::Submenu {
+                icon: i,
+                icon_element: e,
+                ..
+            } => {
                 *i = Some(icon.into());
+                *e = None;
+            }
+            _ => {}
+        }
+        self
+    }
+
+    pub fn icon_element(
+        mut self,
+        builder: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+    ) -> Self {
+        let builder = Rc::new(builder);
+        match &mut self {
+            PopupMenuItem::Item {
+                icon,
+                icon_element,
+                icon_png,
+                ..
+            } => {
+                *icon = None;
+                *icon_png = None;
+                *icon_element = Some(builder);
+            }
+            PopupMenuItem::ElementItem {
+                icon, icon_element, ..
+            } => {
+                *icon = None;
+                *icon_element = Some(builder);
+            }
+            PopupMenuItem::Submenu {
+                icon, icon_element, ..
+            } => {
+                *icon = None;
+                *icon_element = Some(builder);
             }
             _ => {}
         }
@@ -253,6 +306,7 @@ impl PopupMenuItem {
         let href = href.into();
         PopupMenuItem::Item {
             icon: None,
+            icon_element: None,
             icon_png: None,
             label: label.into(),
             disabled: false,
@@ -290,14 +344,25 @@ impl PopupMenuItem {
         match self {
             PopupMenuItem::Item {
                 icon,
+                icon_element,
                 icon_png,
                 checked,
                 ..
-            } => icon.is_some() || icon_png.is_some() || (check_side.is_left() && *checked),
-            PopupMenuItem::ElementItem { icon, checked, .. } => {
-                icon.is_some() || (check_side.is_left() && *checked)
+            } => {
+                icon.is_some()
+                    || icon_element.is_some()
+                    || icon_png.is_some()
+                    || (check_side.is_left() && *checked)
             }
-            PopupMenuItem::Submenu { icon, .. } => icon.is_some(),
+            PopupMenuItem::ElementItem {
+                icon,
+                icon_element,
+                checked,
+                ..
+            } => icon.is_some() || icon_element.is_some() || (check_side.is_left() && *checked),
+            PopupMenuItem::Submenu {
+                icon, icon_element, ..
+            } => icon.is_some() || icon_element.is_some(),
             _ => false,
         }
     }
@@ -690,6 +755,27 @@ impl PopupMenu {
         self
     }
 
+    pub fn submenu_with_element(
+        mut self,
+        label: impl Into<SharedString>,
+        icon_element: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        f: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+    ) -> Self {
+        let submenu = PopupMenu::build(window, cx, f);
+        let parent_menu = cx.entity().downgrade();
+        let item_row_height = self.item_row_height;
+        submenu.update(cx, |view, _| {
+            view.parent_menu = Some(parent_menu);
+            view.item_row_height = item_row_height;
+        });
+
+        self.menu_items
+            .push(PopupMenuItem::submenu(label, submenu).icon_element(icon_element));
+        self
+    }
+
     /// Add menu item.
     pub fn item(mut self, item: impl Into<PopupMenuItem>) -> Self {
         let item: PopupMenuItem = item.into();
@@ -1018,11 +1104,26 @@ impl PopupMenu {
         has_icon: bool,
         checked: bool,
         icon: Option<Icon>,
+        icon_element: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
         icon_png: Option<Arc<Vec<u8>>>,
-        _window: &Window,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         if !has_icon {
             return None;
+        }
+
+        if let Some(builder) = icon_element {
+            return Some(
+                div()
+                    .w(ICON_SLOT_SIZE)
+                    .h(ICON_SLOT_SIZE)
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(builder(window, cx)),
+            );
         }
 
         if let Some(png) = icon_png {
@@ -1158,13 +1259,16 @@ impl PopupMenu {
                         false,
                         None,
                         None,
+                        None,
                         window,
+                        cx,
                     ))
                     .child(div().flex_1().child(label.clone())),
             ),
             PopupMenuItem::ElementItem {
                 render,
                 icon,
+                icon_element,
                 disabled,
                 ..
             } => this
@@ -1184,14 +1288,17 @@ impl PopupMenu {
                             has_left_icon,
                             is_left_check,
                             icon.clone(),
+                            icon_element.clone(),
                             None,
                             window,
+                            cx,
                         ))
                         .child((render)(window, cx))
                         .children(right_check_icon.map(|icon| icon.ml_3())),
                 ),
             PopupMenuItem::Item {
                 icon,
+                icon_element,
                 icon_png,
                 label,
                 action,
@@ -1215,8 +1322,10 @@ impl PopupMenu {
                     has_left_icon,
                     is_left_check,
                     icon.clone(),
+                    icon_element.clone(),
                     icon_png.clone(),
                     window,
+                    cx,
                 ))
                 .child(
                     h_flex()
@@ -1245,6 +1354,7 @@ impl PopupMenu {
             }
             PopupMenuItem::Submenu {
                 icon,
+                icon_element,
                 label,
                 menu,
                 disabled,
@@ -1263,8 +1373,10 @@ impl PopupMenu {
                             has_left_icon,
                             false,
                             icon.clone(),
+                            icon_element.clone(),
                             None,
                             window,
+                            cx,
                         ))
                         .child(
                             h_flex()

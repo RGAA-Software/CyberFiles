@@ -1,12 +1,30 @@
 //! App-wide Material icon render sizes (SVG assets are 24×24; on-screen size is unified).
 
-use gpui::{div, prelude::*, px, App};
+use gpui::{div, prelude::*, px, AnyElement, App, Pixels};
 use gpui_component::{ActiveTheme as _, Icon, IconName, Sizable as _, Size};
 
+use crate::color_icon;
+use crate::list_icon_cache;
+
 const APP_ICON_PX: Size = Size::Size(px(18.));
+const APP_ICON_IMAGE_PX: Pixels = px(18.);
 
 fn sized_icon(icon: IconName) -> Icon {
     Icon::new(icon).with_size(APP_ICON_PX)
+}
+
+fn named_icon(name: &str, fallback: IconName) -> Icon {
+    let icon = sized_icon(fallback);
+    if let Some(path) = list_icon_cache::named_icon_path(name) {
+        icon.path(path)
+    } else {
+        icon
+    }
+}
+
+fn named_svg_icon_element(name: &str) -> Option<AnyElement> {
+    let path = list_icon_cache::named_icon_path(name)?;
+    Some(color_icon::color_icon_box(path, APP_ICON_IMAGE_PX))
 }
 
 /// Toolbar, title bar, breadcrumbs, sidebar, settings, tab bar — all 18px.
@@ -32,6 +50,70 @@ pub fn inline_icon(icon: IconName) -> Icon {
 
 pub fn compact_icon(icon: IconName) -> Icon {
     sized_icon(icon)
+}
+
+pub fn folder_icon() -> Icon {
+    named_icon("folder", IconName::Folder)
+}
+
+pub fn new_folder_icon() -> Icon {
+    named_icon("new_folder", IconName::Folder)
+}
+
+pub fn new_file_icon() -> Icon {
+    named_icon("new_file", IconName::File)
+}
+
+pub fn home_icon() -> Icon {
+    named_icon("home", IconName::LayoutDashboard)
+}
+
+pub fn copy_icon() -> Icon {
+    named_icon("copy", IconName::Copy)
+}
+
+pub fn cut_icon() -> Icon {
+    named_icon("cut", IconName::Replace)
+}
+
+pub fn paste_icon() -> Icon {
+    named_icon("paste", IconName::Replace)
+}
+
+pub fn folder_icon_element() -> AnyElement {
+    named_svg_icon_element("folder").unwrap_or_else(|| folder_icon().into_any_element())
+}
+
+pub fn new_folder_icon_element() -> AnyElement {
+    named_svg_icon_element("new_folder").unwrap_or_else(|| new_folder_icon().into_any_element())
+}
+
+pub fn new_file_icon_element() -> AnyElement {
+    named_svg_icon_element("new_file").unwrap_or_else(|| new_file_icon().into_any_element())
+}
+
+pub fn home_icon_element() -> AnyElement {
+    named_svg_icon_element("home").unwrap_or_else(|| home_icon().into_any_element())
+}
+
+pub fn copy_icon_element() -> AnyElement {
+    named_svg_icon_element("copy").unwrap_or_else(|| copy_icon().into_any_element())
+}
+
+pub fn cut_icon_element() -> AnyElement {
+    named_svg_icon_element("cut").unwrap_or_else(|| cut_icon().into_any_element())
+}
+
+pub fn paste_icon_element() -> AnyElement {
+    named_svg_icon_element("paste").unwrap_or_else(|| paste_icon().into_any_element())
+}
+
+pub fn inbox_icon_element() -> AnyElement {
+    color_icon::color_icon_box("icons/inbox.svg", APP_ICON_IMAGE_PX)
+}
+
+pub fn delete_icon_element() -> AnyElement {
+    color_icon::color_icon_box("icons/delete.svg", APP_ICON_IMAGE_PX)
 }
 
 /// Pinned folder / push pin (`icons/pin.svg`, Material `push_pin`).

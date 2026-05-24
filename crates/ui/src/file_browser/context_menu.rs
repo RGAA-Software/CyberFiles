@@ -1,6 +1,7 @@
 //! Files-style content page context flyout — CyberFiles [`crate::popup_menu::PopupMenu`].
 
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 use cyberfiles_commands::{
@@ -11,7 +12,7 @@ use cyberfiles_commands::{
 use cyberfiles_core::{context_menu_item_prefs, load_config};
 use cyberfiles_fs::SortOption;
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
-use gpui::{px, Context, Entity, Pixels, SharedString, Window};
+use gpui::{px, AnyElement, App, Context, Entity, Pixels, SharedString, Window};
 use gpui_component::{notification::Notification, Icon, IconName, WindowExt as _};
 
 use crate::popup_menu::{PopupMenu, PopupMenuItem};
@@ -25,7 +26,10 @@ use super::{
     ViewMode,
 };
 use crate::app_state::{AppFileClipboard, AppNavigation};
-use crate::icons::pin_icon;
+use crate::icons::{
+    copy_icon, copy_icon_element, cut_icon_element, folder_icon_element, new_file_icon_element,
+    new_folder_icon_element, paste_icon_element, pin_icon,
+};
 use crate::shell::preferences::{
     assign_paths_to_file_tag, context_menu_shell_submenu, file_tags_containing_paths,
     remove_paths_from_file_tag,
@@ -37,13 +41,60 @@ fn menu_icon(name: IconName) -> Icon {
     Icon::new(name)
 }
 
+fn themed_menu_icon(name: IconName) -> Icon {
+    match name {
+        IconName::Copy => copy_icon(),
+        _ => menu_icon(name),
+    }
+}
+
+fn themed_menu_icon_element(
+    name: &IconName,
+) -> Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>> {
+    match name {
+        IconName::Copy => Some(Rc::new(|_, _| copy_icon_element())),
+        _ => None,
+    }
+}
+
+fn menu_action_with_element(
+    menu: PopupMenu,
+    label: impl Into<SharedString>,
+    builder: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+    action: Box<dyn gpui::Action>,
+) -> PopupMenu {
+    menu.item(
+        PopupMenuItem::new(label)
+            .icon_element(builder)
+            .action(action),
+    )
+}
+
+fn menu_click_item_with_element(
+    label: impl Into<SharedString>,
+    builder: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+) -> PopupMenuItem {
+    PopupMenuItem::new(label.into())
+        .icon_element(builder)
+        .on_click(on_click)
+}
+
 fn menu_action(
     menu: PopupMenu,
     label: impl Into<SharedString>,
     icon: IconName,
     action: Box<dyn gpui::Action>,
 ) -> PopupMenu {
-    menu.menu_with_icon(label, menu_icon(icon), action)
+    if let Some(builder) = themed_menu_icon_element(&icon) {
+        menu.item(
+            PopupMenuItem::new(label)
+                .icon_element(move |window, cx| builder(window, cx))
+                .action(action),
+        )
+    } else {
+        menu.menu_with_icon(label, themed_menu_icon(icon), action)
+    }
 }
 
 fn menu_action_enabled(
@@ -53,7 +104,16 @@ fn menu_action_enabled(
     action: Box<dyn gpui::Action>,
     enabled: bool,
 ) -> PopupMenu {
-    menu.menu_with_icon_and_disabled(label, menu_icon(icon), action, !enabled)
+    if let Some(builder) = themed_menu_icon_element(&icon) {
+        menu.item(
+            PopupMenuItem::new(label)
+                .icon_element(move |window, cx| builder(window, cx))
+                .action(action)
+                .disabled(!enabled),
+        )
+    } else {
+        menu.menu_with_icon_and_disabled(label, themed_menu_icon(icon), action, !enabled)
+    }
 }
 
 fn menu_checked_action(
@@ -66,7 +126,7 @@ fn menu_checked_action(
     let left_icon = if checked {
         Icon::new(IconName::Check)
     } else {
-        menu_icon(icon)
+        themed_menu_icon(icon)
     };
     menu.item(
         PopupMenuItem::new(label)
@@ -76,14 +136,33 @@ fn menu_checked_action(
     )
 }
 
+fn menu_action_enabled_with_element(
+    menu: PopupMenu,
+    label: impl Into<SharedString>,
+    builder: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+    action: Box<dyn gpui::Action>,
+    enabled: bool,
+) -> PopupMenu {
+    menu.item(
+        PopupMenuItem::new(label)
+            .icon_element(builder)
+            .action(action)
+            .disabled(!enabled),
+    )
+}
+
 fn menu_click_item(
     label: impl Into<SharedString>,
     icon: IconName,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> PopupMenuItem {
-    PopupMenuItem::new(label.into())
-        .icon(menu_icon(icon))
-        .on_click(on_click)
+    let item = PopupMenuItem::new(label.into());
+    let item = if let Some(builder) = themed_menu_icon_element(&icon) {
+        item.icon_element(move |window, cx| builder(window, cx))
+    } else {
+        item.icon(themed_menu_icon(icon))
+    };
+    item.on_click(on_click)
 }
 
 fn menu_notice_item(
@@ -91,11 +170,15 @@ fn menu_notice_item(
     icon: IconName,
     message: SharedString,
 ) -> PopupMenuItem {
-    PopupMenuItem::new(label.into())
-        .icon(menu_icon(icon))
-        .on_click(move |_, window, cx| {
-            window.push_notification(Notification::info(message.clone()), cx);
-        })
+    let item = PopupMenuItem::new(label.into());
+    let item = if let Some(builder) = themed_menu_icon_element(&icon) {
+        item.icon_element(move |window, cx| builder(window, cx))
+    } else {
+        item.icon(themed_menu_icon(icon))
+    };
+    item.on_click(move |_, window, cx| {
+        window.push_notification(Notification::info(message.clone()), cx);
+    })
 }
 
 fn shell_menu_item_is_properties(command_string: Option<&str>, label: &str) -> bool {
@@ -561,38 +644,43 @@ fn append_show_more_options(
 }
 
 fn append_clipboard_commands(menu: PopupMenu, has_selection: bool, can_paste: bool) -> PopupMenu {
+    let menu = menu_action_enabled_with_element(
+        menu,
+        t!("files.menu.cut"),
+        |_, _| cut_icon_element(),
+        Box::new(CutItems),
+        has_selection,
+    );
+    let menu = menu_action_enabled_with_element(
+        menu,
+        t!("files.menu.copy"),
+        |_, _| copy_icon_element(),
+        Box::new(CopyItems),
+        has_selection,
+    );
+    let menu = menu_action_enabled_with_element(
+        menu,
+        t!("files.menu.paste"),
+        |_, _| paste_icon_element(),
+        Box::new(PasteItems),
+        can_paste,
+    );
+    let menu = menu_action_enabled(
+        menu,
+        t!("files.menu.rename"),
+        IconName::File,
+        Box::new(RenameItem),
+        has_selection,
+    );
+    let menu = menu_action_enabled(
+        menu,
+        t!("files.menu.delete"),
+        IconName::Delete,
+        Box::new(DeleteItems),
+        has_selection,
+    );
     menu_action_enabled(
-        menu_action_enabled(
-            menu_action_enabled(
-                menu_action_enabled(
-                    menu_action_enabled(
-                        menu_action_enabled(
-                            menu,
-                            t!("files.menu.cut"),
-                            IconName::Replace,
-                            Box::new(CutItems),
-                            has_selection,
-                        ),
-                        t!("files.menu.copy"),
-                        IconName::Copy,
-                        Box::new(CopyItems),
-                        has_selection,
-                    ),
-                    t!("files.menu.paste"),
-                    IconName::Replace,
-                    Box::new(PasteItems),
-                    can_paste,
-                ),
-                t!("files.menu.rename"),
-                IconName::File,
-                Box::new(RenameItem),
-                has_selection,
-            ),
-            t!("files.menu.delete"),
-            IconName::Delete,
-            Box::new(DeleteItems),
-            has_selection,
-        ),
+        menu,
         t!("files.menu.properties"),
         IconName::Settings2,
         Box::new(ShellProperties),
@@ -633,10 +721,10 @@ fn build_background_menu(
     let mut menu = menu.action_context(focus);
 
     if !in_recycle && !in_file_tag {
-        menu = menu_action_enabled(
+        menu = menu_action_enabled_with_element(
             menu,
             t!("files.menu.paste"),
-            IconName::Replace,
+            |_, _| paste_icon_element(),
             Box::new(PasteItems),
             can_paste,
         )
@@ -727,23 +815,23 @@ fn build_background_menu(
     );
 
     if !in_recycle && !in_file_tag {
-        menu = menu.separator().submenu_with_icon(
-            Some(menu_icon(IconName::Folder)),
+        menu = menu.separator().submenu_with_element(
             t!("files.menu.new"),
+            |_, _| folder_icon_element(),
             window,
             cx,
             move |menu, _, cx| {
                 let focus = browser_new.read(cx).focus_handle.clone();
                 menu.action_context(focus)
-                    .menu_with_icon(
-                        t!("files.new_folder"),
-                        menu_icon(IconName::Folder),
-                        Box::new(NewFolder),
+                    .item(
+                        PopupMenuItem::new(t!("files.new_folder"))
+                            .icon_element(|_, _| new_folder_icon_element())
+                            .action(Box::new(NewFolder)),
                     )
-                    .menu_with_icon(
-                        t!("files.new_file"),
-                        menu_icon(IconName::File),
-                        Box::new(NewFile),
+                    .item(
+                        PopupMenuItem::new(t!("files.new_file"))
+                            .icon_element(|_, _| new_file_icon_element())
+                            .action(Box::new(NewFile)),
                     )
             },
         );
@@ -793,10 +881,10 @@ fn build_directory_item_menu(
     menu = append_clipboard_commands(menu, has_selection, can_paste);
     menu = menu.separator();
 
-    menu = menu_action(
+    menu = menu_action_with_element(
         menu,
         t!("files.menu.open"),
-        IconName::Folder,
+        |_, _| folder_icon_element(),
         Box::new(OpenItem),
     );
 
@@ -851,18 +939,18 @@ fn build_directory_item_menu(
     }
 
     menu = menu.separator();
-    menu = menu_action(
+    menu = menu_action_with_element(
         menu,
         t!("files.menu.copy_path"),
-        IconName::ExternalLink,
+        |_, _| copy_icon_element(),
         Box::new(CopyPath),
     );
 
     if multi {
-        menu = menu_action(
+        menu = menu_action_with_element(
             menu,
             t!("files.menu.create_folder_from_selection"),
-            IconName::Folder,
+            |_, _| folder_icon_element(),
             Box::new(CreateFolderFromSelection),
         );
     }
@@ -877,10 +965,10 @@ fn build_directory_item_menu(
     }
 
     if item_prefs.compress {
-        menu = menu_action(
+        menu = menu_action_with_element(
             menu,
             t!("files.menu.compress"),
-            IconName::Folder,
+            |_, _| folder_icon_element(),
             Box::new(CompressItems),
         );
     }
@@ -942,9 +1030,9 @@ fn build_directory_item_menu(
     if single {
         if let Some(parent) = paths[0].parent() {
             let loc_parent = parent.to_path_buf();
-            menu = menu.item(menu_click_item(
+            menu = menu.item(menu_click_item_with_element(
                 t!("files.menu.open_file_location"),
-                IconName::Folder,
+                |_, _| folder_icon_element(),
                 move |_, _, cx| AppNavigation::navigate_to_path(loc_parent.clone(), cx),
             ));
         }
@@ -1017,10 +1105,10 @@ fn build_recycle_item_menu(
     let focus = state.focus_handle.clone();
 
     let mut menu = menu.action_context(focus);
-    menu = menu_action(
+    menu = menu_action_with_element(
         menu,
         t!("files.menu.open"),
-        IconName::Folder,
+        |_, _| folder_icon_element(),
         Box::new(OpenItem),
     );
     menu = menu.separator();
@@ -1045,10 +1133,10 @@ fn build_recycle_item_menu(
         IconName::Settings2,
         Box::new(ShellProperties),
     );
-    menu_action_enabled(
+    menu_action_enabled_with_element(
         menu,
         t!("files.menu.paste"),
-        IconName::Replace,
+        |_, _| paste_icon_element(),
         Box::new(PasteItems),
         can_paste,
     )
@@ -1066,10 +1154,10 @@ fn build_file_tag_item_menu(
     let focus = state.focus_handle.clone();
 
     let mut menu = menu.action_context(focus);
-    menu = menu_action(
+    menu = menu_action_with_element(
         menu,
         t!("files.menu.open"),
-        IconName::Folder,
+        |_, _| folder_icon_element(),
         Box::new(OpenItem),
     );
 
@@ -1082,10 +1170,10 @@ fn build_file_tag_item_menu(
         ));
     }
 
-    menu = menu_action(
+    menu = menu_action_with_element(
         menu,
         t!("files.menu.copy_path"),
-        IconName::ExternalLink,
+        |_, _| copy_icon_element(),
         Box::new(CopyPath),
     );
     menu_action(

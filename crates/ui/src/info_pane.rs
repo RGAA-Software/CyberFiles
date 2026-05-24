@@ -102,21 +102,15 @@ fn details_panel(item: Option<&FileItem>, cx: &mut Context<InfoPane>) -> impl In
                     DescriptionList::vertical()
                         .bordered(false)
                         .columns(1)
-                        .children(
-                            detail_lines
-                                .into_iter()
-                                .map(|(label, value)| {
-                                    let item = DescriptionItem::new(label.clone());
-                                    if label == path_label
-                                        || label == type_label
-                                        || label == modified_label
-                                    {
-                                        item.value(div().text_sm().child(value).into_any_element())
-                                    } else {
-                                        item.value(value)
-                                    }
-                                }),
-                        ),
+                        .children(detail_lines.into_iter().map(|(label, value)| {
+                            let item = DescriptionItem::new(label.clone());
+                            if label == path_label || label == type_label || label == modified_label
+                            {
+                                item.value(div().text_sm().child(value).into_any_element())
+                            } else {
+                                item.value(value)
+                            }
+                        })),
                 )
         })
         .when(name.is_none(), |panel| {
