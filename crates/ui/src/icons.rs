@@ -68,14 +68,17 @@ pub fn home_icon() -> Icon {
     named_icon("home", IconName::LayoutDashboard)
 }
 
+#[allow(dead_code)]
 pub fn copy_icon() -> Icon {
     named_icon("copy", IconName::Copy)
 }
 
+#[allow(dead_code)]
 pub fn cut_icon() -> Icon {
     named_icon("cut", IconName::Replace)
 }
 
+#[allow(dead_code)]
 pub fn paste_icon() -> Icon {
     named_icon("paste", IconName::Replace)
 }
@@ -96,14 +99,17 @@ pub fn home_icon_element() -> AnyElement {
     named_svg_icon_element("home").unwrap_or_else(|| home_icon().into_any_element())
 }
 
+#[allow(dead_code)]
 pub fn copy_icon_element() -> AnyElement {
     named_svg_icon_element("copy").unwrap_or_else(|| copy_icon().into_any_element())
 }
 
+#[allow(dead_code)]
 pub fn cut_icon_element() -> AnyElement {
     named_svg_icon_element("cut").unwrap_or_else(|| cut_icon().into_any_element())
 }
 
+#[allow(dead_code)]
 pub fn paste_icon_element() -> AnyElement {
     named_svg_icon_element("paste").unwrap_or_else(|| paste_icon().into_any_element())
 }

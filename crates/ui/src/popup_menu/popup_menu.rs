@@ -614,6 +614,28 @@ impl PopupMenu {
         self
     }
 
+    pub fn menu_with_check_icon(
+        self,
+        label: impl Into<SharedString>,
+        icon: impl Into<Icon>,
+        checked: bool,
+        action: Box<dyn Action>,
+    ) -> Self {
+        self.menu_with_check_icon_and_disabled(label, icon, checked, action, false)
+    }
+
+    pub fn menu_with_check_icon_and_disabled(
+        mut self,
+        label: impl Into<SharedString>,
+        icon: impl Into<Icon>,
+        checked: bool,
+        action: Box<dyn Action>,
+        disabled: bool,
+    ) -> Self {
+        self.add_menu_item(label, Some(icon.into()), action, disabled, checked);
+        self
+    }
+
     /// Add Menu Item with custom element render.
     pub fn menu_element<F, E>(self, action: Box<dyn Action>, builder: F) -> Self
     where
