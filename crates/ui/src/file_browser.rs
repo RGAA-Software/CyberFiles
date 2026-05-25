@@ -1596,6 +1596,14 @@ impl FileBrowser {
                     cx.notify();
                 }),
             )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.clear_selection();
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
+                    this.open_context_menu(event.position, window, cx);
+                }),
+            )
             .children(columns)
     }
 
@@ -1748,6 +1756,14 @@ impl FileBrowser {
             .border_1()
             .border_color(cx.theme().border)
             .overflow_hidden()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.clear_selection();
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
+                    this.open_context_menu(event.position, window, cx);
+                }),
+            )
             .child(
                 h_flex()
                     .h_8()
@@ -1897,6 +1913,14 @@ impl FileBrowser {
             .border_1()
             .border_color(cx.theme().border)
             .overflow_hidden()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.clear_selection();
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
+                    this.open_context_menu(event.position, window, cx);
+                }),
+            )
             .on_prepaint({
                 let entity = cx.entity().clone();
                 move |bounds, window, cx| {
@@ -1989,6 +2013,14 @@ impl FileBrowser {
             .border_1()
             .border_color(cx.theme().border)
             .overflow_hidden()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.clear_selection();
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
+                    this.open_context_menu(event.position, window, cx);
+                }),
+            )
             .on_prepaint({
                 let entity = cx.entity().clone();
                 move |bounds, window, cx| {
@@ -3157,6 +3189,7 @@ impl Render for FileBrowser {
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                            this.clear_selection();
                             this.set_context_menu_extended_verbs(event.modifiers.shift);
                             this.open_context_menu(event.position, window, cx);
                         }),
