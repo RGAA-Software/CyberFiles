@@ -204,6 +204,21 @@ pub(crate) enum BrowseLocation {
     FileTag { tag_name: String },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SweepSelectionSurface {
+    Main,
+    Column(usize),
+}
+
+#[derive(Clone)]
+struct SweepSelectionState {
+    surface: SweepSelectionSurface,
+    start_index: Option<usize>,
+    current_index: Option<usize>,
+    base_selection: BTreeSet<PathBuf>,
+    modifiers: Modifiers,
+}
+
 pub struct FileBrowser {
     focus_handle: FocusHandle,
     browse_location: BrowseLocation,
@@ -263,6 +278,7 @@ pub struct FileBrowser {
     column_selected_path: Option<(usize, PathBuf)>,
     /// Active column in columns view. Determines which column receives actions like SelectAll.
     active_column_index: Option<usize>,
+    sweep_selection: Option<SweepSelectionState>,
 }
 
 impl FileBrowser {
@@ -356,6 +372,7 @@ impl FileBrowser {
             last_viewport_width: None,
             column_selected_path: None,
             active_column_index: None,
+            sweep_selection: None,
         }
     }
 
@@ -1004,6 +1021,224 @@ impl FileBrowser {
         self.column_selected_path = None;
     }
 
+    fn begin_sweep_selection(
+        &mut self,
+        surface: SweepSelectionSurface,
+        modifiers: Modifiers,
+        cx: &mut Context<Self>,
+    ) {
+        let start_index = if modifiers.shift {
+            match surface {
+                SweepSelectionSurface::Main => self.anchor_index,
+                SweepSelectionSurface::Column(col_index) => self
+                    .anchor_index
+                    .or_else(|| self.implicit_column_selected_index(col_index)),
+            }
+        } else {
+            None
+        };
+        let base_selection = match surface {
+            SweepSelectionSurface::Main => self.selected_paths.clone(),
+            SweepSelectionSurface::Column(col_index) => {
+                if self.selected_paths.is_empty() {
+                    self.implicit_column_base_selection(col_index)
+                } else {
+                    self.selected_paths.clone()
+                }
+            }
+        };
+        self.sweep_selection = Some(SweepSelectionState {
+            surface: surface.clone(),
+            start_index,
+            current_index: None,
+            base_selection,
+            modifiers,
+        });
+
+        match surface {
+            SweepSelectionSurface::Main => {
+                self.active_column_index = None;
+                if !modifiers.secondary() && !modifiers.shift {
+                    self.clear_selection();
+                }
+            }
+            SweepSelectionSurface::Column(col_index) => {
+                self.active_column_index = Some(col_index);
+                self.column_selected_path = None;
+                if !modifiers.secondary() && !modifiers.shift {
+                    self.selected_paths.clear();
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    fn update_sweep_selection(
+        &mut self,
+        surface: SweepSelectionSurface,
+        hover_index: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(state) = self.sweep_selection.as_mut() else {
+            return;
+        };
+        if state.surface != surface {
+            return;
+        }
+        if state.start_index.is_none() {
+            state.start_index = Some(hover_index);
+        }
+        if state.current_index == Some(hover_index) {
+            return;
+        }
+        state.current_index = Some(hover_index);
+
+        let anchor = state.start_index.unwrap_or(hover_index);
+        let (start, end) = if anchor <= hover_index {
+            (anchor, hover_index)
+        } else {
+            (hover_index, anchor)
+        };
+
+        let items: Vec<PathBuf> = match state.surface {
+            SweepSelectionSurface::Main => self
+                .display_items
+                .get(start..=end)
+                .unwrap_or(&[])
+                .iter()
+                .map(|item| item.path.clone())
+                .collect(),
+            SweepSelectionSurface::Column(col_index) => self
+                .column_listings
+                .get(col_index)
+                .and_then(|items| items.get(start..=end))
+                .unwrap_or(&[])
+                .iter()
+                .map(|item| item.path.clone())
+                .collect(),
+        };
+
+        let mut selected_paths = if state.modifiers.secondary() {
+            state.base_selection.clone()
+        } else {
+            BTreeSet::new()
+        };
+
+        if state.modifiers.secondary() {
+            for path in items {
+                if !selected_paths.insert(path.clone()) {
+                    selected_paths.remove(&path);
+                }
+            }
+        } else {
+            selected_paths.extend(items);
+        }
+
+        self.selected_paths = selected_paths;
+        self.focused_index = Some(hover_index);
+        self.anchor_index = Some(anchor);
+        if let SweepSelectionSurface::Column(col_index) = surface {
+            self.active_column_index = Some(col_index);
+            self.column_selected_path = None;
+        }
+        cx.notify();
+    }
+
+    fn finish_sweep_selection(&mut self) {
+        self.sweep_selection = None;
+    }
+
+    fn handle_column_item_click(
+        &mut self,
+        col_index: usize,
+        index: usize,
+        item: &FileItem,
+        modifiers: Modifiers,
+        cx: &mut Context<Self>,
+    ) {
+        let path = item.path.clone();
+        self.active_column_index = Some(col_index);
+
+        if modifiers.shift {
+            let anchor = self
+                .anchor_index
+                .or_else(|| self.implicit_column_selected_index(col_index))
+                .unwrap_or(index);
+            let (start, end) = if anchor <= index {
+                (anchor, index)
+            } else {
+                (index, anchor)
+            };
+            self.selected_paths.clear();
+            if let Some(items) = self.column_listings.get(col_index) {
+                for i in start..=end {
+                    if let Some(item) = items.get(i) {
+                        self.selected_paths.insert(item.path.clone());
+                    }
+                }
+            }
+            self.column_selected_path = None;
+            self.focused_index = Some(index);
+            return;
+        }
+
+        if modifiers.secondary() {
+            if self.selected_paths.is_empty() {
+                self.selected_paths = self.implicit_column_base_selection(col_index);
+            }
+            if self.selected_paths.contains(&path) {
+                self.selected_paths.remove(&path);
+            } else {
+                self.selected_paths.insert(path);
+            }
+            self.column_selected_path = None;
+            self.anchor_index = Some(index);
+            self.focused_index = Some(index);
+            return;
+        }
+
+        self.anchor_index = Some(index);
+        self.focused_index = Some(index);
+        match item.kind {
+            FileItemKind::Folder => {
+                self.select_column_item(col_index, item, cx);
+                self.anchor_index = Some(index);
+                self.focused_index = Some(index);
+            }
+            FileItemKind::File | FileItemKind::Symlink | FileItemKind::Other => {
+                self.column_selected_path = Some((col_index, item.path.clone()));
+                self.selected_paths.clear();
+                self.selected_paths.insert(item.path.clone());
+                self.column_trail.truncate(col_index + 1);
+                self.column_listings = column_listings_for(
+                    &self.column_trail,
+                    &self.read_options,
+                    self.sort_preferences,
+                    &self.search_query,
+                );
+                self.column_scroll_handles.truncate(self.column_listings.len());
+            }
+        }
+    }
+
+    fn implicit_column_selected_index(&self, col_index: usize) -> Option<usize> {
+        let selected_path = self.column_trail.get(col_index + 1)?;
+        self.column_listings
+            .get(col_index)?
+            .iter()
+            .position(|item| item.path == *selected_path)
+    }
+
+    fn implicit_column_base_selection(&self, col_index: usize) -> BTreeSet<PathBuf> {
+        let mut base = BTreeSet::new();
+        if let Some(index) = self.implicit_column_selected_index(col_index) {
+            if let Some(item) = self.column_listings.get(col_index).and_then(|items| items.get(index)) {
+                base.insert(item.path.clone());
+            }
+        }
+        base
+    }
+
     fn handle_row_click(&mut self, index: usize, event: &ClickEvent, _cx: &mut Context<Self>) {
         let Some(item) = self.display_items.get(index) else {
             return;
@@ -1593,16 +1828,61 @@ impl FileBrowser {
                             .flex_1()
                             .min_h_0()
                             .size_full()
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                                    this.begin_sweep_selection(
+                                        SweepSelectionSurface::Column(col_index),
+                                        event.modifiers,
+                                        cx,
+                                    );
+                                    cx.stop_propagation();
+                                }),
+                            )
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, _| {
+                                    this.finish_sweep_selection();
+                                }),
+                            )
+                            .on_mouse_up_out(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, _| {
+                                    this.finish_sweep_selection();
+                                }),
+                            )
                             .child(
                                 v_virtual_list(
                                     cx.entity().clone(),
                                     format!("files-column-virtual-list-{col_index}"),
                                     item_sizes,
                                     move |this, visible_range, window, cx| {
+                                        let has_explicit_column_selection = this
+                                            .column_listings
+                                            .get(col_index)
+                                            .is_some_and(|items| {
+                                                items.iter().any(|item| {
+                                                    this.selected_paths.contains(&item.path)
+                                                })
+                                            })
+                                            || this
+                                                .column_selected_path
+                                                .as_ref()
+                                                .is_some_and(|(selected_col, _)| {
+                                                    *selected_col == col_index
+                                                });
                                         visible_range
                                             .filter_map(|index| {
                                                 let item = this.column_listings.get(col_index)?.get(index)?.clone();
-                                                let is_selected = if item.kind == FileItemKind::Folder {
+                                                let is_selected = if has_explicit_column_selection {
+                                                    if item.kind == FileItemKind::Folder {
+                                                        this.selected_paths.contains(&item.path)
+                                                    } else {
+                                                        this.column_selected_path
+                                                            == Some((col_index, item.path.clone()))
+                                                            || this.selected_paths.contains(&item.path)
+                                                    }
+                                                } else if item.kind == FileItemKind::Folder {
                                                     selected_name.as_deref()
                                                         == Some(item.display_name.as_str())
                                                         || this.selected_paths.contains(&item.path)
@@ -1613,7 +1893,7 @@ impl FileBrowser {
                                                 };
                                                 let drag_paths = vec![item.path.clone()];
                                                 Some(Self::column_cell(
-                                                    window, col_index, item, is_selected, drag_paths, cx,
+                                                    window, col_index, index, item, is_selected, drag_paths, cx,
                                                 ))
                                             })
                                             .collect()
@@ -1656,6 +1936,7 @@ impl FileBrowser {
     fn column_cell(
         window: &mut Window,
         col_index: usize,
+        index: usize,
         item: FileItem,
         selected: bool,
         drag_paths: Vec<PathBuf>,
@@ -1680,30 +1961,44 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    if event.modifiers.shift || event.modifiers.secondary() {
+                        this.begin_sweep_selection(
+                            SweepSelectionSurface::Column(col_index),
+                            event.modifiers,
+                            cx,
+                        );
+                    }
+                    cx.stop_propagation();
+                }),
+            )
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 cx.stop_propagation();
                 window.focus(&this.focus_handle, cx);
-                this.active_column_index = Some(col_index);
-                if kind == FileItemKind::Folder {
+                if event.modifiers().shift || event.modifiers().secondary() {
+                    this.handle_column_item_click(
+                        col_index,
+                        index,
+                        &item_click,
+                        event.modifiers(),
+                        cx,
+                    );
+                } else if kind == FileItemKind::Folder {
                     this.select_column_item(col_index, &item_click, cx);
                 } else if event.click_count() == 2 {
                     this.open_item(item_click.path.clone(), kind, cx);
                 } else {
-                    // Select the file, clear folder selection in this column,
-                    // and truncate trailing columns so no child menus appear.
-                    this.column_selected_path = Some((col_index, item_click.path.clone()));
-                    this.selected_paths.clear();
-                    this.selected_paths.insert(item_click.path.clone());
-                    this.column_trail.truncate(col_index + 1);
-                    this.column_listings = column_listings_for(
-                        &this.column_trail,
-                        &this.read_options,
-                        this.sort_preferences,
-                        &this.search_query,
+                    this.handle_column_item_click(
+                        col_index,
+                        index,
+                        &item_click,
+                        event.modifiers(),
+                        cx,
                     );
-                    this.column_scroll_handles.truncate(this.column_listings.len());
-                    cx.notify();
                 }
+                cx.notify();
             }))
             .on_mouse_down(
                 MouseButton::Right,
@@ -1716,6 +2011,13 @@ impl FileBrowser {
                     this.open_context_menu(event.position, window, cx);
                 }),
             )
+            .on_mouse_move(cx.listener(move |this, _, _, cx| {
+                this.update_sweep_selection(
+                    SweepSelectionSurface::Column(col_index),
+                    index,
+                    cx,
+                );
+            }))
             .on_drag(
                 DraggedFilePaths(drag_paths),
                 |paths, _offset, _window, cx| {
@@ -1893,6 +2195,12 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_, _, _, cx| {
+                    cx.stop_propagation();
+                }),
+            )
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus_handle, cx);
                 if event.click_count() == 2 {
@@ -1911,6 +2219,9 @@ impl FileBrowser {
                     this.open_context_menu(event.position, window, cx);
                 }),
             )
+            .on_mouse_move(cx.listener(move |this, _, _, cx| {
+                this.update_sweep_selection(SweepSelectionSurface::Main, index, cx);
+            }))
             .on_drag(
                 DraggedFilePaths(drag_paths),
                 move |paths, _offset, _window, cx| {
@@ -2162,6 +2473,12 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_, _, _, cx| {
+                    cx.stop_propagation();
+                }),
+            )
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus_handle, cx);
                 if event.click_count() == 2 {
@@ -2180,6 +2497,9 @@ impl FileBrowser {
                     this.open_context_menu(event.position, window, cx);
                 }),
             )
+            .on_mouse_move(cx.listener(move |this, _, _, cx| {
+                this.update_sweep_selection(SweepSelectionSurface::Main, index, cx);
+            }))
             .on_drag(
                 DraggedFilePaths(drag_paths),
                 move |paths, _offset, _window, cx| {
@@ -2281,6 +2601,12 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_, _, _, cx| {
+                    cx.stop_propagation();
+                }),
+            )
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus_handle, cx);
                 if event.click_count() == 2 {
@@ -2299,6 +2625,9 @@ impl FileBrowser {
                     this.open_context_menu(event.position, window, cx);
                 }),
             )
+            .on_mouse_move(cx.listener(move |this, _, _, cx| {
+                this.update_sweep_selection(SweepSelectionSurface::Main, index, cx);
+            }))
             .on_drag(
                 DraggedFilePaths(drag_paths),
                 move |paths, _offset, _window, cx| {
@@ -2349,6 +2678,12 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_, _, _, cx| {
+                    cx.stop_propagation();
+                }),
+            )
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus_handle, cx);
                 if event.click_count() == 2 {
@@ -2367,6 +2702,9 @@ impl FileBrowser {
                     this.open_context_menu(event.position, window, cx);
                 }),
             )
+            .on_mouse_move(cx.listener(move |this, _, _, cx| {
+                this.update_sweep_selection(SweepSelectionSurface::Main, index, cx);
+            }))
             .on_drag(
                 DraggedFilePaths(drag_paths),
                 move |paths, _offset, _window, cx| {
@@ -3236,6 +3574,29 @@ impl Render for FileBrowser {
                     .overflow_hidden()
                     .on_mouse_down(
                         MouseButton::Left,
+                        cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                            this.begin_sweep_selection(
+                                SweepSelectionSurface::Main,
+                                event.modifiers,
+                                cx,
+                            );
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, _| {
+                            this.finish_sweep_selection();
+                        }),
+                    )
+                    .on_mouse_up_out(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, _| {
+                            this.finish_sweep_selection();
+                        }),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Middle,
                         cx.listener(|this, _, _, cx| {
                             this.clear_selection();
                             cx.notify();
