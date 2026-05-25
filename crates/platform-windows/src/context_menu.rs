@@ -64,10 +64,9 @@ pub fn format_shell_menu_label(raw: &str) -> String {
     label
 }
 
-/// Debug logging for Shell context menu merge (stderr → `cargo run` terminal).
 macro_rules! shell_log {
     ($($t:tt)*) => {{
-        eprintln!("[shell-menu] {}", format_args!($($t)*));
+        let _ = format_args!($($t)*);
     }};
 }
 
@@ -313,25 +312,16 @@ unsafe fn create_context_menu(
         .map(|p| *p as *const ITEMIDLIST)
         .collect();
 
-    shell_log!("create_context_menu: IShellFolder::GetUIObjectOf (Files)");
     let menu: IContextMenu = parent_sf.GetUIObjectOf(HWND::default(), &apidl, None)?;
 
-    shell_log!("create_context_menu: CreatePopupMenu");
     let popup = CreatePopupMenu()?;
     let flags = if extended_verbs {
         CMF_NORMAL | CMF_EXTENDEDVERBS | CMF_OPTIMIZEFORINVOKE
     } else {
         CMF_NORMAL | CMF_OPTIMIZEFORINVOKE
     };
-    shell_log!("create_context_menu: QueryContextMenu");
     menu.QueryContextMenu(popup, 0, CMD_FIRST, CMD_LAST, flags)?;
-    let raw_count = GetMenuItemCount(popup);
-    shell_log!(
-        "QueryContextMenu ok: paths={} extended={} raw_menu_items={}",
-        paths.len(),
-        extended_verbs,
-        raw_count
-    );
+    let _raw_count = GetMenuItemCount(popup);
 
     Ok(ContextMenuHandle {
         menu,
@@ -381,11 +371,6 @@ unsafe fn enumerate_popup_menu(
     }
 
     let mut entries = Vec::new();
-    let mut skipped_getinfo = 0u32;
-    let mut skipped_empty_label = 0u32;
-    let mut skipped_bad_id = 0u32;
-    let mut skipped_verb = 0u32;
-    let mut skipped_submenu_empty = 0u32;
     let mut info = MENUITEMINFOW {
         cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
         fMask: MIIM_FTYPE | MIIM_ID | MIIM_STRING | MIIM_BITMAP | MIIM_SUBMENU,
@@ -403,7 +388,6 @@ unsafe fn enumerate_popup_menu(
         info.hSubMenu = Default::default();
 
         if GetMenuItemInfoW(popup, index, true, &mut info).is_err() {
-            skipped_getinfo += 1;
             continue;
         }
 
@@ -429,8 +413,6 @@ unsafe fn enumerate_popup_menu(
                             icon_png: menu_item_icon_png(info.hbmpItem),
                             lazy_parent_index: None,
                         });
-                    } else {
-                        skipped_submenu_empty += 1;
                     }
                 }
             } else {
@@ -446,19 +428,16 @@ unsafe fn enumerate_popup_menu(
 
         let label_len = label_buf.iter().position(|&c| c == 0).unwrap_or(0);
         if label_len == 0 {
-            skipped_empty_label += 1;
             continue;
         }
         let label = format_shell_menu_label(&String::from_utf16_lossy(&label_buf[..label_len]));
         let command_offset = info.wID.saturating_sub(CMD_FIRST);
         if command_offset > CMD_LAST.saturating_sub(CMD_FIRST) {
-            skipped_bad_id += 1;
             continue;
         }
 
         let verb = command_verb(context_menu, command_offset);
         if should_skip_shell_verb(verb.as_deref(), &label) {
-            skipped_verb += 1;
             continue;
         }
 
@@ -469,17 +448,6 @@ unsafe fn enumerate_popup_menu(
             icon_png: menu_item_icon_png(info.hbmpItem),
         });
     }
-
-    shell_log!(
-        "enumerate done: raw={} kept={} sep+items+submenus, skipped getinfo={} empty_label={} bad_id={} verb={} submenu_empty={}",
-        count,
-        entries.len(),
-        skipped_getinfo,
-        skipped_empty_label,
-        skipped_bad_id,
-        skipped_verb,
-        skipped_submenu_empty
-    );
 
     Ok(entries)
 }
@@ -592,7 +560,6 @@ pub fn query_shell_context_menu_items(
     }
     let entries =
         shell_menu_session::query_with_session(paths, extended_verbs, menu_icon_extract_px)?;
-    shell_log!("query ok: entries={}", entries.len());
     Ok(entries)
 }
 
@@ -718,7 +685,7 @@ mod windows_tests {
     use super::*;
     use std::fs;
 
-    /// Smoke test for `[shell-menu]` logging (`cargo test -p cyberfiles-platform-windows query_shell -- --nocapture`).
+    /// Smoke test for shell context menu queries.
     #[test]
     fn query_shell_context_menu_items_smoke() {
         let dir = std::env::temp_dir();
@@ -736,7 +703,7 @@ mod windows_tests {
                 query_shell_context_menu_items(&paths, false, icon_px).unwrap_or_else(|e| {
                     panic!("query normal ({label}): {e:#}");
                 });
-            eprintln!("[shell-menu] smoke {label}: entries={}", normal.len());
+            let _ = (label, normal.len());
             assert!(!normal.is_empty(), "expected Shell entries for {label}");
         }
 

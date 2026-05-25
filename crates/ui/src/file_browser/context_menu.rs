@@ -122,9 +122,7 @@ fn shell_menu_click_item(
         } else {
             platform::invoke_shell_context_menu_item(&paths, command_offset, extended_verbs)
         };
-        if let Err(error) = result {
-            eprintln!("[shell-menu] menu invoke failed: {error:#}");
-        }
+        let _ = result;
     };
 
     let mut item = PopupMenuItem::new(display_label);
@@ -198,10 +196,7 @@ fn shell_feature_entries(
     .join()
     {
         Ok(Ok(entries)) => extract_labeled_submenu(&entries, label_pred),
-        Ok(Err(error)) => {
-            eprintln!("[shell-menu] cold query err: {error:#}");
-            Vec::new()
-        }
+        Ok(Err(_error)) => Vec::new(),
         Err(_) => Vec::new(),
     }
 }
@@ -342,9 +337,7 @@ fn append_open_with_submenu(
                     .on_click({
                         let choose_path = choose_path.clone();
                         move |_, _, _| {
-                            if let Err(error) = platform::show_open_with_dialog(&choose_path) {
-                                eprintln!("[shell-menu] open-with dialog: {error:#}");
-                            }
+                            let _ = platform::show_open_with_dialog(&choose_path);
                         }
                     }),
             )
@@ -359,10 +352,7 @@ fn resolve_submenu_entries(
     if let Some(index) = lazy_parent_index {
         match std::thread::spawn(move || platform::load_lazy_submenu(index)).join() {
             Ok(Ok(items)) => items,
-            Ok(Err(error)) => {
-                eprintln!("[shell-menu] lazy submenu err: {error:#}");
-                Vec::new()
-            }
+            Ok(Err(_error)) => Vec::new(),
             Err(_) => Vec::new(),
         }
     } else {
@@ -428,11 +418,7 @@ fn append_shell_submenu(
     let children_stash = children.to_vec();
     menu.submenu(display_label, window, cx, move |sub, window, cx| {
         let loaded = resolve_submenu_entries(lazy_index, &children_stash);
-        eprintln!(
-            "[shell-menu] submenu {:?} lazy={lazy_index:?} entries={}",
-            log_label,
-            loaded.len()
-        );
+        let _ = &log_label;
         if loaded.is_empty() {
             sub.item(PopupMenuItem::new(t!("files.menu.shell_empty")).disabled(true))
         } else {

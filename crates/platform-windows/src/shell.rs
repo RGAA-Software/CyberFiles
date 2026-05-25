@@ -36,9 +36,7 @@ pub fn invoke_shell_properties(paths: &[PathBuf]) -> anyhow::Result<()> {
     }
     let path = paths[0].clone();
     std::thread::spawn(move || {
-        if let Err(error) = open_item_properties(&path) {
-            eprintln!("[shell-menu] properties err: {error:#}");
-        }
+        let _ = open_item_properties(&path);
     });
     Ok(())
 }

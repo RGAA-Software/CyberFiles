@@ -182,40 +182,17 @@ pub(crate) fn shell_submenu_snapshot(
         return ShellSubmenuSnapshot::Loading;
     };
     let Some(cache) = guard.as_ref() else {
-        eprintln!(
-            "[shell-menu] submenu build: Loading (no cache) selection={paths:?}",
-            paths = paths
-        );
         return ShellSubmenuSnapshot::Loading;
     };
     if !shell_cache_matches_selection(&cache.paths, paths) {
-        eprintln!(
-            "[shell-menu] submenu build: Loading (path mismatch) cache={cache:?} selection={paths:?}",
-            cache = cache.paths,
-            paths = paths
-        );
         return ShellSubmenuSnapshot::Loading;
     }
     if cache.extended_verbs != extended_verbs {
-        eprintln!(
-            "[shell-menu] submenu build: Loading (extended mismatch) cache={} ui={extended_verbs}",
-            cache.extended_verbs,
-            extended_verbs = extended_verbs
-        );
         return ShellSubmenuSnapshot::Loading;
     }
     if cache.entries.is_empty() {
-        eprintln!(
-            "[shell-menu] submenu build: Empty (cache matched, 0 entries) selection={paths:?}",
-            paths = paths
-        );
         ShellSubmenuSnapshot::Empty
     } else {
-        eprintln!(
-            "[shell-menu] submenu build: Ready {n} entries selection={paths:?}",
-            n = cache.entries.len(),
-            paths = paths
-        );
         ShellSubmenuSnapshot::Ready(cache.entries.clone())
     }
 }
@@ -533,12 +510,6 @@ impl FileBrowser {
                     }
                     match query_result {
                         Ok(entries) => {
-                            eprintln!(
-                                "[shell-menu] fetch ok: paths={:?} extended={} entries={}",
-                                paths_key,
-                                extended,
-                                entries.len()
-                            );
                             if let Ok(mut guard) = browser.shell_menu_cache.write() {
                                 *guard = Some(ShellMenuCache {
                                     paths: paths_key,
@@ -640,11 +611,6 @@ impl FileBrowser {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        eprintln!(
-            "[shell-menu] open_context_menu: selection={:?} extended={}",
-            self.selected_paths_vec(),
-            self.context_menu_extended_verbs
-        );
         self.context_menu_position = position;
         self.context_menu_open = true;
         self.request_shell_menu_fetch(window, cx);
@@ -956,6 +922,17 @@ impl FileBrowser {
         }
     }
 
+    fn activate_column(&mut self, col_index: usize, cx: &mut Context<Self>) {
+        let Some(path) = self.column_trail.get(col_index).cloned() else {
+            return;
+        };
+
+        self.active_column_index = Some(col_index);
+        self.current_dir = path;
+        Self::emit_location_changed(cx);
+        cx.notify();
+    }
+
     fn column_selection_name(&self, col_index: usize) -> Option<String> {
         let next = self.column_trail.get(col_index + 1)?;
         next.file_name().map(|n| n.to_string_lossy().to_string())
@@ -1197,11 +1174,9 @@ impl FileBrowser {
             if let Some(items) = self.column_listings.get(col_index) {
                 self.selected_paths = items.iter().map(|item| item.path.clone()).collect();
                 self.column_selected_path = None;
-                eprintln!("[select_all] col={} items={} selected={:?}", col_index, items.len(), self.selected_paths);
             } else {
                 self.selected_paths.clear();
                 self.column_selected_path = None;
-                eprintln!("[select_all] col={} no items", col_index);
             }
         } else {
             self.selected_paths = self
@@ -1425,7 +1400,7 @@ impl FileBrowser {
         } else {
             t!("files.delete.description_many", count = count).to_string()
         });
-        let paths = std::rc::Rc::new(paths);
+        let paths = paths.clone();
         let browser = cx.entity();
         let title = SharedString::from(if permanent {
             t!("files.delete_permanent.title")
@@ -1459,34 +1434,57 @@ impl FileBrowser {
                         .cancel_text(SharedString::from(t!("files.cancel")))
                         .show_cancel(true),
                 )
-                .on_ok(move |_dialog, window, cx| {
+                .on_ok(move |_dialog, _window, cx| {
+                    let browser = browser.clone();
                     let success = success.clone();
-                    let delete_result = if permanent {
-                        delete_paths(paths.as_ref())
-                    } else {
-                        recycle_paths(paths.as_ref())
-                    };
-                    match delete_result {
-                        Ok(()) => {
-                            browser.update(cx, |browser, cx| {
-                                browser.clear_selection();
-                                browser.refresh();
+                    let paths = paths.clone();
+                    cx.spawn(async move |cx| {
+                        let delete_result = cx
+                            .background_spawn(async move {
+                                if permanent {
+                                    delete_paths(&paths)
+                                } else {
+                                    recycle_paths(&paths)
+                                }
+                            })
+                            .await;
+
+                        let _ = browser.update(cx, |browser, cx| {
+                            let Some(window) = cx.active_window() else {
+                                if delete_result.is_ok() {
+                                    browser.clear_selection();
+                                    browser.refresh();
+                                }
                                 cx.notify();
+                                return;
+                            };
+
+                            let _ = window.update(cx, |_, window, cx| match &delete_result {
+                                Ok(()) => {
+                                    browser.clear_selection();
+                                    browser.refresh();
+                                    window.push_notification(
+                                        Notification::success(success.clone()),
+                                        cx,
+                                    );
+                                }
+                                Err(error) => {
+                                    window.push_notification(
+                                        Notification::error(format!(
+                                            "{}: {error}",
+                                            t!("files.delete.error")
+                                        )),
+                                        cx,
+                                    );
+                                }
                             });
-                            window.push_notification(Notification::success(success), cx);
-                            true
-                        }
-                        Err(error) => {
-                            window.push_notification(
-                                Notification::error(format!(
-                                    "{}: {error}",
-                                    t!("files.delete.error")
-                                )),
-                                cx,
-                            );
-                            false
-                        }
-                    }
+                            cx.notify();
+                        });
+
+                        Ok::<(), anyhow::Error>(())
+                    })
+                    .detach();
+                    true
                 })
         });
     }
@@ -1560,7 +1558,8 @@ impl FileBrowser {
                     .border_color(cx.theme().border)
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |this, _, _, cx| {
+                            this.activate_column(col_index, cx);
                             cx.stop_propagation();
                         }),
                     )
@@ -1609,9 +1608,6 @@ impl FileBrowser {
                                                         == Some((col_index, item.path.clone()))
                                                         || this.selected_paths.contains(&item.path)
                                                 };
-                                                if item.kind == FileItemKind::Folder {
-                                                    eprintln!("[render] folder={} selected={} in_set={}", item.display_name, is_selected, this.selected_paths.contains(&item.path));
-                                                }
                                                 let drag_paths = vec![item.path.clone()];
                                                 Some(Self::column_cell(
                                                     window, col_index, item, is_selected, drag_paths, cx,
@@ -1962,9 +1958,6 @@ impl FileBrowser {
         let row_count = (self.display_items.len() + cells_per_row.saturating_sub(1)) / cells_per_row;
         let item_sizes = Rc::new(vec![size(px(1.), cell_h); row_count.max(1)]);
 
-        eprintln!("[grid_view] show_info_pane={} cached_cells={:?} est_cells={} cells_per_row={}",
-            self.show_info_pane, self.grid_cells_per_row, estimated_cells_per_row, cells_per_row);
-
         v_flex()
             .id("files-grid-view")
             .size_full()
@@ -2061,9 +2054,6 @@ impl FileBrowser {
         let cells_per_row = self.cards_cells_per_row.unwrap_or(estimated_cells_per_row);
         let row_count = (self.display_items.len() + cells_per_row.saturating_sub(1)) / cells_per_row;
         let item_sizes = Rc::new(vec![size(px(1.), cell_h); row_count.max(1)]);
-
-        eprintln!("[cards_view] show_info_pane={} cached_cells={:?} est_cells={} cells_per_row={}",
-            self.show_info_pane, self.cards_cells_per_row, estimated_cells_per_row, cells_per_row);
 
         v_flex()
             .id("files-cards-view")
