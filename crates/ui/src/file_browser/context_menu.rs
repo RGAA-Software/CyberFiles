@@ -793,6 +793,12 @@ fn build_directory_item_menu(
     let single = paths.len() == 1;
     let single_dir = single && paths[0].is_dir();
     let multi = paths.len() > 1;
+    let all_dirs = has_selection && paths.iter().all(|path| path.is_dir());
+    let has_shortcut = paths.iter().any(|path| {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
+    });
     let focus = state.focus_handle.clone();
     let extended = state.context_menu_extended_verbs;
     let shell_menu_cache = state.shell_menu_cache.clone();
@@ -874,7 +880,7 @@ fn build_directory_item_menu(
         );
     }
 
-    if item_prefs.create_shortcut && single && !paths[0].is_dir() {
+    if item_prefs.create_shortcut && has_selection && !has_shortcut {
         menu = menu_action(
             menu,
             t!("files.menu.create_shortcut"),
@@ -893,7 +899,7 @@ fn build_directory_item_menu(
 
     let not_implemented: SharedString = t!("files.menu.not_implemented").into();
 
-    if item_prefs.send_to && single {
+    if item_prefs.send_to && has_selection {
         let send_to_children = shell_feature_entries(
             &shell_menu_cache,
             &paths,
@@ -956,7 +962,7 @@ fn build_directory_item_menu(
         }
     }
 
-    if item_prefs.open_in_terminal {
+    if item_prefs.open_in_terminal && all_dirs {
         menu = menu.separator();
         menu = menu_action(
             menu,

@@ -52,6 +52,54 @@
 - **ShelfPane**：状态栏上方暂存条（复制/剪切计数、首项预览、粘贴、清空）
 - 待做：与 `commands` 注册表统一生成、分享项、毛玻璃样式、`IContextMenu2`
 
+## 当前与 `../Files` 的差距
+
+下面这一组差距是 2026-05-26 对照 `../Files/src/Files.App/Data/Factories/ContentPageContextFlyoutFactory.cs` 后确认的，属于“行为还没一比一”的剩余项。
+
+### 已对齐到位
+
+- 右键点到**已选中的项**时，保持当前多选，不退化成单选
+- `Send to` 已支持多选
+- `Create shortcut` 已支持多选
+- `Open in terminal` 已收紧为“仅在当前选择全部为文件夹时显示”
+- 单选限定项已基本收紧到 `Open with`、`Open in new tab/window/pane`、`Open file location`
+
+### 仍未对齐
+
+1. **主动作分组结构还不够像 Files**
+   `Files` 的 item 菜单会稳定包含 `Rename`、`Delete`、`Properties`、`Share` 等主动作，并按固定分组排布。CyberFiles 目前更偏向“自定义项 + Shell 扩展”的结构，主动作层次还不够稳定。
+
+2. **背景菜单和项菜单还没作为一整套统一复刻**
+   `Files` 会严格区分：
+   - 空白区域右键：当前目录菜单
+   - 选中项右键：选中项菜单
+   - 是否有选择、是否全为文件夹，会共同决定菜单项显隐
+   CyberFiles 的 item menu 已部分收敛，但 background menu 还没一起完全对齐。
+
+3. **压缩/解压规则不完整**
+   `Files` 会同时区分：
+   - 可压缩选择：显示 `Compress`
+   - 可解压选择：显示 `Extract`
+   CyberFiles 当前主要只有压缩入口，`Extract` 及其类型判断还没完整复刻。
+
+4. **`Open in terminal` 体验只对齐了一半**
+   动作层现在已经支持多目录，但还没把“空白区域右键当前目录”和“item 右键多个已选中文件夹”统一成 `Files` 的完整终端行为模型。
+
+5. **`Create shortcut` 规则还不是完整同构**
+   现在只补到了多选和 `.lnk` 基础过滤；`Files` 还会结合页面类型、回收站等条件控制显示。CyberFiles 目前仍是常见场景对齐，不是完整规则复制。
+
+6. **`Send to` 的组织方式还不是 Files 那套**
+   `Files` 使用 `SendTo` / `SendToOverflow` 占位和延迟填充。CyberFiles 现在是直接提取 Shell submenu，结果能用，但结构还不是一比一。
+
+7. **Shell 扩展的 overflow / loading 组织还没完全像 Files**
+   CyberFiles 已支持内联或“显示更多选项”，也有缓存与热更新，但 `Files` 对 overflow、占位、异步填充顺序的组织更固定，当前还没完全复刻。
+
+## 后续对齐顺序
+
+1. 先统一 background menu 和 item menu 的结构与显示条件
+2. 再补齐 `Compress / Extract / Share / Rename / Delete / Properties` 这一组主动作排布
+3. 最后收紧 `Send to`、Shell overflow、终端行为这些“能用但还不完全像 Files”的部分
+
 ## 代码落点
 
 | 层 | 路径 |

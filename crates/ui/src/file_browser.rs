@@ -736,6 +736,26 @@ impl FileBrowser {
         }
     }
 
+    fn prepare_column_context_menu_target(&mut self, col_index: usize, index: usize) {
+        let Some(item) = self
+            .column_listings
+            .get(col_index)
+            .and_then(|items| items.get(index))
+        else {
+            return;
+        };
+
+        let path = item.path.clone();
+        if !self.selected_paths.contains(&path) {
+            self.selected_paths.clear();
+            self.selected_paths.insert(path.clone());
+            self.column_selected_path = Some((col_index, path));
+            self.anchor_index = Some(index);
+            self.focused_index = Some(index);
+        }
+        self.active_column_index = Some(col_index);
+    }
+
     fn restart_directory_watcher(&mut self, cx: &mut Context<Self>) {
         self._watcher_task.take();
         self._directory_watcher.take();
@@ -2004,10 +2024,8 @@ impl FileBrowser {
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
-                    this.active_column_index = Some(col_index);
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
-                    this.selected_paths.clear();
-                    this.selected_paths.insert(item_click_path.clone());
+                    this.prepare_column_context_menu_target(col_index, index);
                     this.open_context_menu(event.position, window, cx);
                 }),
             )
@@ -2955,10 +2973,18 @@ impl FileBrowser {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(path) = self.primary_path() else {
-            return;
-        };
-        if let Err(error) = open_path_in_terminal(&path) {
+        let mut paths: Vec<PathBuf> = self
+            .selected_paths_vec()
+            .into_iter()
+            .filter(|path| path.is_dir())
+            .collect();
+        if paths.is_empty() {
+            let Some(path) = self.primary_path() else {
+                return;
+            };
+            paths.push(path);
+        }
+        if let Err(error) = open_paths_in_terminal(&paths) {
             window.push_notification(
                 Notification::error(format!("{}: {error}", t!("files.terminal.error"))),
                 cx,
@@ -3018,10 +3044,11 @@ impl FileBrowser {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(path) = self.primary_path() else {
+        let paths = self.selected_paths_vec();
+        if paths.is_empty() {
             return;
-        };
-        if let Err(error) = create_shortcut_for_path(&path) {
+        }
+        if let Err(error) = create_shortcuts_for_paths(&paths) {
             window.push_notification(
                 Notification::error(format!("{}: {error}", t!("files.create_shortcut.error"))),
                 cx,
@@ -3719,22 +3746,43 @@ fn sort_option_config_value(option: SortOption) -> &'static str {
 }
 
 #[cfg(windows)]
-fn open_path_in_terminal(path: &Path) -> anyhow::Result<()> {
+fn open_paths_in_terminal(paths: &[PathBuf]) -> anyhow::Result<()> {
     use std::path::Path;
     use std::process::Command;
 
-    let dir = if path.is_dir() {
-        path.to_path_buf()
-    } else {
-        path.parent()
-            .map(Path::to_path_buf)
-            .ok_or_else(|| anyhow::anyhow!("no parent directory"))?
-    };
-    let dir = dir.to_string_lossy();
-    let wt = Command::new("wt.exe").args(["-d", &dir]).spawn();
+    let dirs = paths
+        .iter()
+        .map(|path| {
+            if path.is_dir() {
+                Ok(path.clone())
+            } else {
+                path.parent()
+                    .map(Path::to_path_buf)
+                    .ok_or_else(|| anyhow::anyhow!("no parent directory"))
+            }
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    if dirs.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = Vec::with_capacity(dirs.len() * 3);
+    for (index, dir) in dirs.iter().enumerate() {
+        let dir = dir.to_string_lossy().to_string();
+        if index > 0 {
+            args.push(";".to_string());
+            args.push("nt".to_string());
+        }
+        args.push("-d".to_string());
+        args.push(dir);
+    }
+
+    let wt = Command::new("wt.exe").args(&args).spawn();
     if wt.is_ok() {
         return Ok(());
     }
+
+    let dir = dirs[0].to_string_lossy();
     Command::new("cmd")
         .args(["/C", "start", "", "wt.exe", "-d", &dir])
         .spawn()?;
@@ -3742,7 +3790,7 @@ fn open_path_in_terminal(path: &Path) -> anyhow::Result<()> {
 }
 
 #[cfg(not(windows))]
-fn open_path_in_terminal(_path: &Path) -> anyhow::Result<()> {
+fn open_paths_in_terminal(_paths: &[PathBuf]) -> anyhow::Result<()> {
     anyhow::bail!("terminal launch is only supported on Windows")
 }
 
@@ -3771,6 +3819,13 @@ fn create_shortcut_for_path(path: &Path) -> anyhow::Result<()> {
     } else {
         anyhow::bail!("powershell shortcut creation failed")
     }
+}
+
+fn create_shortcuts_for_paths(paths: &[PathBuf]) -> anyhow::Result<()> {
+    for path in paths {
+        create_shortcut_for_path(path)?;
+    }
+    Ok(())
 }
 
 fn sort_direction_config_value(direction: SortDirection) -> &'static str {
