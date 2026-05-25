@@ -7,8 +7,8 @@ use cyberfiles_core::{
 
 const MAX_CLOSED_TABS: usize = 12;
 use cyberfiles_commands::{
-    FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, PasteItems, ReopenClosedTab,
-    FILE_BROWSER,
+    CopyItems, CutItems, FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, PasteItems,
+    ReopenClosedTab, SelectAll, FILE_BROWSER,
 };
 use cyberfiles_fs::{
     breadcrumb_root_menu_sections, home_navigation_path, list_drives, path_breadcrumbs,
@@ -1643,6 +1643,61 @@ impl Render for MainPage {
                 }
                 this.active_file_browser(cx)
                     .update(cx, |browser, cx| browser.go_forward(cx));
+            }))
+            .on_action(cx.listener(|this, _: &SelectAll, window, cx| {
+                if !this.file_navigation_active(cx) || this.omnibar_path_edit_active() {
+                    return;
+                }
+                if window.context_stack().iter().any(|ctx| ctx.contains("Input")) {
+                    return;
+                }
+                let active_browser = this.active_file_browser(cx);
+                active_browser.update(cx, |browser, cx| {
+                    browser.select_all();
+                    cx.notify();
+                });
+                cx.stop_propagation();
+            }))
+            .on_action(cx.listener(|this, _: &CopyItems, window, cx| {
+                if !this.file_navigation_active(cx) || this.omnibar_path_edit_active() {
+                    return;
+                }
+                if window.context_stack().iter().any(|ctx| ctx.contains("Input")) {
+                    return;
+                }
+                let active_browser = this.active_file_browser(cx);
+                active_browser.update(cx, |browser, cx| {
+                    browser.copy_items(cx);
+                    cx.notify();
+                });
+                cx.stop_propagation();
+            }))
+            .on_action(cx.listener(|this, _: &CutItems, window, cx| {
+                if !this.file_navigation_active(cx) || this.omnibar_path_edit_active() {
+                    return;
+                }
+                if window.context_stack().iter().any(|ctx| ctx.contains("Input")) {
+                    return;
+                }
+                let active_browser = this.active_file_browser(cx);
+                active_browser.update(cx, |browser, cx| {
+                    browser.cut_items(cx);
+                    cx.notify();
+                });
+                cx.stop_propagation();
+            }))
+            .on_action(cx.listener(|this, _: &PasteItems, window, cx| {
+                if !this.file_navigation_active(cx) || this.omnibar_path_edit_active() {
+                    return;
+                }
+                if window.context_stack().iter().any(|ctx| ctx.contains("Input")) {
+                    return;
+                }
+                let active_browser = this.active_file_browser(cx);
+                active_browser.update(cx, |browser, cx| {
+                    browser.paste_items(window, cx);
+                });
+                cx.stop_propagation();
             }))
             .on_action(cx.listener(|this, _: &ReopenClosedTab, _, cx| {
                 this.reopen_closed_tab(cx);

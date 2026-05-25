@@ -284,6 +284,8 @@ pub struct FileBrowser {
     last_viewport_width: Option<Pixels>,
     /// Selected file in columns view (col_index, path). Folders are tracked via column_trail.
     column_selected_path: Option<(usize, PathBuf)>,
+    /// Active column in columns view. Determines which column receives actions like SelectAll.
+    active_column_index: Option<usize>,
 }
 
 impl FileBrowser {
@@ -376,6 +378,7 @@ impl FileBrowser {
             cards_cells_per_row: None,
             last_viewport_width: None,
             column_selected_path: None,
+            active_column_index: None,
         }
     }
 
@@ -404,6 +407,12 @@ impl FileBrowser {
             self.grid_cells_per_row = None;
             self.cards_cells_per_row = None;
             self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode, self.view_size_level);
+            // 切换视图时清除所有选中状态，避免跨视图残留
+            self.selected_paths.clear();
+            self.active_column_index = None;
+            self.column_selected_path = None;
+            self.focused_index = None;
+            self.anchor_index = None;
             if mode == ViewMode::Columns {
                 self.refresh_column_listings();
             }
@@ -926,6 +935,7 @@ impl FileBrowser {
     }
 
     fn select_column_item(&mut self, col_index: usize, item: &FileItem, cx: &mut Context<Self>) {
+        self.active_column_index = Some(col_index);
         match item.kind {
             FileItemKind::Folder => {
                 if self.current_dir != item.path {
@@ -1179,12 +1189,27 @@ impl FileBrowser {
             .scroll_to_item(next, ScrollStrategy::Center);
     }
 
-    fn select_all(&mut self) {
-        self.selected_paths = self
-            .display_items
-            .iter()
-            .map(|item| item.path.clone())
-            .collect();
+    pub fn select_all(&mut self) {
+        if self.view_mode == ViewMode::Columns {
+            let col_index = self
+                .active_column_index
+                .unwrap_or_else(|| self.column_listings.len().saturating_sub(1));
+            if let Some(items) = self.column_listings.get(col_index) {
+                self.selected_paths = items.iter().map(|item| item.path.clone()).collect();
+                self.column_selected_path = None;
+                eprintln!("[select_all] col={} items={} selected={:?}", col_index, items.len(), self.selected_paths);
+            } else {
+                self.selected_paths.clear();
+                self.column_selected_path = None;
+                eprintln!("[select_all] col={} no items", col_index);
+            }
+        } else {
+            self.selected_paths = self
+                .display_items
+                .iter()
+                .map(|item| item.path.clone())
+                .collect();
+        }
         if let Some(index) = self.focused_index {
             self.anchor_index = Some(index);
         } else if !self.display_items.is_empty() {
@@ -1333,7 +1358,7 @@ impl FileBrowser {
         cx.write_to_clipboard(ClipboardItem::new_string(text));
     }
 
-    fn copy_items(&mut self, cx: &mut Context<Self>) {
+    pub fn copy_items(&mut self, cx: &mut Context<Self>) {
         let paths = self.selected_paths_vec();
         if paths.is_empty() {
             return;
@@ -1341,7 +1366,7 @@ impl FileBrowser {
         AppFileClipboard::store(ClipboardOperation::Copy, paths, cx);
     }
 
-    fn cut_items(&mut self, cx: &mut Context<Self>) {
+    pub fn cut_items(&mut self, cx: &mut Context<Self>) {
         let paths = self.selected_paths_vec();
         if paths.is_empty() {
             return;
@@ -1358,7 +1383,7 @@ impl FileBrowser {
         spawn_compress(cx.entity(), window, cx, paths, destination);
     }
 
-    fn paste_items(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn paste_items(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let clipboard = AppFileClipboard::take(cx).or_else(|| {
             let paths = platform::read_clipboard_file_paths();
             (!paths.is_empty()).then(|| FileClipboard::new(ClipboardOperation::Copy, paths))
@@ -1523,6 +1548,8 @@ impl FileBrowser {
                 let item_count = items.len();
                 let item_sizes = Rc::new(vec![COLUMN_ROW_SIZE; item_count.max(1)]);
 
+                let is_active = self.active_column_index == Some(col_index);
+
                 v_flex()
                     .id(("files-column", col_index))
                     .w(COLUMN_WIDTH)
@@ -1531,15 +1558,29 @@ impl FileBrowser {
                     .min_h_0()
                     .border_r_1()
                     .border_color(cx.theme().border)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |_, _, _, cx| {
+                            cx.stop_propagation();
+                        }),
+                    )
                     .child(
-                        div()
+                        h_flex()
                             .h_8()
                             .px_2()
                             .flex_none()
                             .items_center()
-                            .bg(cx.theme().muted)
+                            .bg(if is_active {
+                                cx.theme().primary
+                            } else {
+                                cx.theme().muted
+                            })
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(if is_active {
+                                cx.theme().primary_foreground
+                            } else {
+                                cx.theme().muted_foreground
+                            })
                             .overflow_hidden()
                             .text_ellipsis()
                             .child(title),
@@ -1562,10 +1603,15 @@ impl FileBrowser {
                                                 let is_selected = if item.kind == FileItemKind::Folder {
                                                     selected_name.as_deref()
                                                         == Some(item.display_name.as_str())
+                                                        || this.selected_paths.contains(&item.path)
                                                 } else {
                                                     this.column_selected_path
                                                         == Some((col_index, item.path.clone()))
+                                                        || this.selected_paths.contains(&item.path)
                                                 };
+                                                if item.kind == FileItemKind::Folder {
+                                                    eprintln!("[render] folder={} selected={} in_set={}", item.display_name, is_selected, this.selected_paths.contains(&item.path));
+                                                }
                                                 let drag_paths = vec![item.path.clone()];
                                                 Some(Self::column_cell(
                                                     window, col_index, item, is_selected, drag_paths, cx,
@@ -1592,6 +1638,7 @@ impl FileBrowser {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
+                    this.active_column_index = None;
                     this.clear_selection();
                     cx.notify();
                 }),
@@ -1634,8 +1681,10 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 cx.stop_propagation();
+                window.focus(&this.focus_handle, cx);
+                this.active_column_index = Some(col_index);
                 if kind == FileItemKind::Folder {
                     this.select_column_item(col_index, &item_click, cx);
                 } else if event.click_count() == 2 {
@@ -1661,6 +1710,7 @@ impl FileBrowser {
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
+                    this.active_column_index = Some(col_index);
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.selected_paths.clear();
                     this.selected_paths.insert(item_click_path.clone());
@@ -1844,8 +1894,8 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                window.focus(&this.focus_handle, cx);
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
@@ -2119,8 +2169,8 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                window.focus(&this.focus_handle, cx);
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
@@ -2238,8 +2288,8 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                window.focus(&this.focus_handle, cx);
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
@@ -2306,8 +2356,8 @@ impl FileBrowser {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                window.focus(&this.focus_handle, cx);
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
@@ -2425,6 +2475,7 @@ impl FileBrowser {
 
     fn on_select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.select_all();
+        cx.stop_propagation();
         cx.notify();
     }
 

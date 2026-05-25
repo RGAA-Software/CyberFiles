@@ -1,5 +1,6 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
+    h_flex, label::Label, v_flex,
     resizable::{h_resizable, resizable_panel},
     ActiveTheme as _,
 };
@@ -28,12 +29,30 @@ impl ShellPanes {
             NavigationTarget::Path(path) => path.clone(),
             _ => home_navigation_path(),
         };
+        let primary = cx.new(|cx| PaneShell::new(cx, target));
+        let secondary = cx.new(|cx| PaneShell::new(cx, NavigationTarget::Path(secondary_path)));
+        cx.observe(&primary, |this, _, cx| {
+            this.primary_changed(cx);
+        })
+        .detach();
+        cx.observe(&secondary, |this, _, cx| {
+            this.secondary_changed(cx);
+        })
+        .detach();
         Self {
-            primary: cx.new(|cx| PaneShell::new(cx, target)),
-            secondary: cx.new(|cx| PaneShell::new(cx, NavigationTarget::Path(secondary_path))),
+            primary,
+            secondary,
             dual_pane: false,
             active: PaneSide::Primary,
         }
+    }
+
+    fn primary_changed(&mut self, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
+    fn secondary_changed(&mut self, cx: &mut Context<Self>) {
+        cx.notify();
     }
 
     pub fn dual_pane(&self) -> bool {
@@ -129,47 +148,73 @@ impl Render for ShellPanes {
         let active = self.active;
         let primary = self.primary.clone();
         let secondary = self.secondary.clone();
+        let primary_title = self.primary.read(cx).current_navigation_target(cx).tab_title();
+        let secondary_title = self.secondary.read(cx).current_navigation_target(cx).tab_title();
+
+        let pane_title = |title: SharedString, is_active: bool| {
+            h_flex()
+                .h_8()
+                .px_3()
+                .items_center()
+                .bg(if is_active {
+                    cx.theme().primary
+                } else {
+                    cx.theme().background
+                })
+                .child(
+                    Label::new(title).text_color(if is_active {
+                        cx.theme().primary_foreground
+                    } else {
+                        cx.theme().foreground
+                    }),
+                )
+        };
+
+        let pane_wrapper =
+            |pane: Entity<PaneShell>,
+             title: SharedString,
+             side: PaneSide,
+             is_active: bool| {
+                v_flex()
+                    .size_full()
+                    .min_h_0()
+                    .child(pane_title(title, is_active))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .border_2()
+                            .border_color(if is_active {
+                                cx.theme().primary
+                            } else {
+                                cx.theme().border
+                            })
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _, window, cx| {
+                                    let browser = match side {
+                                        PaneSide::Primary => this.primary.read(cx).file_browser(),
+                                        PaneSide::Secondary => this.secondary.read(cx).file_browser(),
+                                    };
+                                    let handle = browser.read(cx).focus_handle(cx);
+                                    window.focus(&handle, cx);
+                                    this.set_active(side, cx);
+                                }),
+                            )
+                            .child(pane),
+                    )
+            };
 
         h_resizable("shell-panes")
             .child(
-                resizable_panel().flex_1().child(
-                    div()
-                        .size_full()
-                        .min_h_0()
-                        .border_2()
-                        .border_color(if active == PaneSide::Primary {
-                            cx.theme().primary
-                        } else {
-                            cx.theme().border
-                        })
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, _, cx| {
-                                this.set_active(PaneSide::Primary, cx);
-                            }),
-                        )
-                        .child(primary),
-                ),
+                resizable_panel()
+                    .flex_1()
+                    .child(pane_wrapper(primary, primary_title, PaneSide::Primary, active == PaneSide::Primary)),
             )
             .child(
-                resizable_panel().flex_1().child(
-                    div()
-                        .size_full()
-                        .min_h_0()
-                        .border_2()
-                        .border_color(if active == PaneSide::Secondary {
-                            cx.theme().primary
-                        } else {
-                            cx.theme().border
-                        })
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, _, cx| {
-                                this.set_active(PaneSide::Secondary, cx);
-                            }),
-                        )
-                        .child(secondary),
-                ),
+                resizable_panel()
+                    .flex_1()
+                    .child(pane_wrapper(secondary, secondary_title, PaneSide::Secondary, active == PaneSide::Secondary)),
             )
             .into_any_element()
     }
