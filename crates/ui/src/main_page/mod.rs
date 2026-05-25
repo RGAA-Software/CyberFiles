@@ -22,11 +22,17 @@ use gpui_component::{
     h_flex,
     input::{Input, InputEvent, InputState},
     label::Label,
-
-    resizable::{h_resizable, resizable_panel},
-    v_flex, ActiveTheme as _, Disableable as _, ElementExt as _, IconName, Sizable as _, Size,
-    ThemeMode, WindowExt as _,
+    v_flex,
+    ActiveTheme as _,
+    Disableable as _,
+    ElementExt as _,
+    IconName,
+    Sizable as _,
+    Size,
+    ThemeMode,
+    WindowExt as _,
 };
+use crate::resizable::{h_resizable, resizable_panel, ResizableState};
 use rust_i18n::t;
 
 use crate::app_state::{
@@ -1142,11 +1148,14 @@ impl MainPage {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let sidebar_sections = self.sidebar_sections.clone();
+
         h_resizable("main-layout")
+            .with_state(&window.use_keyed_state("main-layout", cx, |_, _| ResizableState::default()))
             .child(
                 resizable_panel()
                     .size(px(240.))
                     .size_range(px(200.)..px(360.))
+                    .fixed_size(true)
                     .flex_none()
                     .child(
                         div()
@@ -1173,6 +1182,7 @@ impl MainPage {
                         .min_w_0()
                         .child(
                             h_resizable("main-with-info-pane")
+                                .with_state(&window.use_keyed_state("main-with-info-pane", cx, |_, _| ResizableState::default()))
                                 .child(resizable_panel().flex_1().min_w_0().child(
                                     self.render_content_column(window, active_shell, cx),
                                 ))
@@ -1180,6 +1190,7 @@ impl MainPage {
                                     resizable_panel()
                                         .size(px(300.))
                                         .size_range(px(220.)..px(480.))
+                                        .fixed_size(true)
                                         .flex_none()
                                         .visible(show_info_pane)
                                         .child(self.info_pane.clone()),

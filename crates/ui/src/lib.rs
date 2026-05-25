@@ -11,6 +11,7 @@ mod list_icon_cache;
 mod main_page;
 mod omnibar;
 mod popup_menu;
+mod resizable;
 mod settings_view;
 mod shell;
 mod status_center;

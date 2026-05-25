@@ -50,8 +50,8 @@ use gpui_component::{
     input::{Input, InputState},
     notification::Notification,
     scroll::{ScrollableElement as _, ScrollbarAxis},
-    v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, IconName, Sizable as _,
-    VirtualListScrollHandle, WindowExt as _,
+    v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, ElementExt as _, IconName,
+    Sizable as _, VirtualListScrollHandle, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -276,6 +276,12 @@ pub struct FileBrowser {
     list_icon_warm_token: u64,
     list_icon_warm_scheduled: u64,
     _subscriptions: Vec<Subscription>,
+    /// Cached measured cells-per-row for grid view.
+    grid_cells_per_row: Option<usize>,
+    /// Cached measured cells-per-row for cards view.
+    cards_cells_per_row: Option<usize>,
+    /// Last known viewport width; used to invalidate caches on window resize.
+    last_viewport_width: Option<Pixels>,
 }
 
 impl FileBrowser {
@@ -364,6 +370,9 @@ impl FileBrowser {
             list_icon_warm_token: 0,
             list_icon_warm_scheduled: u64::MAX,
             _subscriptions: Vec::new(),
+            grid_cells_per_row: None,
+            cards_cells_per_row: None,
+            last_viewport_width: None,
         }
     }
 
@@ -389,6 +398,8 @@ impl FileBrowser {
     fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         if self.view_mode != mode {
             self.view_mode = mode;
+            self.grid_cells_per_row = None;
+            self.cards_cells_per_row = None;
             self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode, self.view_size_level);
             if mode == ViewMode::Columns {
                 self.refresh_column_listings();
@@ -427,6 +438,8 @@ impl FileBrowser {
     pub fn set_show_info_pane(&mut self, show: bool, cx: &mut Context<Self>) {
         if self.show_info_pane != show {
             self.show_info_pane = show;
+            self.grid_cells_per_row = None;
+            self.cards_cells_per_row = None;
             cx.notify();
         }
     }
@@ -1826,16 +1839,23 @@ impl FileBrowser {
             _ => (px(112.), px(80.), px(22.)),
         };
 
-        // Approximate available width: window width minus sidebar (~240px), info pane (~300px when open), and paddings/borders
-        let sidebar_w = px(240.);
-        let info_pane_w = if self.show_info_pane { px(300.) } else { px(0.) };
-        let padding_border = px(18.); // grid-view border(2) + grid-wrap padding(16)
-        let available_width = (window.bounds().size.width - sidebar_w - info_pane_w - padding_border).max(px(200.));
+        // Estimate available width from the viewport; fall back to this when we
+        // have no measured cells-per-row yet.
+        let estimated_available_width = {
+            let sidebar_w = px(240.);
+            let info_pane_w = if self.show_info_pane { px(300.) } else { px(0.) };
+            let padding_border = px(18.); // grid-view border(2) + grid-wrap padding(16)
+            (window.viewport_size().width - sidebar_w - info_pane_w - padding_border).max(px(200.))
+        };
         let gap = px(8.);
-        // NOTE: GPUI width is border-box, .w(cell_w) already includes padding+border
-        let cells_per_row = ((available_width + gap) / (cell_w + gap)).max(1.) as usize;
+        let estimated_cells_per_row =
+            ((estimated_available_width + gap) / (cell_w + gap)).max(1.) as usize;
+        let cells_per_row = self.grid_cells_per_row.unwrap_or(estimated_cells_per_row);
         let row_count = (self.display_items.len() + cells_per_row.saturating_sub(1)) / cells_per_row;
         let item_sizes = Rc::new(vec![size(px(1.), cell_h); row_count.max(1)]);
+
+        eprintln!("[grid_view] show_info_pane={} cached_cells={:?} est_cells={} cells_per_row={}",
+            self.show_info_pane, self.grid_cells_per_row, estimated_cells_per_row, cells_per_row);
 
         v_flex()
             .id("files-grid-view")
@@ -1846,6 +1866,22 @@ impl FileBrowser {
             .border_1()
             .border_color(cx.theme().border)
             .overflow_hidden()
+            .on_prepaint({
+                let entity = cx.entity().clone();
+                move |bounds, window, cx| {
+                    let measured_width = bounds.size.width - px(18.); // subtract border(2)+padding(16)
+                    let measured_cells =
+                        ((measured_width + gap) / (cell_w + gap)).max(1.) as usize;
+                    let changed = entity.update(cx, |this, _cx| {
+                        let changed = this.grid_cells_per_row != Some(measured_cells);
+                        this.grid_cells_per_row = Some(measured_cells);
+                        changed
+                    });
+                    if changed {
+                        window.refresh();
+                    }
+                }
+            })
             .child(
                 v_flex()
                     .id("files-grid-wrap")
@@ -1895,16 +1931,23 @@ impl FileBrowser {
         let cell_w = px(160.);
         let cell_h = px(120.);
 
-        // Approximate available width: window width minus sidebar (~240px), info pane (~300px when open), and paddings/borders
-        let sidebar_w = px(240.);
-        let info_pane_w = if self.show_info_pane { px(300.) } else { px(0.) };
-        let padding_border = px(18.); // cards-view border(2) + cards-wrap padding(16)
-        let available_width = (window.bounds().size.width - sidebar_w - info_pane_w - padding_border).max(px(200.));
+        // Estimate available width from the viewport; fall back to this when we
+        // have no measured cells-per-row yet.
+        let estimated_available_width = {
+            let sidebar_w = px(240.);
+            let info_pane_w = if self.show_info_pane { px(300.) } else { px(0.) };
+            let padding_border = px(18.); // cards-view border(2) + cards-wrap padding(16)
+            (window.viewport_size().width - sidebar_w - info_pane_w - padding_border).max(px(200.))
+        };
         let gap = px(8.);
-        // NOTE: GPUI width is border-box, .w(cell_w) already includes padding+border
-        let cells_per_row = ((available_width + gap) / (cell_w + gap)).max(1.) as usize;
+        let estimated_cells_per_row =
+            ((estimated_available_width + gap) / (cell_w + gap)).max(1.) as usize;
+        let cells_per_row = self.cards_cells_per_row.unwrap_or(estimated_cells_per_row);
         let row_count = (self.display_items.len() + cells_per_row.saturating_sub(1)) / cells_per_row;
         let item_sizes = Rc::new(vec![size(px(1.), cell_h); row_count.max(1)]);
+
+        eprintln!("[cards_view] show_info_pane={} cached_cells={:?} est_cells={} cells_per_row={}",
+            self.show_info_pane, self.cards_cells_per_row, estimated_cells_per_row, cells_per_row);
 
         v_flex()
             .id("files-cards-view")
@@ -1915,6 +1958,22 @@ impl FileBrowser {
             .border_1()
             .border_color(cx.theme().border)
             .overflow_hidden()
+            .on_prepaint({
+                let entity = cx.entity().clone();
+                move |bounds, window, cx| {
+                    let measured_width = bounds.size.width - px(18.); // subtract border(2)+padding(16)
+                    let measured_cells =
+                        ((measured_width + gap) / (cell_w + gap)).max(1.) as usize;
+                    let changed = entity.update(cx, |this, _cx| {
+                        let changed = this.cards_cells_per_row != Some(measured_cells);
+                        this.cards_cells_per_row = Some(measured_cells);
+                        changed
+                    });
+                    if changed {
+                        window.refresh();
+                    }
+                }
+            })
             .child(
                 v_flex()
                     .id("files-cards-wrap")
@@ -2775,6 +2834,15 @@ impl Render for FileBrowser {
         if self.watched_dir.as_ref() != Some(&self.current_dir) {
             self.watched_dir = Some(self.current_dir.clone());
             self.restart_directory_watcher(cx);
+        }
+
+        // Invalidate caches when the window is resized so we don't render with
+        // stale measurements from a previous size.
+        let viewport_width = window.viewport_size().width;
+        if self.last_viewport_width != Some(viewport_width) {
+            self.last_viewport_width = Some(viewport_width);
+            self.grid_cells_per_row = None;
+            self.cards_cells_per_row = None;
         }
 
         let current_dir = self.current_dir.to_string_lossy().to_string();
