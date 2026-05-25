@@ -1198,7 +1198,15 @@ impl FileBrowser {
             return None;
         }
         let path = self.selected_paths.iter().next()?;
-        self.display_items.iter().find(|item| &item.path == path)
+        self.display_items
+            .iter()
+            .find(|item| &item.path == path)
+            .or_else(|| {
+                self.column_listings
+                    .iter()
+                    .flat_map(|list| list.iter())
+                    .find(|item| &item.path == path)
+            })
     }
 
     fn primary_path(&self) -> Option<PathBuf> {
