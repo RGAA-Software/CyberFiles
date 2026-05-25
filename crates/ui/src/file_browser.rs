@@ -380,6 +380,7 @@ impl FileBrowser {
 
     fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         if self.view_mode != mode {
+            let was_columns = self.view_mode == ViewMode::Columns;
             self.view_mode = mode;
             self.grid_cells_per_row = None;
             self.cards_cells_per_row = None;
@@ -392,6 +393,8 @@ impl FileBrowser {
             self.anchor_index = None;
             if mode == ViewMode::Columns {
                 self.refresh_column_listings();
+            } else if was_columns {
+                self.refresh();
             }
             self.persist_prefs();
             cx.notify();
