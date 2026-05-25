@@ -1618,6 +1618,7 @@ impl FileBrowser {
         let kind = item.kind;
         let name = item.display_name.clone();
         let item_click = item.clone();
+        let item_click_path = item_click.path.clone();
         h_flex()
             .id(format!("file-column-row-{col_index}-{name}"))
             .w_full()
@@ -1656,6 +1657,16 @@ impl FileBrowser {
                     cx.notify();
                 }
             }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
+                    this.set_context_menu_extended_verbs(event.modifiers.shift);
+                    this.selected_paths.clear();
+                    this.selected_paths.insert(item_click_path.clone());
+                    this.open_context_menu(event.position, window, cx);
+                }),
+            )
             .on_drag(
                 DraggedFilePaths(drag_paths),
                 |paths, _offset, _window, cx| {
