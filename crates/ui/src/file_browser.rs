@@ -282,6 +282,8 @@ pub struct FileBrowser {
     cards_cells_per_row: Option<usize>,
     /// Last known viewport width; used to invalidate caches on window resize.
     last_viewport_width: Option<Pixels>,
+    /// Selected file in columns view (col_index, path). Folders are tracked via column_trail.
+    column_selected_path: Option<(usize, PathBuf)>,
 }
 
 impl FileBrowser {
@@ -373,6 +375,7 @@ impl FileBrowser {
             grid_cells_per_row: None,
             cards_cells_per_row: None,
             last_viewport_width: None,
+            column_selected_path: None,
         }
     }
 
@@ -932,6 +935,7 @@ impl FileBrowser {
                 self.current_dir = item.path.clone();
                 self.column_trail.truncate(col_index + 1);
                 self.column_trail.push(item.path.clone());
+                self.column_selected_path = None;
                 self.clear_selection();
                 self.refresh();
                 Self::emit_location_changed(cx);
@@ -1007,6 +1011,7 @@ impl FileBrowser {
         self.selected_paths.clear();
         self.anchor_index = None;
         self.focused_index = None;
+        self.column_selected_path = None;
     }
 
     fn handle_row_click(&mut self, index: usize, event: &ClickEvent, _cx: &mut Context<Self>) {
@@ -1546,8 +1551,13 @@ impl FileBrowser {
                                         visible_range
                                             .filter_map(|index| {
                                                 let item = this.column_listings.get(col_index)?.get(index)?.clone();
-                                                let is_selected = selected_name.as_deref()
-                                                    == Some(item.display_name.as_str());
+                                                let is_selected = if item.kind == FileItemKind::Folder {
+                                                    selected_name.as_deref()
+                                                        == Some(item.display_name.as_str())
+                                                } else {
+                                                    this.column_selected_path
+                                                        == Some((col_index, item.path.clone()))
+                                                };
                                                 let drag_paths = vec![item.path.clone()];
                                                 Some(Self::column_cell(
                                                     window, col_index, item, is_selected, drag_paths, cx,
@@ -1614,6 +1624,19 @@ impl FileBrowser {
                 } else if event.click_count() == 2 {
                     this.open_item(item_click.path.clone(), kind, cx);
                 } else {
+                    // Select the file, clear folder selection in this column,
+                    // and truncate trailing columns so no child menus appear.
+                    this.column_selected_path = Some((col_index, item_click.path.clone()));
+                    this.selected_paths.clear();
+                    this.selected_paths.insert(item_click.path.clone());
+                    this.column_trail.truncate(col_index + 1);
+                    this.column_listings = column_listings_for(
+                        &this.column_trail,
+                        &this.read_options,
+                        this.sort_preferences,
+                        &this.search_query,
+                    );
+                    this.column_scroll_handles.truncate(this.column_listings.len());
                     cx.notify();
                 }
             }))
