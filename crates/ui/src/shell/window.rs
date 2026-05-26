@@ -14,6 +14,27 @@ where
     E: Into<gpui::AnyView>,
     F: FnOnce(&mut Window, &mut App) -> E + Send + 'static,
 {
+    open_window(APP_NAME, crate_view_fn, cx);
+}
+
+pub fn open_window<F, E>(title: impl Into<SharedString>, crate_view_fn: F, cx: &mut App)
+where
+    E: Into<gpui::AnyView>,
+    F: FnOnce(&mut Window, &mut App) -> E + Send + 'static,
+{
+    open_window_with_close_handler(title, crate_view_fn, |_, _| true, cx);
+}
+
+pub fn open_window_with_close_handler<F, E, C>(
+    title: impl Into<SharedString>,
+    crate_view_fn: F,
+    on_should_close: C,
+    cx: &mut App,
+) where
+    E: Into<gpui::AnyView>,
+    F: FnOnce(&mut Window, &mut App) -> E + Send + 'static,
+    C: Fn(&mut Window, &mut App) -> bool + Send + 'static,
+{
     let (width, height) = window_size();
     let mut window_size = size(px(width), px(height));
     if let Some(display) = cx.primary_display() {
@@ -22,9 +43,10 @@ where
         window_size.height = window_size.height.min(display_size.height * 0.85);
     }
     let window_bounds = Bounds::centered(None, window_size, cx);
-    let title = SharedString::from(APP_NAME);
+    let title = title.into();
 
     cx.spawn(async move |cx| {
+        let mut on_should_close = Some(on_should_close);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
             titlebar: Some(TitleBar::title_bar_options()),
@@ -42,6 +64,9 @@ where
 
         let window = cx
             .open_window(options, |window, cx| {
+                if let Some(on_should_close) = on_should_close.take() {
+                    window.on_window_should_close(cx, on_should_close);
+                }
                 let view = crate_view_fn(window, cx);
                 let shell = cx.new(|cx| AppShell::new(view, window, cx));
 

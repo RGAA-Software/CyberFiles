@@ -1,5 +1,6 @@
 mod app_state;
 mod color_icon;
+mod cyber_editor;
 mod drag;
 mod file_browser;
 mod file_ops;
@@ -27,13 +28,15 @@ rust_i18n::i18n!("locales", fallback = "en");
 use gpui::App;
 
 pub use cyberfiles_assets::Assets;
+pub use cyber_editor::CyberEditorPage;
 pub use i18n::{init_locale, locale, set_locale};
 pub use main_page::MainPage;
 pub use popup_menu::{ContextMenuExt, DropdownMenu, PopupMenu, PopupMenuItem};
-pub use shell::open_main_window;
+pub use shell::{open_main_window, open_window, open_window_with_close_handler};
 
 pub fn init(cx: &mut App) {
     cyberfiles_commands::init(cx);
+    cyber_editor::init(cx);
 
     let config = cyberfiles_core::load_config();
     if let Some(ref cfg) = config {

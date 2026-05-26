@@ -11,6 +11,6 @@ mod window;
 
 pub use pane_shell::PaneShell;
 pub use shell_panes::{PaneSide, ShellPanes};
-pub use window::open_main_window;
+pub use window::{open_main_window, open_window, open_window_with_close_handler};
 
 pub(crate) use actions::*;
