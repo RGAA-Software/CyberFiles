@@ -46,7 +46,7 @@ pub use ops::{
     create_directory, create_file, delete_paths, recycle_paths, rename_path, unique_new_file_name,
     unique_new_folder_name,
 };
-pub use preview::{is_image_path, is_text_preview_path, read_text_preview};
+pub use preview::{is_image_path, is_text_preview_path, preview_kind, read_text_preview, PreviewKind};
 pub use recent::{list_recent_files, recent_documents_enabled, RecentItem};
 pub use recycle::read_recycle_bin;
 pub use search::filter_items_by_query;

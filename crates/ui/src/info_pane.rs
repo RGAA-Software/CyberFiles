@@ -1,5 +1,5 @@
 use cyberfiles_fs::{
-    is_image_path, is_text_preview_path, read_text_preview, FileItem, FileItemKind,
+    preview_kind, read_text_preview, FileItem, FileItemKind, PreviewKind,
 };
 use gpui::{img, prelude::*, ObjectFit, *};
 use gpui_component::{
@@ -7,6 +7,7 @@ use gpui_component::{
     description_list::{DescriptionItem, DescriptionList},
     h_flex,
     label::Label,
+    scroll::ScrollableElement as _,
     v_flex, ActiveTheme as _, IconName,
 };
 use rust_i18n::t;
@@ -132,35 +133,89 @@ fn preview_panel(item: Option<&FileItem>, cx: &mut Context<InfoPane>) -> impl In
                     "info-pane-preview-folder",
                     t!("info_pane.preview.folder").to_string(),
                 ))
-            } else if is_image_path(&item.path) {
-                panel.child(
-                    img(item.path.clone())
-                        .w_full()
-                        .max_h(px(360.))
-                        .object_fit(ObjectFit::Contain),
-                )
-            } else if is_text_preview_path(&item.path) {
-                panel.child(preview_text_content(&item.path, cx))
             } else {
-                panel.child(Alert::warning(
-                    "info-pane-preview-unsupported",
-                    t!("info_pane.preview.unsupported").to_string(),
-                ))
+                match preview_kind(&item.path) {
+                    Some(PreviewKind::Image | PreviewKind::Svg) => {
+                        panel.child(preview_image_content(&item.path))
+                    }
+                    Some(kind @ (PreviewKind::Markdown | PreviewKind::Html | PreviewKind::Code | PreviewKind::Text)) => {
+                        panel.child(preview_text_content(&item.path, kind, cx))
+                    }
+                    None => panel.child(Alert::warning(
+                        "info-pane-preview-unsupported",
+                        t!("info_pane.preview.unsupported").to_string(),
+                    )),
+                }
             }
         })
 }
 
-fn preview_text_content(path: &std::path::Path, cx: &mut Context<InfoPane>) -> AnyElement {
+fn preview_image_content(path: &std::path::Path) -> impl IntoElement {
+    img(path.to_path_buf())
+        .w_full()
+        .max_h(px(360.))
+        .object_fit(ObjectFit::Contain)
+}
+
+fn preview_text_content(
+    path: &std::path::Path,
+    kind: PreviewKind,
+    cx: &mut Context<InfoPane>,
+) -> AnyElement {
     match read_text_preview(path) {
-        Ok(text) => v_flex()
-            .w_full()
-            .p_2()
-            .rounded(cx.theme().radius)
-            .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().muted)
-            .child(Label::new(text).text_xs().text_color(cx.theme().foreground))
-            .into_any_element(),
+        Ok(text) => {
+            let is_code_like = matches!(
+                kind,
+                PreviewKind::Code | PreviewKind::Html | PreviewKind::Markdown
+            );
+            v_flex()
+                .w_full()
+                .gap_2()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(icon_foreground(IconName::File, cx))
+                        .child(
+                            Label::new(preview_kind_title(kind))
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(cx.theme().foreground),
+                        )
+                        .child(
+                            Label::new(
+                                path.extension()
+                                    .and_then(|ext| ext.to_str())
+                                    .map(|ext| format!(".{ext}"))
+                                    .unwrap_or_default(),
+                            )
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground),
+                        ),
+                )
+                .child(
+                    div()
+                        .w_full()
+                        .max_h(px(420.))
+                        .overflow_y_scrollbar()
+                        .p_2()
+                        .rounded(cx.theme().radius)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .bg(cx.theme().muted)
+                        .child(
+                            div()
+                                .w_full()
+                                .text_xs()
+                                .text_color(cx.theme().foreground)
+                                .when(is_code_like, |this| {
+                                    this.font_family(cx.theme().mono_font_family.clone())
+                                })
+                                .child(text),
+                        ),
+                )
+                .into_any_element()
+        }
         Err(error) => Alert::error(
             "info-pane-preview-error",
             format!("{}: {error}", t!("info_pane.preview.error")),
@@ -174,6 +229,17 @@ fn empty_preview() -> Alert {
         "info-pane-preview-empty",
         t!("info_pane.preview.empty").to_string(),
     )
+}
+
+fn preview_kind_title(kind: PreviewKind) -> &'static str {
+    match kind {
+        PreviewKind::Image => "Image preview",
+        PreviewKind::Svg => "SVG preview",
+        PreviewKind::Markdown => "Markdown preview",
+        PreviewKind::Html => "HTML preview",
+        PreviewKind::Code => "Code preview",
+        PreviewKind::Text => "Text preview",
+    }
 }
 
 fn item_details(item: Option<&FileItem>) -> (Option<String>, Vec<(String, String)>) {
