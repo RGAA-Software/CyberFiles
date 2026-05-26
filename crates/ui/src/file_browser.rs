@@ -46,10 +46,9 @@ use gpui::{
     FocusHandle, Focusable, ParentElement, ScrollStrategy, Subscription, Window, *,
 };
 use gpui_component::{
-    button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     h_flex,
-    input::{Input, InputState},
+    input::{Input, InputEvent, InputState},
     notification::Notification,
     scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis, ScrollbarShow},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, ElementExt as _, IconName,
@@ -144,6 +143,7 @@ impl Render for DragPathPreview {
 struct RenameState {
     path: PathBuf,
     input: Entity<InputState>,
+    _subscription: Subscription,
 }
 
 #[derive(Clone, Debug)]
@@ -1865,7 +1865,62 @@ impl FileBrowser {
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_default();
         let input = cx.new(|cx| InputState::new(window, cx).default_value(default_name));
-        self.renaming = Some(RenameState { path, input });
+        let browser = cx.entity().clone();
+        let rename_path = path.clone();
+        let subscription = cx.subscribe(&input, move |_, _, event: &InputEvent, cx| match event {
+            InputEvent::PressEnter { .. } => {
+                cx.stop_propagation();
+                let browser = browser.clone();
+                let rename_path = rename_path.clone();
+                cx.defer(move |cx| {
+                    let Some(window) = cx.active_window() else {
+                        return;
+                    };
+                    let _ = window.update(cx, |_, window, cx| {
+                        let _ = browser.update(cx, |this, cx| {
+                            if this
+                                .renaming
+                                .as_ref()
+                                .is_some_and(|renaming| renaming.path == rename_path)
+                            {
+                                this.commit_rename(window, cx);
+                                cx.notify();
+                            }
+                        });
+                    });
+                });
+            }
+            InputEvent::Blur => {
+                let browser = browser.clone();
+                let rename_path = rename_path.clone();
+                cx.defer(move |cx| {
+                    let Some(window) = cx.active_window() else {
+                        return;
+                    };
+                    let _ = window.update(cx, |_, window, cx| {
+                        let _ = browser.update(cx, |this, cx| {
+                            if this
+                                .renaming
+                                .as_ref()
+                                .is_some_and(|renaming| renaming.path == rename_path)
+                            {
+                                this.commit_rename(window, cx);
+                                cx.notify();
+                            }
+                        });
+                    });
+                });
+            }
+            _ => {}
+        });
+        input.update(cx, |state, cx| {
+            state.focus(window, cx);
+        });
+        self.renaming = Some(RenameState {
+            path,
+            input,
+            _subscription: subscription,
+        });
     }
 
     fn commit_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1899,6 +1954,45 @@ impl FileBrowser {
 
     fn cancel_rename(&mut self) {
         self.renaming = None;
+    }
+
+    fn renaming_input_for(&self, path: &Path) -> Option<Entity<InputState>> {
+        self.renaming
+            .as_ref()
+            .filter(|renaming| renaming.path == path)
+            .map(|renaming| renaming.input.clone())
+    }
+
+    fn inline_name_editor(
+        input: Entity<InputState>,
+        centered: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let input = if centered {
+            Input::new(&input)
+                .appearance(false)
+                .small()
+                .text_center()
+                .into_any_element()
+        } else {
+            Input::new(&input)
+                .appearance(false)
+                .small()
+                .w_full()
+                .into_any_element()
+        };
+
+        div()
+            .w_full()
+            .min_w_0()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_, _, _, cx| {
+                    cx.stop_propagation();
+                }),
+            )
+            .child(input)
+            .into_any_element()
     }
 
     fn rewrite_paths_after_rename(&mut self, from: &Path, to: &Path) -> bool {
@@ -2381,8 +2475,16 @@ impl FileBrowser {
                                                         || this.selected_paths.contains(&item.path)
                                                 };
                                                 let drag_paths = vec![item.path.clone()];
+                                                let rename_input = this.renaming_input_for(&item.path);
                                                 Some(Self::column_cell(
-                                                    window, col_index, index, item, is_selected, drag_paths, cx,
+                                                    window,
+                                                    col_index,
+                                                    index,
+                                                    item,
+                                                    is_selected,
+                                                    drag_paths,
+                                                    rename_input,
+                                                    cx,
                                                 ))
                                             })
                                             .collect()
@@ -2461,6 +2563,7 @@ impl FileBrowser {
         item: FileItem,
         selected: bool,
         drag_paths: Vec<PathBuf>,
+        rename_input: Option<Entity<InputState>>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let kind = item.kind;
@@ -2567,7 +2670,12 @@ impl FileBrowser {
                     .overflow_hidden()
                     .text_ellipsis()
                     .text_sm()
-                    .child(name),
+                    .child(
+                        rename_input.map_or_else(
+                            || div().w_full().child(name).into_any_element(),
+                            |input| Self::inline_name_editor(input, false, cx),
+                        ),
+                    ),
             )
             .into_any_element()
     }
@@ -2615,8 +2723,15 @@ impl FileBrowser {
                                         let selected = this.selected_paths.contains(&item.path);
                                         let drag_paths =
                                             this.drag_paths_for_item(index, &item.path);
+                                        let rename_input = this.renaming_input_for(&item.path);
                                         Some(Self::row(
-                                            window, index, item, selected, drag_paths, cx,
+                                            window,
+                                            index,
+                                            item,
+                                            selected,
+                                            drag_paths,
+                                            rename_input,
+                                            cx,
                                         ))
                                     })
                                     .collect()
@@ -2676,8 +2791,15 @@ impl FileBrowser {
                                         let selected = this.selected_paths.contains(&item.path);
                                         let drag_paths =
                                             this.drag_paths_for_item(index, &item.path);
+                                        let rename_input = this.renaming_input_for(&item.path);
                                         Some(Self::list_row(
-                                            window, index, item, selected, drag_paths, cx,
+                                            window,
+                                            index,
+                                            item,
+                                            selected,
+                                            drag_paths,
+                                            rename_input,
+                                            cx,
                                         ))
                                     })
                                     .collect()
@@ -2695,6 +2817,7 @@ impl FileBrowser {
         item: FileItem,
         selected: bool,
         drag_paths: Vec<PathBuf>,
+        rename_input: Option<Entity<InputState>>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let open_path = item.path.clone();
@@ -2765,7 +2888,12 @@ impl FileBrowser {
                     .text_ellipsis()
                     .text_sm()
                     .text_color(cx.theme().foreground)
-                    .child(item.display_name.clone()),
+                    .child(
+                        rename_input.map_or_else(
+                            || div().w_full().child(item.display_name.clone()).into_any_element(),
+                            |input| Self::inline_name_editor(input, false, cx),
+                        ),
+                    ),
             )
             .into_any_element()
     }
@@ -2854,7 +2982,19 @@ impl FileBrowser {
                                                         let item = this.display_items[index].clone();
                                                         let selected = this.selected_paths.contains(&item.path);
                                                         let drag_paths = this.drag_paths_for_item(index, &item.path);
-                                                        Self::grid_cell(window, index, item, selected, drag_paths, cell_w, cell_h, icon_size, cx)
+                                                        let rename_input = this.renaming_input_for(&item.path);
+                                                        Self::grid_cell(
+                                                            window,
+                                                            index,
+                                                            item,
+                                                            selected,
+                                                            drag_paths,
+                                                            rename_input,
+                                                            cell_w,
+                                                            cell_h,
+                                                            icon_size,
+                                                            cx,
+                                                        )
                                                     })
                                                 )
                                                 .into_any_element(),
@@ -2951,7 +3091,16 @@ impl FileBrowser {
                                                         let item = this.display_items[index].clone();
                                                         let selected = this.selected_paths.contains(&item.path);
                                                         let drag_paths = this.drag_paths_for_item(index, &item.path);
-                                                        Self::card_cell(window, index, item, selected, drag_paths, cx)
+                                                        let rename_input = this.renaming_input_for(&item.path);
+                                                        Self::card_cell(
+                                                            window,
+                                                            index,
+                                                            item,
+                                                            selected,
+                                                            drag_paths,
+                                                            rename_input,
+                                                            cx,
+                                                        )
                                                     })
                                                 )
                                                 .into_any_element(),
@@ -2973,6 +3122,7 @@ impl FileBrowser {
         item: FileItem,
         selected: bool,
         drag_paths: Vec<PathBuf>,
+        rename_input: Option<Entity<InputState>>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let open_path = item.path.clone();
@@ -3043,7 +3193,12 @@ impl FileBrowser {
                     .text_ellipsis()
                     .text_sm()
                     .text_color(cx.theme().foreground)
-                    .child(item.display_name.clone()),
+                    .child(
+                        rename_input.map_or_else(
+                            || div().w_full().child(item.display_name.clone()).into_any_element(),
+                            |input| Self::inline_name_editor(input, false, cx),
+                        ),
+                    ),
             )
             .child(
                 div()
@@ -3095,6 +3250,7 @@ impl FileBrowser {
         item: FileItem,
         selected: bool,
         drag_paths: Vec<PathBuf>,
+        rename_input: Option<Entity<InputState>>,
         cell_w: Pixels,
         cell_h: Pixels,
         icon_size: Pixels,
@@ -3164,7 +3320,12 @@ impl FileBrowser {
                     .text_xs()
                     .overflow_hidden()
                     .text_ellipsis()
-                    .child(name),
+                    .child(
+                        rename_input.map_or_else(
+                            || div().w_full().child(name).into_any_element(),
+                            |input| Self::inline_name_editor(input, true, cx),
+                        ),
+                    ),
             )
             .into_any_element()
     }
@@ -3175,6 +3336,7 @@ impl FileBrowser {
         item: FileItem,
         selected: bool,
         drag_paths: Vec<PathBuf>,
+        rename_input: Option<Entity<InputState>>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let open_path = item.path.clone();
@@ -3241,7 +3403,12 @@ impl FileBrowser {
                     .text_sm()
                     .overflow_hidden()
                     .text_ellipsis()
-                    .child(name),
+                    .child(
+                        rename_input.map_or_else(
+                            || div().w_full().child(name).into_any_element(),
+                            |input| Self::inline_name_editor(input, true, cx),
+                        ),
+                    ),
             )
             .when(item.size.is_some(), |this| {
                 this.child(
@@ -3270,42 +3437,6 @@ impl FileBrowser {
             .into_any_element()
     }
 
-    fn rename_bar(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let renaming = self.renaming.as_ref()?;
-        Some(
-            h_flex()
-                .gap_2()
-                .items_center()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(t!("files.rename.prompt")),
-                )
-                .child(div().flex_1().child(Input::new(&renaming.input)))
-                .child(
-                    Button::new("rename-confirm")
-                        .small()
-                        .primary()
-                        .label(t!("files.rename.confirm"))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.commit_rename(window, cx);
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("rename-cancel")
-                        .small()
-                        .ghost()
-                        .label(t!("files.cancel"))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.cancel_rename();
-                            cx.notify();
-                        })),
-                )
-                .into_any_element(),
-        )
-    }
 }
 
 impl Focusable for FileBrowser {
@@ -3321,6 +3452,10 @@ impl FileBrowser {
     }
 
     fn on_open_item(&mut self, _: &OpenItem, _: &mut Window, cx: &mut Context<Self>) {
+        if self.renaming.is_some() {
+            cx.stop_propagation();
+            return;
+        }
         self.open_focused(cx);
     }
 
@@ -4077,7 +4212,6 @@ impl Render for FileBrowser {
                         ),
                 )
             })
-            .when_some(self.rename_bar(window, cx), |this, bar| this.child(bar))
             .when_some(self.error.as_ref(), |this, error| {
                 this.child(
                     div()
