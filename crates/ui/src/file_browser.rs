@@ -49,7 +49,7 @@ use gpui_component::{
     h_flex,
     input::{Input, InputState},
     notification::Notification,
-    scroll::{ScrollableElement as _, ScrollbarAxis},
+    scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis, ScrollbarShow},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, ElementExt as _, IconName,
     Sizable as _, VirtualListScrollHandle, WindowExt as _,
 };
@@ -250,6 +250,10 @@ pub struct FileBrowser {
     column_trail: Vec<PathBuf>,
     column_listings: Vec<Vec<FileItem>>,
     column_scroll_handles: Vec<VirtualListScrollHandle>,
+    columns_horizontal_scroll_handle: ScrollHandle,
+    columns_shell_bounds: Option<Bounds<Pixels>>,
+    columns_horizontal_overflow: bool,
+    columns_horizontal_column_count: usize,
     _directory_watcher: Option<DirectoryWatcher>,
     _watcher_task: Option<Task<()>>,
     watched_dir: Option<PathBuf>,
@@ -354,6 +358,10 @@ impl FileBrowser {
             column_trail,
             column_listings,
             column_scroll_handles,
+            columns_horizontal_scroll_handle: ScrollHandle::default(),
+            columns_shell_bounds: None,
+            columns_horizontal_overflow: false,
+            columns_horizontal_column_count: 0,
             _directory_watcher: None,
             _watcher_task: None,
             watched_dir: None,
@@ -1389,6 +1397,22 @@ impl FileBrowser {
         )
     }
 
+    fn update_columns_horizontal_scrollbar_state(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        _cx: &mut Context<Self>,
+    ) -> bool {
+        let overflow = COLUMN_WIDTH * self.column_trail.len().max(1) > bounds.size.width;
+        let overflow_changed = self.columns_horizontal_overflow != overflow;
+        let bounds_changed = self.columns_shell_bounds != Some(bounds);
+
+        self.columns_shell_bounds = Some(bounds);
+        self.columns_horizontal_overflow = overflow;
+        self.columns_horizontal_column_count = self.column_trail.len();
+
+        bounds_changed || overflow_changed
+    }
+
     fn main_grid_sweep_hit_indices(&self, selection_rect: Bounds<Pixels>) -> Vec<usize> {
         let Some(bounds) = self.main_sweep_bounds else {
             return Vec::new();
@@ -2255,31 +2279,60 @@ impl FileBrowser {
             })
             .collect::<Vec<_>>();
 
-        h_flex()
-            .id("files-columns-wrap")
+        v_flex()
+            .id("files-columns-shell")
             .size_full()
             .flex_1()
             .min_h_0()
-            .w_full()
-            .items_start()
-            .overflow_x_scroll()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    this.active_column_index = None;
-                    this.clear_selection();
-                    cx.notify();
-                }),
+            .on_prepaint({
+                let entity = cx.entity().clone();
+                move |bounds, window, cx| {
+                    let changed = entity.update(cx, |this, cx| {
+                        this.update_columns_horizontal_scrollbar_state(bounds, cx)
+                    });
+                    if changed {
+                        window.refresh();
+                    }
+                }
+            })
+            .child(
+                h_flex()
+                    .id("files-columns-wrap")
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .items_start()
+                    .overflow_x_scroll()
+                    .map(|mut this| {
+                        this.style().restrict_scroll_to_axis = Some(true);
+                        this
+                    })
+                    .track_scroll(&self.columns_horizontal_scroll_handle)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.active_column_index = None;
+                            this.clear_selection();
+                            cx.notify();
+                        }),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                            this.clear_selection();
+                            this.set_context_menu_extended_verbs(event.modifiers.shift);
+                            this.open_context_menu(event.position, window, cx);
+                        }),
+                    )
+                    .children(columns),
             )
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(|this, event: &MouseDownEvent, window, cx| {
-                    this.clear_selection();
-                    this.set_context_menu_extended_verbs(event.modifiers.shift);
-                    this.open_context_menu(event.position, window, cx);
-                }),
-            )
-            .children(columns)
+            .when(self.columns_horizontal_overflow, |this| {
+                this.child(
+                    Scrollbar::horizontal(&self.columns_horizontal_scroll_handle)
+                        .id("files-columns-horizontal-scrollbar")
+                        .scrollbar_show(ScrollbarShow::Always),
+                )
+            })
     }
 
     fn column_cell(
