@@ -1,6 +1,14 @@
 use super::*;
 
 impl FileBrowser {
+    pub(super) fn dismiss_main_page_path_edit_if_active(cx: &mut Context<Self>) {
+        if let Some(nav) = cx.try_global::<AppNavigation>() {
+            nav.main_page().update(cx, |page, cx| {
+                page.dismiss_omnibar_path_edit(cx);
+            });
+        }
+    }
+
     pub(super) fn file_list(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.schedule_list_icon_warm(window, cx);
         match self.view_mode {
@@ -42,6 +50,7 @@ impl FileBrowser {
                         MouseButton::Left,
                         cx.listener(move |this, _, _, cx| {
                             this.cancel_rename_if_active(cx);
+                            Self::dismiss_main_page_path_edit_if_active(cx);
                             this.activate_column(col_index, cx);
                             cx.stop_propagation();
                         }),
@@ -78,6 +87,7 @@ impl FileBrowser {
                                 MouseButton::Left,
                                 cx.listener(move |this, event: &MouseDownEvent, _, cx| {
                                     this.cancel_rename_if_active(cx);
+                                    Self::dismiss_main_page_path_edit_if_active(cx);
                                     this.begin_sweep_selection(
                                         SweepSelectionSurface::Column(col_index),
                                         event.position,
@@ -213,6 +223,7 @@ impl FileBrowser {
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
                             this.cancel_rename_if_active(cx);
+                            Self::dismiss_main_page_path_edit_if_active(cx);
                             this.active_column_index = None;
                             this.clear_selection();
                             cx.notify();
@@ -222,6 +233,7 @@ impl FileBrowser {
                         MouseButton::Right,
                         cx.listener(|this, event: &MouseDownEvent, window, cx| {
                             this.cancel_rename_if_active(cx);
+                            Self::dismiss_main_page_path_edit_if_active(cx);
                             this.clear_selection();
                             this.set_context_menu_extended_verbs(event.modifiers.shift);
                             this.open_context_menu(event.position, window, cx);
@@ -270,6 +282,7 @@ impl FileBrowser {
                 MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, _, cx| {
                     this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     if event.modifiers.shift || event.modifiers.secondary() {
                         this.begin_sweep_selection(
                             SweepSelectionSurface::Column(col_index),
@@ -285,6 +298,7 @@ impl FileBrowser {
                 cx.stop_propagation();
                 window.focus(&this.focus_handle, cx);
                 this.cancel_rename_if_active(cx);
+                Self::dismiss_main_page_path_edit_if_active(cx);
                 if event.modifiers().shift || event.modifiers().secondary() {
                     this.handle_column_item_click(
                         col_index,
@@ -313,6 +327,7 @@ impl FileBrowser {
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
                     this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_column_context_menu_target(col_index, index);
                     this.open_context_menu(event.position, window, cx);
@@ -440,6 +455,8 @@ impl FileBrowser {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     this.clear_selection();
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.open_context_menu(event.position, window, cx);
@@ -523,12 +540,16 @@ impl FileBrowser {
             })
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|_, _, _, cx| {
+                cx.listener(|this, _, _, cx| {
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     cx.stop_propagation();
                 }),
             )
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus_handle, cx);
+                this.cancel_rename_if_active(cx);
+                Self::dismiss_main_page_path_edit_if_active(cx);
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
@@ -540,6 +561,8 @@ impl FileBrowser {
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
                     this.open_context_menu(event.position, window, cx);
@@ -613,6 +636,8 @@ impl FileBrowser {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     this.clear_selection();
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.open_context_menu(event.position, window, cx);
@@ -720,6 +745,8 @@ impl FileBrowser {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     this.clear_selection();
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.open_context_menu(event.position, window, cx);
@@ -824,12 +851,16 @@ impl FileBrowser {
             })
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|_, _, _, cx| {
+                cx.listener(|this, _, _, cx| {
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     cx.stop_propagation();
                 }),
             )
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus_handle, cx);
+                this.cancel_rename_if_active(cx);
+                Self::dismiss_main_page_path_edit_if_active(cx);
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
@@ -841,6 +872,8 @@ impl FileBrowser {
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
                     this.open_context_menu(event.position, window, cx);
@@ -957,12 +990,16 @@ impl FileBrowser {
             })
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|_, _, _, cx| {
+                cx.listener(|this, _, _, cx| {
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     cx.stop_propagation();
                 }),
             )
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus_handle, cx);
+                this.cancel_rename_if_active(cx);
+                Self::dismiss_main_page_path_edit_if_active(cx);
                 if event.click_count() == 2 {
                     this.open_item(double_click_path.clone(), kind, cx);
                 } else {
@@ -974,6 +1011,8 @@ impl FileBrowser {
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
+                    this.cancel_rename_if_active(cx);
+                    Self::dismiss_main_page_path_edit_if_active(cx);
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_context_menu_target(index);
                     this.open_context_menu(event.position, window, cx);

@@ -479,6 +479,8 @@ impl Render for FileBrowser {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                            this.cancel_rename_if_active(cx);
+                            Self::dismiss_main_page_path_edit_if_active(cx);
                             this.begin_sweep_selection(
                                 SweepSelectionSurface::Main,
                                 event.position,
@@ -514,6 +516,8 @@ impl Render for FileBrowser {
                     .on_mouse_down(
                         MouseButton::Middle,
                         cx.listener(|this, _, _, cx| {
+                            this.cancel_rename_if_active(cx);
+                            Self::dismiss_main_page_path_edit_if_active(cx);
                             this.clear_selection();
                             cx.notify();
                         }),
@@ -521,6 +525,8 @@ impl Render for FileBrowser {
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                            this.cancel_rename_if_active(cx);
+                            Self::dismiss_main_page_path_edit_if_active(cx);
                             this.clear_selection();
                             this.set_context_menu_extended_verbs(event.modifiers.shift);
                             this.open_context_menu(event.position, window, cx);
