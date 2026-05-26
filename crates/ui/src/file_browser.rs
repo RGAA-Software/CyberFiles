@@ -23,10 +23,10 @@ use crate::toolbar_button::TOOLBAR_BUTTON_PX;
 use crate::toolbar_button::{toolbar_dropdown_button, toolbar_icon_button, toolbar_labeled_button};
 use chrono::{DateTime, Local};
 use cyberfiles_commands::{
-    CompressItems, CopyItems, CopyPath, CutItems, DeleteItems, DeleteItemsPermanent, FocusSearch,
-    NavigateNext, NavigatePrevious, NewFile, NewFolder, OpenItem, PasteItems, RefreshDirectory,
-    RenameItem, SelectAll, ShellProperties, ViewCards, ViewColumns, ViewDetails, ViewGrid,
-    ViewList, FILE_BROWSER,
+    CancelRename, CompressItems, CopyItems, CopyPath, CutItems, DeleteItems,
+    DeleteItemsPermanent, FocusSearch, NavigateNext, NavigatePrevious, NewFile, NewFolder,
+    OpenItem, PasteItems, RefreshDirectory, RenameItem, SelectAll, ShellProperties, ViewCards,
+    ViewColumns, ViewDetails, ViewGrid, ViewList, FILE_BROWSER,
 };
 use cyberfiles_core::{
     file_sort_prefs_from_config, file_view_mode_from_config, load_config, save_file_browser_prefs,
@@ -1821,19 +1821,31 @@ impl FileBrowser {
     }
 
     pub fn primary_selected_item(&self) -> Option<&FileItem> {
-        if self.selected_paths.len() != 1 {
-            return None;
+        if self.selected_paths.len() == 1 {
+            let path = self.selected_paths.iter().next()?;
+            return self
+                .display_items
+                .iter()
+                .find(|item| &item.path == path)
+                .or_else(|| {
+                    self.column_listings
+                        .iter()
+                        .flat_map(|list| list.iter())
+                        .find(|item| &item.path == path)
+                });
         }
-        let path = self.selected_paths.iter().next()?;
-        self.display_items
-            .iter()
-            .find(|item| &item.path == path)
-            .or_else(|| {
-                self.column_listings
-                    .iter()
-                    .flat_map(|list| list.iter())
-                    .find(|item| &item.path == path)
-            })
+
+        if self.view_mode == ViewMode::Columns
+            && self.browse_location == BrowseLocation::Directory
+            && self.selected_paths.is_empty()
+        {
+            return self.column_listings.iter().enumerate().find_map(|(col_index, items)| {
+                let selected_path = self.column_trail.get(col_index + 1)?;
+                items.iter().find(|item| item.path == *selected_path)
+            });
+        }
+
+        None
     }
 
     fn primary_path(&self) -> Option<PathBuf> {
@@ -1864,10 +1876,18 @@ impl FileBrowser {
         match rename_path(&renaming.path, &new_name) {
             Ok(target) => {
                 self.error = None;
+                let location_changed = self.rewrite_paths_after_rename(&renaming.path, &target);
                 if self.selected_paths.remove(&renaming.path) {
                     self.selected_paths.insert(target);
                 }
                 self.refresh();
+                if location_changed || self.watched_dir.as_ref() != Some(&self.current_dir) {
+                    self.watched_dir = Some(self.current_dir.clone());
+                    self.restart_directory_watcher(cx);
+                }
+                if location_changed {
+                    Self::emit_location_changed(cx);
+                }
                 window.push_notification(Notification::success(t!("files.rename.success")), cx);
             }
             Err(error) => {
@@ -1879,6 +1899,41 @@ impl FileBrowser {
 
     fn cancel_rename(&mut self) {
         self.renaming = None;
+    }
+
+    fn rewrite_paths_after_rename(&mut self, from: &Path, to: &Path) -> bool {
+        let mut location_changed = false;
+
+        if let Some(path) = renamed_path(&self.current_dir, from, to) {
+            self.current_dir = path;
+            location_changed = true;
+        }
+
+        rewrite_path_list(&mut self.back_stack, from, to);
+        rewrite_path_list(&mut self.forward_stack, from, to);
+        rewrite_path_list(&mut self.column_trail, from, to);
+
+        if let Some(path) = self
+            .watched_dir
+            .as_ref()
+            .and_then(|path| renamed_path(path, from, to))
+        {
+            self.watched_dir = Some(path);
+        }
+
+        self.selected_paths = self
+            .selected_paths
+            .iter()
+            .map(|path| renamed_path(path, from, to).unwrap_or_else(|| path.clone()))
+            .collect();
+
+        if let Some((col_index, path)) = self.column_selected_path.as_ref() {
+            if let Some(path) = renamed_path(path, from, to) {
+                self.column_selected_path = Some((*col_index, path));
+            }
+        }
+
+        location_changed
     }
 
     fn create_folder_from_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -3276,12 +3331,15 @@ impl FileBrowser {
     }
 
     fn on_rename(&mut self, _: &RenameItem, window: &mut Window, cx: &mut Context<Self>) {
-        if self.primary_selected_item().is_some_and(|item| item.kind == FileItemKind::Folder) {
-            cx.stop_propagation();
-            return;
-        }
         self.begin_rename(window, cx);
         cx.notify();
+    }
+
+    fn on_cancel_rename(&mut self, _: &CancelRename, _: &mut Window, cx: &mut Context<Self>) {
+        if self.renaming.is_some() {
+            self.cancel_rename();
+            cx.notify();
+        }
     }
 
     fn on_delete(&mut self, _: &DeleteItems, window: &mut Window, cx: &mut Context<Self>) {
@@ -3806,6 +3864,7 @@ impl Render for FileBrowser {
             .on_action(cx.listener(Self::on_open_item))
             .on_action(cx.listener(Self::on_select_all))
             .on_action(cx.listener(Self::on_rename))
+            .on_action(cx.listener(Self::on_cancel_rename))
             .on_action(cx.listener(Self::on_delete))
             .on_action(cx.listener(Self::on_delete_permanent))
             .on_action(cx.listener(Self::on_new_folder))
@@ -4364,6 +4423,23 @@ fn create_compress_partial_file(path: &Path) -> anyhow::Result<bool> {
         Ok(_) => Ok(true),
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
         Err(error) => Err(error.into()),
+    }
+}
+
+fn renamed_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
+    if path == from {
+        return Some(to.to_path_buf());
+    }
+
+    let suffix = path.strip_prefix(from).ok()?;
+    Some(to.join(suffix))
+}
+
+fn rewrite_path_list(paths: &mut Vec<PathBuf>, from: &Path, to: &Path) {
+    for path in paths.iter_mut() {
+        if let Some(updated) = renamed_path(path, from, to) {
+            *path = updated;
+        }
     }
 }
 
