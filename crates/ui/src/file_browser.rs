@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use std::{
@@ -286,7 +286,7 @@ pub struct FileBrowser {
     active_column_index: Option<usize>,
     sweep_selection: Option<SweepSelectionState>,
     main_sweep_bounds: Option<Bounds<Pixels>>,
-    column_sweep_bounds: Option<(usize, Bounds<Pixels>)>,
+    column_sweep_bounds: BTreeMap<usize, Bounds<Pixels>>,
 }
 
 impl FileBrowser {
@@ -386,7 +386,7 @@ impl FileBrowser {
             active_column_index: None,
             sweep_selection: None,
             main_sweep_bounds: None,
-            column_sweep_bounds: None,
+            column_sweep_bounds: BTreeMap::new(),
         }
     }
 
@@ -1260,10 +1260,7 @@ impl FileBrowser {
         if state.surface != SweepSelectionSurface::Column(col_index) {
             return;
         }
-        let Some(bounds) = self
-            .column_sweep_bounds
-            .and_then(|(index, bounds)| (index == col_index).then_some(bounds))
-        else {
+        let Some(bounds) = self.column_sweep_bounds.get(&col_index).copied() else {
             return;
         };
 
@@ -1377,9 +1374,7 @@ impl FileBrowser {
         if state.surface != SweepSelectionSurface::Column(col_index) {
             return None;
         }
-        let bounds = self
-            .column_sweep_bounds
-            .and_then(|(index, bounds)| (index == col_index).then_some(bounds))?;
+        let bounds = self.column_sweep_bounds.get(&col_index).copied()?;
         let selection_rect = self.sweep_rect_in_bounds(bounds);
 
         Some(
@@ -2205,7 +2200,7 @@ impl FileBrowser {
                                 let entity = cx.entity().clone();
                                 move |bounds, _window, cx| {
                                     let _ = entity.update(cx, |this, _cx| {
-                                        this.column_sweep_bounds = Some((col_index, bounds));
+                                        this.column_sweep_bounds.insert(col_index, bounds);
                                     });
                                 }
                             })
