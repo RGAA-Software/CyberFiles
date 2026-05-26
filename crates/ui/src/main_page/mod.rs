@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use cyberfiles_core::{
-    load_config, record_path_history, save_config, ClosedTabSession, SessionPaneLayout, APP_NAME,
+    load_config, save_config, ClosedTabSession, SessionPaneLayout, APP_NAME,
 };
 
 const MAX_CLOSED_TABS: usize = 12;
@@ -15,17 +15,17 @@ use gpui_component::{
     v_flex,
 };
 
-use crate::file_ops::{spawn_file_transfer, FileTransferKind};
 use crate::info_pane::InfoPane;
 use crate::omnibar::OmnibarBreadcrumbCallbacks;
 use crate::shell::app_menus;
 use crate::shell::navigation::NavigationTarget;
 use crate::shell::preferences::persist_window_bounds;
 use crate::shell::ReopenClosedTabAt;
-use crate::shell::{PaneShell, ShellPanes};
+use crate::shell::ShellPanes;
 use crate::sidebar::SidebarSection;
 
 mod omnibar;
+mod navigation;
 mod render;
 mod render_shell;
 mod sidebar;
@@ -142,53 +142,6 @@ impl MainPage {
             }
         }
         this
-    }
-
-    pub fn open_path_in_new_tab(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        record_path_history(&path);
-        self.add_tab(NavigationTarget::Path(path), cx);
-    }
-
-    pub fn open_path_in_secondary_pane(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        record_path_history(&path);
-        let shell = self.active_shell();
-        shell.update(cx, |shell, cx| {
-            if !shell.dual_pane() {
-                shell.toggle_dual_pane(cx);
-            }
-            shell.secondary().update(cx, |pane, cx| {
-                pane.open_path(path, cx);
-            });
-            shell.set_active(crate::shell::PaneSide::Secondary, cx);
-        });
-        cx.notify();
-    }
-
-    pub fn drop_paths_on_directory(
-        &mut self,
-        dest: PathBuf,
-        paths: Vec<PathBuf>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if paths.is_empty() || !dest.is_dir() {
-            return;
-        }
-        if paths.iter().all(|p| p.parent() == Some(dest.as_path())) {
-            return;
-        }
-        let copy = window.modifiers().control;
-        let kind = if copy {
-            FileTransferKind::Copy
-        } else {
-            FileTransferKind::Move
-        };
-        let pane = self.active_pane(cx);
-        let browser = pane.read(cx).file_browser().clone();
-        browser.update(cx, |_, cx| {
-            spawn_file_transfer(browser.clone(), window, cx, kind, paths, dest);
-        });
-        cx.notify();
     }
 
     pub fn view(_window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -321,49 +274,6 @@ impl MainPage {
         config.session_active_tab = self.active_tab;
         config.session_pane_layouts = layouts;
         let _ = save_config(&config);
-    }
-
-    fn active_shell(&self) -> Entity<ShellPanes> {
-        self.tabs[self.active_tab].shell.clone()
-    }
-
-    fn active_pane(&self, cx: &App) -> Entity<PaneShell> {
-        self.active_shell().read(cx).active_pane()
-    }
-
-    fn active_file_browser(&self, cx: &App) -> Entity<crate::file_browser::FileBrowser> {
-        self.active_pane(cx).read(cx).file_browser()
-    }
-
-    fn file_navigation_active(&self, cx: &App) -> bool {
-        matches!(
-            self.active_pane(cx).read(cx).target(),
-            NavigationTarget::Path(_) | NavigationTarget::RecycleBin | NavigationTarget::FileTag(_)
-        )
-    }
-
-    pub fn navigate_to(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
-        if let NavigationTarget::Path(ref path) = target {
-            record_path_history(path);
-        }
-        let shell = self.active_shell();
-        shell.update(cx, |shell, cx| {
-            shell.navigate_active(target, cx);
-        });
-        self.omnibar_show_full_path = false;
-        self.persist_session(cx);
-        cx.notify();
-    }
-
-    fn toggle_dual_pane(&mut self, cx: &mut Context<Self>) {
-        let shell = self.active_shell();
-        shell.update(cx, |shell, cx| shell.toggle_dual_pane(cx));
-        self.persist_session(cx);
-        cx.notify();
-    }
-
-    pub fn active_navigation_target(&self, cx: &App) -> NavigationTarget {
-        self.active_pane(cx).read(cx).current_navigation_target(cx)
     }
 
     fn toggle_info_pane(&mut self, cx: &mut Context<Self>) {
