@@ -48,7 +48,7 @@ use gpui::{
 use gpui_component::{
     dialog::DialogButtonProps,
     h_flex,
-    input::{Input, InputEvent, InputState},
+    input::{Input, InputEvent, InputState, SelectAll as InputSelectAll},
     notification::Notification,
     scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis, ScrollbarShow},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, ElementExt as _, IconName,
@@ -1821,6 +1821,18 @@ impl FileBrowser {
     }
 
     pub fn primary_selected_item(&self) -> Option<&FileItem> {
+        if self.view_mode == ViewMode::Columns
+            && self.browse_location == BrowseLocation::Directory
+        {
+            if let Some((selected_col, selected_path)) = self.column_selected_path.as_ref() {
+                if let Some(items) = self.column_listings.get(*selected_col) {
+                    if let Some(item) = items.iter().find(|item| item.path == *selected_path) {
+                        return Some(item);
+                    }
+                }
+            }
+        }
+
         if self.selected_paths.len() == 1 {
             let path = self.selected_paths.iter().next()?;
             return self
@@ -1839,10 +1851,15 @@ impl FileBrowser {
             && self.browse_location == BrowseLocation::Directory
             && self.selected_paths.is_empty()
         {
-            return self.column_listings.iter().enumerate().find_map(|(col_index, items)| {
-                let selected_path = self.column_trail.get(col_index + 1)?;
-                items.iter().find(|item| item.path == *selected_path)
-            });
+            return self
+                .column_listings
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(col_index, items)| {
+                    let selected_path = self.column_trail.get(col_index + 1)?;
+                    items.iter().find(|item| item.path == *selected_path)
+                });
         }
 
         None
@@ -1868,6 +1885,16 @@ impl FileBrowser {
         let browser = cx.entity().clone();
         let rename_path = path.clone();
         let subscription = cx.subscribe(&input, move |_, _, event: &InputEvent, cx| match event {
+            InputEvent::Focus => {
+                cx.defer(move |cx| {
+                    let Some(window) = cx.active_window() else {
+                        return;
+                    };
+                    let _ = window.update(cx, |_, window, cx| {
+                        window.dispatch_action(Box::new(InputSelectAll), cx);
+                    });
+                });
+            }
             InputEvent::PressEnter { .. } => {
                 cx.stop_propagation();
                 let browser = browser.clone();
@@ -1897,14 +1924,14 @@ impl FileBrowser {
                     let Some(window) = cx.active_window() else {
                         return;
                     };
-                    let _ = window.update(cx, |_, window, cx| {
+                    let _ = window.update(cx, |_, _, cx| {
                         let _ = browser.update(cx, |this, cx| {
                             if this
                                 .renaming
                                 .as_ref()
                                 .is_some_and(|renaming| renaming.path == rename_path)
                             {
-                                this.commit_rename(window, cx);
+                                this.cancel_rename();
                                 cx.notify();
                             }
                         });
@@ -1956,6 +1983,13 @@ impl FileBrowser {
         self.renaming = None;
     }
 
+    fn cancel_rename_if_active(&mut self, cx: &mut Context<Self>) {
+        if self.renaming.is_some() {
+            self.cancel_rename();
+            cx.notify();
+        }
+    }
+
     fn renaming_input_for(&self, path: &Path) -> Option<Entity<InputState>> {
         self.renaming
             .as_ref()
@@ -1985,6 +2019,12 @@ impl FileBrowser {
         div()
             .w_full()
             .min_w_0()
+            .px_1()
+            .py(px(1.))
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().primary)
+            .bg(cx.theme().background)
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|_, _, _, cx| {
@@ -2363,6 +2403,7 @@ impl FileBrowser {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, _, _, cx| {
+                            this.cancel_rename_if_active(cx);
                             this.activate_column(col_index, cx);
                             cx.stop_propagation();
                         }),
@@ -2398,6 +2439,7 @@ impl FileBrowser {
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                                    this.cancel_rename_if_active(cx);
                                     this.begin_sweep_selection(
                                         SweepSelectionSurface::Column(col_index),
                                         event.position,
@@ -2532,6 +2574,7 @@ impl FileBrowser {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
+                            this.cancel_rename_if_active(cx);
                             this.active_column_index = None;
                             this.clear_selection();
                             cx.notify();
@@ -2540,6 +2583,7 @@ impl FileBrowser {
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                            this.cancel_rename_if_active(cx);
                             this.clear_selection();
                             this.set_context_menu_extended_verbs(event.modifiers.shift);
                             this.open_context_menu(event.position, window, cx);
@@ -2588,6 +2632,7 @@ impl FileBrowser {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.cancel_rename_if_active(cx);
                     if event.modifiers.shift || event.modifiers.secondary() {
                         this.begin_sweep_selection(
                             SweepSelectionSurface::Column(col_index),
@@ -2602,6 +2647,7 @@ impl FileBrowser {
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 cx.stop_propagation();
                 window.focus(&this.focus_handle, cx);
+                this.cancel_rename_if_active(cx);
                 if event.modifiers().shift || event.modifiers().secondary() {
                     this.handle_column_item_click(
                         col_index,
@@ -2629,6 +2675,7 @@ impl FileBrowser {
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
+                    this.cancel_rename_if_active(cx);
                     this.set_context_menu_extended_verbs(event.modifiers.shift);
                     this.prepare_column_context_menu_target(col_index, index);
                     this.open_context_menu(event.position, window, cx);
