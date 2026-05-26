@@ -73,7 +73,7 @@ impl FileBrowser {
     }
 
     pub fn selected_count(&self) -> usize {
-        self.selected_paths.len()
+        self.effective_selected_paths().len()
     }
 
     pub fn can_go_back(&self) -> bool {

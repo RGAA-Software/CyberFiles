@@ -324,11 +324,25 @@ impl FileBrowser {
         None
     }
 
+    pub(super) fn effective_selected_paths(&self) -> Vec<PathBuf> {
+        if !self.selected_paths.is_empty() {
+            return self.selected_paths.iter().cloned().collect();
+        }
+
+        if self.view_mode == ViewMode::Columns
+            && self.browse_location == BrowseLocation::Directory
+        {
+            return self.primary_path().into_iter().collect();
+        }
+
+        Vec::new()
+    }
+
     pub(super) fn primary_path(&self) -> Option<PathBuf> {
         self.primary_selected_item().map(|item| item.path.clone())
     }
 
     pub(super) fn selected_paths_vec(&self) -> Vec<PathBuf> {
-        self.selected_paths.iter().cloned().collect()
+        self.effective_selected_paths()
     }
 }

@@ -1,6 +1,41 @@
 use super::*;
 
 impl FileBrowser {
+    fn cleanup_after_delete(&mut self, deleted_paths: &[PathBuf]) {
+        let removes_path = |candidate: &Path| {
+            deleted_paths
+                .iter()
+                .any(|deleted| candidate == deleted || candidate.starts_with(deleted))
+        };
+
+        self.back_stack.retain(|path| !removes_path(path));
+        self.forward_stack.retain(|path| !removes_path(path));
+        self.selected_paths.retain(|path| !removes_path(path));
+
+        if self
+            .column_selected_path
+            .as_ref()
+            .is_some_and(|(_, path)| removes_path(path))
+        {
+            self.column_selected_path = None;
+        }
+
+        if self.view_mode == ViewMode::Columns
+            && self.browse_location == BrowseLocation::Directory
+            && removes_path(&self.current_dir)
+        {
+            self.current_dir = self
+                .current_dir
+                .ancestors()
+                .skip(1)
+                .find(|path| !removes_path(path))
+                .map(Path::to_path_buf)
+                .unwrap_or_else(home_navigation_path);
+            self.active_column_index = None;
+            self.clear_selection();
+        }
+    }
+
     pub(super) fn operation_directory(&self) -> PathBuf {
         if self.view_mode == ViewMode::Columns
             && self.browse_location == BrowseLocation::Directory
@@ -246,6 +281,7 @@ impl FileBrowser {
                     let success = success.clone();
                     let paths = paths.clone();
                     cx.spawn(async move |cx| {
+                        let cleanup_paths = paths.clone();
                         let delete_result = cx
                             .background_spawn(async move {
                                 if permanent {
@@ -259,6 +295,7 @@ impl FileBrowser {
                         let _ = browser.update(cx, |browser, cx| {
                             let Some(window) = cx.active_window() else {
                                 if delete_result.is_ok() {
+                                    browser.cleanup_after_delete(&cleanup_paths);
                                     browser.clear_selection();
                                     browser.refresh();
                                 }
@@ -268,6 +305,7 @@ impl FileBrowser {
 
                             let _ = window.update(cx, |_, window, cx| match &delete_result {
                                 Ok(()) => {
+                                    browser.cleanup_after_delete(&cleanup_paths);
                                     browser.clear_selection();
                                     browser.refresh();
                                     window.push_notification(

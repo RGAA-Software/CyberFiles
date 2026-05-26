@@ -3,7 +3,7 @@ use super::*;
 impl FileBrowser {
     /// Files-style toolbar above the file list (view, sort, new, delete).
     fn render_content_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let selected_count = self.selected_paths.len();
+        let selected_count = self.selected_count();
         let show_hidden = self.read_options.show_hidden_items;
         let show_file_extensions = self.read_options.show_file_extensions;
         let sort_label = self.sort_label();
@@ -209,7 +209,7 @@ impl Render for FileBrowser {
         let can_go_back = !self.back_stack.is_empty();
         let can_go_forward = !self.forward_stack.is_empty();
         let can_go_up = self.current_dir.parent().is_some();
-        let selected_count = self.selected_paths.len();
+        let selected_count = self.selected_count();
         let show_hidden = self.read_options.show_hidden_items;
         let show_file_extensions = self.read_options.show_file_extensions;
         let sort_label = self.sort_label();
