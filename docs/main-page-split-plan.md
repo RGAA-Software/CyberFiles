@@ -15,7 +15,17 @@ This document records the next refactor target after the `FileBrowser` module sp
 - Split by responsibility, not by arbitrary line count
 - Prefer modules that reduce incremental compile blast radius in high-churn areas
 - Preserve public API shape where possible so surrounding code does not need broad rewrites
+- If compile speed is the primary KPI, prioritize high-churn UI/interaction code before low-churn restore logic
 - Run `cargo check -p cyberfiles-ui` after each step
+
+## Compile-Speed Reality Check
+
+This split should help **incremental** compile time most when day-to-day edits stay inside one extracted module.
+
+- It is unlikely to materially improve clean builds by itself
+- It helps most in high-churn areas with heavy GPUI callback/render code
+- Simply moving rarely touched methods into new files is good cleanup, but usually a weaker compile-time win
+- If a split causes many `pub(super)` leaks or shared helper churn, the compile benefit drops because edits still fan out across sibling modules
 
 ## Target Module Shape
 
@@ -39,6 +49,10 @@ crates/ui/src/main_page/
 Not every file has to appear immediately. The split should happen in phases.
 
 ## Recommended Split Order
+
+The phases below are ordered for **lowest refactor risk**.
+
+If the main goal is **developer compile feedback speed**, use the fast-path order in the next section instead of following this list mechanically.
 
 ### Phase 1: Session and tab lifecycle
 
@@ -219,6 +233,31 @@ Acceptance:
 - title bar, toolbar, shell layout, status center, and status bar still render the same
 - no command wiring regressions
 
+## Compile-Speed First Order
+
+If the team is optimizing for faster edit-compile-check loops rather than lowest migration risk, prefer this order:
+
+1. `omnibar.rs`
+2. `sidebar.rs`
+3. `render.rs` and `render_shell.rs`
+4. `navigation.rs`
+5. `tabs.rs`
+6. `session.rs`
+7. `info.rs`
+
+Why this order:
+
+- `omnibar` and toolbar/search interactions are likely high-churn during feature parity work
+- `sidebar` also changes often and currently mixes cache/loading/state update code into `mod.rs`
+- `render` is the largest surface for ordinary UI iteration, so isolating it early shrinks the most common edit zone
+- `tabs` and `session` are worth splitting, but they are less likely to dominate day-to-day compile churn
+
+Suggested execution pattern:
+
+1. First isolate the high-churn UI surfaces
+2. Then isolate routing helpers that those UI surfaces call
+3. Leave low-frequency persistence/session code for a later cleanup pass unless it blocks visibility boundaries
+
 ## Expected End State
 
 After the split:
@@ -239,6 +278,7 @@ After the split:
 - If a helper is shared by sibling modules, make it `pub(super)` instead of keeping duplicate logic
 - Only split into a new file when the boundary is stable enough to stay
 - If a method group causes too many visibility leaks, stop and create a narrower boundary first
+- After each extracted module, keep editing inside the new file for follow-up work; otherwise the compile-speed benefit is mostly theoretical
 
 ## First Step To Resume Later
 
