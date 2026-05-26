@@ -566,12 +566,11 @@ fn append_clipboard_commands(menu: PopupMenu, has_selection: bool, can_paste: bo
         Box::new(PasteItems),
         !can_paste,
     );
-    let menu = menu_action_enabled(
-        menu,
+    let menu = menu.menu_with_icon_and_disabled(
         t!("files.menu.rename"),
-        IconName::File,
+        Icon::new(IconName::File).path("icons/drive_file_rename_outline.svg"),
         Box::new(RenameItem),
-        has_selection,
+        !has_selection,
     );
     let menu = menu_action_enabled(
         menu,

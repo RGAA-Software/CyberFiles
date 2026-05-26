@@ -234,8 +234,9 @@ impl FileBrowser {
                     window.refresh();
                 }
             }));
-            browser.context_menu_view = Some(menu);
+            browser.context_menu_view = Some(menu.clone());
             browser.context_menu_built_revision = browser.shell_menu_revision;
+            menu.focus_handle(cx).focus(window, cx);
             cx.notify();
         });
     }
