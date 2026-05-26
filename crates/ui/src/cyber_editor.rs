@@ -14,18 +14,23 @@ use gpui_component::{
     v_flex, ActiveTheme as _, Disableable, Selectable, Sizable as _, StyledExt,
     WindowExt as _,
 };
+use crate::title_bar::TitleBar;
 
 const APP_NAME: &str = "CyberEditor";
 const EDITOR_CONTEXT: &str = "CyberEditor";
 
-actions!(cybereditor, [SaveFile, SaveFileAs]);
+actions!(cybereditor, [OpenFile, SaveFile, SaveFileAs]);
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-o", OpenFile, Some(EDITOR_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-s", SaveFile, Some(EDITOR_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-shift-s", SaveFileAs, Some(EDITOR_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-o", OpenFile, Some(EDITOR_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-s", SaveFile, Some(EDITOR_CONTEXT)),
         #[cfg(target_os = "macos")]
@@ -120,6 +125,10 @@ impl CyberEditorPage {
         self.save_current(window, cx);
     }
 
+    fn open_file(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_file_dialog(window, cx);
+    }
+
     fn save_as(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.open_save_as_dialog(window, cx);
     }
@@ -155,6 +164,82 @@ impl CyberEditorPage {
         );
         cx.notify();
         Ok(())
+    }
+
+    fn load_path_into_editor(
+        &mut self,
+        path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let document = load_document(Some(&path));
+        if let Some(error) = document.load_error {
+            return Err(error);
+        }
+
+        let text = document.text;
+        let language = SharedString::from(language_for_path(Some(&path)));
+        self.editor.update(cx, |editor, cx| {
+            editor.set_value(text.clone(), window, cx);
+            editor.set_highlighter(language.clone(), cx);
+        });
+        self.file_path = Some(path);
+        self.language = language;
+        self.saved_text = text;
+        self.dirty = false;
+        cx.notify();
+        Ok(())
+    }
+
+    fn open_file_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let default_path = self
+            .file_path
+            .clone()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value(default_path.to_string_lossy().to_string())
+                .placeholder("Enter the full file path to open")
+        });
+        let page = cx.entity().downgrade();
+
+        window.open_alert_dialog(cx, move |alert, window, cx| {
+            let input_for_focus = input.clone();
+            let input_for_submit = input.clone();
+            let page_for_submit = page.clone();
+            window.defer(cx, move |window, cx| {
+                input_for_focus.update(cx, |input, cx| {
+                    input.focus(window, cx);
+                });
+            });
+
+            alert
+                .title("Open File")
+                .description("Enter the full path of the UTF-8 text or code file to open.")
+                .show_cancel(true)
+                .child(Input::new(&input).w_full())
+                .on_ok(move |_, window, cx| {
+                    let raw = input_for_submit.read(cx).value().trim().to_string();
+                    if raw.is_empty() {
+                        window.push_notification(
+                            Notification::warning("A file path is required."),
+                            cx,
+                        );
+                        return false;
+                    }
+                    let path = PathBuf::from(raw);
+                    match page_for_submit.update(cx, |page, cx| {
+                        page.load_path_into_editor(path, window, cx)
+                    }) {
+                        Ok(Ok(())) => true,
+                        Ok(Err(message)) => {
+                            window.push_notification(Notification::error(message), cx);
+                            false
+                        }
+                        Err(_) => true,
+                    }
+                })
+        });
     }
 
     fn open_save_as_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -319,6 +404,13 @@ impl CyberEditorPage {
                     .items_center()
                     .gap_2()
                     .child(
+                        Button::new("open-file")
+                            .small()
+                            .ghost()
+                            .label("Open File")
+                            .on_click(cx.listener(Self::open_file)),
+                    )
+                    .child(
                         Button::new("toggle-line-numbers")
                             .small()
                             .ghost()
@@ -351,6 +443,48 @@ impl CyberEditorPage {
             )
     }
 
+    fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        TitleBar::new().child(
+            h_flex()
+                .id("cybereditor-title-bar")
+                .h_full()
+                .w_full()
+                .min_w_0()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .px_3()
+                .child(
+                    h_flex()
+                        .min_w_0()
+                        .items_center()
+                        .gap_3()
+                        .child(Label::new(APP_NAME).text_sm().font_semibold())
+                        .child(
+                            Label::new(display_path(self.file_path.as_deref()))
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .truncate(),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(
+                            Label::new(if self.dirty { "Unsaved" } else { "Saved" })
+                                .text_xs()
+                                .text_color(if self.dirty {
+                                    cx.theme().warning
+                                } else {
+                                    cx.theme().muted_foreground
+                                }),
+                        ),
+                ),
+        )
+    }
+
     fn window_title(&self) -> SharedString {
         let prefix = if self.dirty { "* " } else { "" };
         SharedString::from(format!(
@@ -378,8 +512,12 @@ impl Render for CyberEditorPage {
             .min_w_0()
             .track_focus(&self.focus_handle)
             .key_context(EDITOR_CONTEXT)
+            .child(self.render_title_bar(cx))
             .on_action(cx.listener(|this, _: &SaveFile, window, cx| {
                 this.save_current(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OpenFile, window, cx| {
+                this.open_file_dialog(window, cx);
             }))
             .on_action(cx.listener(|this, _: &SaveFileAs, window, cx| {
                 this.open_save_as_dialog(window, cx);
@@ -449,6 +587,13 @@ fn display_name(path: Option<&Path>) -> SharedString {
 
 fn display_language(language: &SharedString) -> SharedString {
     SharedString::from(format!("Language: {}", language))
+}
+
+fn display_path(path: Option<&Path>) -> SharedString {
+    match path {
+        Some(path) => SharedString::from(path.to_string_lossy().to_string()),
+        None => SharedString::from("No file open"),
+    }
 }
 
 fn language_for_path(path: Option<&Path>) -> &'static str {
