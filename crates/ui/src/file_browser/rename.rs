@@ -9,17 +9,31 @@ impl FileBrowser {
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_default();
+        let basename_selection_end = rename_basename_selection_end(&path, &default_name);
         let input = cx.new(|cx| InputState::new(window, cx).default_value(default_name));
+        let input_for_focus = input.clone();
         let browser = cx.entity().clone();
         let rename_path = path.clone();
         let subscription = cx.subscribe(&input, move |_, _, event: &InputEvent, cx| match event {
             InputEvent::Focus => {
+                let input = input_for_focus.clone();
                 cx.defer(move |cx| {
                     let Some(window) = cx.active_window() else {
                         return;
                     };
                     let _ = window.update(cx, |_, window, cx| {
-                        window.dispatch_action(Box::new(InputSelectAll), cx);
+                        if let Some(selection_end) = basename_selection_end {
+                            let _ = input.update(cx, |state, cx| {
+                                state.set_cursor_position(
+                                    Position::new(0, selection_end as u32),
+                                    window,
+                                    cx,
+                                );
+                            });
+                            window.dispatch_action(Box::new(InputSelectToStartOfLine), cx);
+                        } else {
+                            window.dispatch_action(Box::new(InputSelectAll), cx);
+                        }
                     });
                 });
             }
@@ -221,4 +235,19 @@ pub(super) fn rewrite_path_list(paths: &mut Vec<PathBuf>, from: &Path, to: &Path
             *path = updated;
         }
     }
+}
+
+fn rename_basename_selection_end(path: &Path, default_name: &str) -> Option<usize> {
+    let extension = path.extension()?;
+    if !path.is_file() || extension.is_empty() {
+        return None;
+    }
+
+    let stem = path.file_stem()?.to_string_lossy();
+    let stem_with_dot = default_name.strip_suffix(extension.to_str()?)?.strip_suffix('.')?;
+    if stem_with_dot != stem {
+        return None;
+    }
+
+    Some(stem.encode_utf16().count())
 }

@@ -48,7 +48,10 @@ use gpui::{
 use gpui_component::{
     dialog::DialogButtonProps,
     h_flex,
-    input::{Input, InputEvent, InputState, SelectAll as InputSelectAll},
+    input::{
+        Input, InputEvent, InputState, Position, SelectAll as InputSelectAll,
+        SelectToStartOfLine as InputSelectToStartOfLine,
+    },
     notification::Notification,
     scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis, ScrollbarShow},
     v_flex, v_virtual_list, ActiveTheme as _, Disableable as _, ElementExt as _, IconName,
