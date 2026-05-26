@@ -1308,6 +1308,7 @@ name = "cyberfiles"
 version = "0.1.0"
 dependencies = [
  "cyberfiles-ui",
+ "embed-resource",
  "gpui_platform",
 ]
 

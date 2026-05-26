@@ -5,7 +5,7 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex, progress::Progress,
     scroll::ScrollableElement as _,
-    v_flex, ActiveTheme as _, Disableable as _, Sizable as _, Size,
+    spinner::Spinner, v_flex, ActiveTheme as _, Disableable as _, Sizable as _, Size,
 };
 use rust_i18n::t;
 
@@ -141,11 +141,7 @@ fn render_job_card(job: TransferJob, cx: &mut App) -> impl IntoElement {
                         .justify_center()
                         .rounded_full()
                         .bg(bg_color)
-                        .child(
-                            gpui_component::label::Label::new(status_icon_glyph(status))
-                                .text_sm()
-                                .text_color(icon_color),
-                        ),
+                        .child(render_status_icon(status, icon_color)),
                 )
                 .child(
                     div()
@@ -213,6 +209,19 @@ fn render_job_card(job: TransferJob, cx: &mut App) -> impl IntoElement {
         })
 }
 
+fn render_status_icon(status: TransferJobStatus, icon_color: Hsla) -> impl IntoElement {
+    match status {
+        TransferJobStatus::Running => Spinner::new().small().color(icon_color).into_any_element(),
+        _ => div()
+            .child(
+                gpui_component::label::Label::new(status_icon_glyph(status))
+                    .text_sm()
+                    .text_color(icon_color),
+            )
+            .into_any_element(),
+    }
+}
+
 fn status_icon_glyph(status: TransferJobStatus) -> SharedString {
     match status {
         TransferJobStatus::Running => "↻".into(),
@@ -224,7 +233,7 @@ fn status_icon_glyph(status: TransferJobStatus) -> SharedString {
 
 fn status_colors(status: TransferJobStatus, cx: &App) -> (Hsla, Hsla) {
     match status {
-        TransferJobStatus::Running => (cx.theme().accent_foreground, cx.theme().accent.opacity(0.15)),
+        TransferJobStatus::Running => (cx.theme().primary, cx.theme().primary.opacity(0.15)),
         TransferJobStatus::Completed => {
             let green = gpui::hsla(142.0 / 360.0, 0.76, 0.36, 1.0);
             (green, gpui::hsla(142.0 / 360.0, 0.76, 0.36, 0.15))

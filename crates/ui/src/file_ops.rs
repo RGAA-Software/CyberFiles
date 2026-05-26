@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use cyberfiles_fs::{
-    compress_paths_to_zip_cancellable, paths_conflict, transfer_one_cancellable,
+    compress_paths_to_zip_at_path_cancellable, paths_conflict, transfer_one_cancellable,
     ClipboardOperation, CompressCancelled, ConflictResolution, FileClipboard, TransferCancelled,
     TransferOutcome,
 };
@@ -117,7 +117,7 @@ pub fn spawn_file_transfer(
             });
 
             if matches!(result, Ok(outcome) if outcome.transferred > 0)
-                && *browser.current_directory() == dest_for_reload
+                && browser.shows_directory(&dest_for_reload)
             {
                 browser.reload();
             }
@@ -220,6 +220,9 @@ pub fn spawn_compress(
     cx: &mut Context<FileBrowser>,
     sources: Vec<PathBuf>,
     destination: PathBuf,
+    zip_path: PathBuf,
+    partial_path: PathBuf,
+    partial_created: bool,
 ) {
     if sources.is_empty() {
         return;
@@ -239,13 +242,13 @@ pub fn spawn_compress(
             return;
         }
         let sources_for_task = sources.clone();
-        let dest = destination.clone();
+        let zip_path_for_task = zip_path.clone();
         let cancel_for_task = cancel.clone();
         let (progress_tx, progress_rx) = mpsc::channel::<u32>();
         let join = thread::spawn(move || {
-            compress_paths_to_zip_cancellable(
+            compress_paths_to_zip_at_path_cancellable(
                 &sources_for_task,
-                &dest,
+                &zip_path_for_task,
                 &cancel_for_task,
                 |completed, _total| {
                     let _ = progress_tx.send(completed);
@@ -272,6 +275,9 @@ pub fn spawn_compress(
             .map_err(|_| anyhow::anyhow!("compress thread panicked"))
             .and_then(|inner| inner);
         let done_ok = matches!(&result, Ok(_));
+        if !done_ok && partial_created {
+            let _ = std::fs::remove_file(&partial_path);
+        }
         if done_ok {
             set_transfer_progress(job_id, total, cx);
             end_transfer_status(job_id, cx);
@@ -301,7 +307,7 @@ pub fn spawn_compress(
                     );
                 }
             });
-            if done_ok && *browser.current_directory() == dest_for_reload {
+            if done_ok && browser.shows_directory(&dest_for_reload) {
                 browser.reload();
             }
             cx.notify();

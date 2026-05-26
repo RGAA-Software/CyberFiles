@@ -15,7 +15,11 @@ mod search;
 mod sort;
 mod watcher;
 
-pub use archive::{compress_paths_to_zip, compress_paths_to_zip_cancellable, CompressCancelled};
+pub use archive::{
+    compress_paths_to_zip, compress_paths_to_zip_at_path_cancellable,
+    compress_paths_to_zip_cancellable, temp_zip_output_path, unique_zip_output_path,
+    zip_output_path, CompressCancelled,
+};
 pub use clipboard::{
     copy_items, move_items, paths_conflict, transfer_items, transfer_one, transfer_one_cancellable,
     ClipboardOperation, ConflictResolution, FileClipboard, TransferCancelled, TransferConflict,

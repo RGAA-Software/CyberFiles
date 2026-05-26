@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs::OpenOptions;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use std::{
@@ -34,9 +35,10 @@ use cyberfiles_core::{
 use cyberfiles_fs::{
     column_trail_for, create_directory, create_file, delete_paths, file_items_for_tag_paths,
     filter_items_by_query, home_navigation_path, move_items, read_directory, read_recycle_bin,
-    recycle_paths, rename_path, unique_new_file_name, unique_new_folder_name, ClipboardOperation,
-    DirectoryReadOptions, DirectoryWatcher, FileClipboard, FileItem, FileItemKind, SortDirection,
-    SortOption, SortPreferences,
+    recycle_paths, rename_path, temp_zip_output_path, unique_new_file_name,
+    unique_zip_output_path,
+    unique_new_folder_name, ClipboardOperation, DirectoryReadOptions, DirectoryWatcher,
+    FileClipboard, FileItem, FileItemKind, SortDirection, SortOption, SortPreferences,
 };
 use cyberfiles_platform_windows::{self as platform, ShellContextMenuEntry};
 use gpui::{
@@ -803,6 +805,45 @@ impl FileBrowser {
         &self.current_dir
     }
 
+    fn operation_directory(&self) -> PathBuf {
+        if self.view_mode == ViewMode::Columns
+            && self.browse_location == BrowseLocation::Directory
+        {
+            if let Some((col_index, _)) = self.column_selected_path.as_ref() {
+                if let Some(path) = self.column_trail.get(*col_index) {
+                    return path.clone();
+                }
+            }
+            if let Some(col_index) = self.active_column_index {
+                if let Some(path) = self.column_trail.get(col_index) {
+                    return path.clone();
+                }
+            }
+            if let Some(parent) = self.selected_paths_common_parent() {
+                return parent;
+            }
+        }
+
+        self.current_dir.clone()
+    }
+
+    fn selected_paths_common_parent(&self) -> Option<PathBuf> {
+        let mut paths = self.selected_paths.iter();
+        let first_parent = paths.next()?.parent()?.to_path_buf();
+        paths.all(|path| path.parent() == Some(first_parent.as_path()))
+            .then_some(first_parent)
+    }
+
+    pub(crate) fn shows_directory(&self, path: &Path) -> bool {
+        if self.current_dir == path {
+            return true;
+        }
+
+        self.view_mode == ViewMode::Columns
+            && self.browse_location == BrowseLocation::Directory
+            && self.column_trail.iter().any(|entry| entry == path)
+    }
+
     pub fn navigation_target(&self) -> NavigationTarget {
         match &self.browse_location {
             BrowseLocation::Directory => NavigationTarget::Path(self.current_dir.clone()),
@@ -933,7 +974,7 @@ impl FileBrowser {
         if paths.is_empty() {
             return;
         }
-        let dest = self.current_dir.clone();
+        let dest = self.operation_directory();
         if paths.iter().all(|p| p.parent() == Some(dest.as_path())) {
             return;
         }
@@ -1845,8 +1886,9 @@ impl FileBrowser {
         if paths.is_empty() {
             return;
         }
-        let name = unique_new_folder_name(&self.current_dir);
-        match create_directory(&self.current_dir, &name) {
+        let destination = self.operation_directory();
+        let name = unique_new_folder_name(&destination);
+        match create_directory(&destination, &name) {
             Ok(dest_dir) => match move_items(&paths, &dest_dir) {
                 Ok(()) => {
                     self.error = None;
@@ -1863,8 +1905,9 @@ impl FileBrowser {
     }
 
     pub fn create_new_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let name = unique_new_folder_name(&self.current_dir);
-        match create_directory(&self.current_dir, &name) {
+        let destination = self.operation_directory();
+        let name = unique_new_folder_name(&destination);
+        match create_directory(&destination, &name) {
             Ok(path) => {
                 self.error = None;
                 self.refresh();
@@ -1886,8 +1929,9 @@ impl FileBrowser {
     }
 
     pub fn create_new_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let name = unique_new_file_name(&self.current_dir);
-        match create_file(&self.current_dir, &name) {
+        let destination = self.operation_directory();
+        let name = unique_new_file_name(&destination);
+        match create_file(&destination, &name) {
             Ok(path) => {
                 self.error = None;
                 self.refresh();
@@ -1940,8 +1984,33 @@ impl FileBrowser {
         if paths.is_empty() {
             return;
         }
-        let destination = self.current_directory().clone();
-        spawn_compress(cx.entity(), window, cx, paths, destination);
+        let destination = self.operation_directory();
+        let zip_path = match unique_zip_output_path(&paths, &destination) {
+            Ok(path) => path,
+            Err(error) => {
+                self.error = Some(error.to_string());
+                return;
+            }
+        };
+        let partial_path = temp_zip_output_path(&zip_path);
+        let partial_created = match create_compress_partial_file(&partial_path) {
+            Ok(created) => created,
+            Err(error) => {
+                self.error = Some(error.to_string());
+                return;
+            }
+        };
+        self.refresh();
+        spawn_compress(
+            cx.entity(),
+            window,
+            cx,
+            paths,
+            destination,
+            zip_path,
+            partial_path,
+            partial_created,
+        );
     }
 
     pub fn paste_items(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1956,7 +2025,7 @@ impl FileBrowser {
             return;
         }
 
-        let destination = self.current_directory().clone();
+        let destination = self.operation_directory();
         let browser = cx.entity();
         spawn_paste_from_clipboard(browser, window, cx, clipboard, destination);
     }
@@ -3207,6 +3276,10 @@ impl FileBrowser {
     }
 
     fn on_rename(&mut self, _: &RenameItem, window: &mut Window, cx: &mut Context<Self>) {
+        if self.primary_selected_item().is_some_and(|item| item.kind == FileItemKind::Folder) {
+            cx.stop_propagation();
+            return;
+        }
         self.begin_rename(window, cx);
         cx.notify();
     }
@@ -4284,6 +4357,14 @@ fn format_system_time(time: Option<SystemTime>) -> String {
 
     let local_time: DateTime<Local> = time.into();
     local_time.format("%Y-%m-%d %H:%M").to_string()
+}
+
+fn create_compress_partial_file(path: &Path) -> anyhow::Result<bool> {
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn open_with_system(path: &Path) -> anyhow::Result<()> {
