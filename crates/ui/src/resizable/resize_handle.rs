@@ -6,7 +6,7 @@ use gpui::{
     ParentElement as _, Pixels, Point, Render, StatefulInteractiveElement, Styled as _, Window,
 };
 
-use gpui_component::{dock::DockPlacement, ActiveTheme as _, AxisExt as _};
+use gpui_component::{ActiveTheme as _, AxisExt as _};
 
 pub(crate) const HANDLE_PADDING: Pixels = px(4.);
 pub(crate) const HANDLE_SIZE: Pixels = px(1.);
@@ -23,7 +23,6 @@ pub(crate) struct ResizeHandle<T: 'static, E: 'static + Render> {
     id: ElementId,
     axis: Axis,
     drag_value: Option<Rc<T>>,
-    placement: Option<DockPlacement>,
     on_drag: Option<Rc<dyn Fn(&Point<Pixels>, &mut Window, &mut App) -> Entity<E>>>,
 }
 
@@ -34,7 +33,6 @@ impl<T: 'static, E: 'static + Render> ResizeHandle<T, E> {
             id: id.clone(),
             on_drag: None,
             drag_value: None,
-            placement: None,
             axis,
         }
     }
@@ -49,11 +47,6 @@ impl<T: 'static, E: 'static + Render> ResizeHandle<T, E> {
         self.on_drag = Some(Rc::new(move |p, window, cx| {
             f(value.clone(), p, window, cx)
         }));
-        self
-    }
-
-    pub(crate) fn placement(mut self, placement: DockPlacement) -> Self {
-        self.placement = Some(placement);
         self
     }
 }
@@ -123,34 +116,21 @@ impl<T: 'static, E: 'static + Render> Element for ResizeHandle<T, E> {
                         move |_, position, window, cx| on_drag(&position, window, cx),
                     )
                 })
-                .map(|this| match self.placement {
-                    Some(DockPlacement::Left) => {
-                        // Special for Left Dock
-                        //  FIXME: Improve this to let the scroll bar have px(HANDLE_PADDING)
-                        this.cursor_col_resize()
-                            .top_0()
-                            .right(px(1.))
-                            .h_full()
-                            .w(HANDLE_SIZE)
-                            .pl(HANDLE_PADDING)
-                    }
-                    _ => this
-                        .when(axis.is_horizontal(), |this| {
-                            this.cursor_col_resize()
-                                .top_0()
-                                .left(neg_offset)
-                                .h_full()
-                                .w(HANDLE_SIZE)
-                                .px(HANDLE_PADDING)
-                        })
-                        .when(axis.is_vertical(), |this| {
-                            this.cursor_row_resize()
-                                .top(neg_offset)
-                                .left_0()
-                                .w_full()
-                                .h(HANDLE_SIZE)
-                                .py(HANDLE_PADDING)
-                        }),
+                .when(axis.is_horizontal(), |this| {
+                    this.cursor_col_resize()
+                        .top_0()
+                        .left(neg_offset)
+                        .h_full()
+                        .w(HANDLE_SIZE)
+                        .px(HANDLE_PADDING)
+                })
+                .when(axis.is_vertical(), |this| {
+                    this.cursor_row_resize()
+                        .top(neg_offset)
+                        .left_0()
+                        .w_full()
+                        .h(HANDLE_SIZE)
+                        .py(HANDLE_PADDING)
                 })
                 .child(
                     div()

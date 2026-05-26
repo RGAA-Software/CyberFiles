@@ -1,10 +1,9 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use gpui::{
     div, img, AnyElement, App, AssetSource, ImageCacheError, IntoElement, ObjectFit, ParentElement,
-    Pixels, RenderImage, SharedString, Styled, StyledImage, SvgRenderer, Window,
+    Pixels, RenderImage, Styled, StyledImage, Window,
 };
 
 use crate::Assets;
@@ -80,6 +79,9 @@ pub fn color_icon_box(path: &'static str, logical_px: Pixels) -> AnyElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
+
+    use gpui::{SharedString, SvgRenderer};
 
     struct DummyAssetSource;
 

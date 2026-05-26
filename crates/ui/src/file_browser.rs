@@ -444,22 +444,6 @@ impl FileBrowser {
         );
     }
 
-    fn increase_view_size(&mut self, cx: &mut Context<Self>) {
-        if self.view_size_level < 3 {
-            self.view_size_level += 1;
-            self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode, self.view_size_level);
-            cx.notify();
-        }
-    }
-
-    fn decrease_view_size(&mut self, cx: &mut Context<Self>) {
-        if self.view_size_level > 1 {
-            self.view_size_level -= 1;
-            self.item_sizes = item_sizes_for(self.display_items.len(), self.view_mode, self.view_size_level);
-            cx.notify();
-        }
-    }
-
     pub fn set_show_info_pane(&mut self, show: bool, cx: &mut Context<Self>) {
         if self.show_info_pane != show {
             self.show_info_pane = show;
@@ -2374,7 +2358,7 @@ impl FileBrowser {
         }
     }
 
-    fn columns_view(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn columns_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let columns = self
             .column_trail
             .iter()
@@ -2613,7 +2597,6 @@ impl FileBrowser {
         let kind = item.kind;
         let name = item.display_name.clone();
         let item_click = item.clone();
-        let item_click_path = item_click.path.clone();
         h_flex()
             .id(format!("file-column-row-{col_index}-{name}"))
             .w_full()
@@ -2867,7 +2850,6 @@ impl FileBrowser {
         rename_input: Option<Entity<InputState>>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let open_path = item.path.clone();
         let double_click_path = item.path.clone();
         let kind = item.kind;
         h_flex()
@@ -3303,7 +3285,6 @@ impl FileBrowser {
         icon_size: Pixels,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let open_path = item.path.clone();
         let double_click_path = item.path.clone();
         let kind = item.kind;
         let name = item.display_name.clone();
@@ -3386,7 +3367,6 @@ impl FileBrowser {
         rename_input: Option<Entity<InputState>>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let open_path = item.path.clone();
         let double_click_path = item.path.clone();
         let kind = item.kind;
         let name = item.display_name.clone();

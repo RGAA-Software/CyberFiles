@@ -2,7 +2,6 @@ use std::borrow::BorrowMut;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
 
 use cyberfiles_fs::{ClipboardOperation, FileClipboard};
 use gpui::{App, AppContext, Entity, Global, SharedString, Window};
@@ -32,7 +31,6 @@ pub struct TransferJob {
     completed: Arc<AtomicU32>,
     pub total: u32,
     cancel: Arc<AtomicBool>,
-    pub created_at: Instant,
 }
 
 impl TransferJob {
@@ -44,7 +42,6 @@ impl TransferJob {
             completed: Arc::new(AtomicU32::new(0)),
             total: total.max(1),
             cancel: Arc::new(AtomicBool::new(false)),
-            created_at: Instant::now(),
         }
     }
 
@@ -80,10 +77,6 @@ impl TransferJob {
 
     pub fn is_active(&self) -> bool {
         self.status() == TransferJobStatus::Running
-    }
-
-    pub fn elapsed(&self) -> Duration {
-        self.created_at.elapsed()
     }
 }
 
@@ -187,20 +180,10 @@ impl TransferStatusGlobal {
         Self::notify_main_page(cx);
     }
 
-    pub fn active_jobs(cx: &App) -> Vec<TransferJob> {
-        cx.try_global::<Self>()
-            .and_then(|g| g.jobs.read().ok().map(|j| j.iter().filter(|j| j.is_active()).cloned().collect()))
-            .unwrap_or_default()
-    }
-
     pub fn all_jobs(cx: &App) -> Vec<TransferJob> {
         cx.try_global::<Self>()
             .and_then(|g| g.jobs.read().ok().map(|j| j.clone()))
             .unwrap_or_default()
-    }
-
-    pub fn has_active(cx: &App) -> bool {
-        Self::active_jobs(cx).iter().any(|j| j.is_active())
     }
 
     pub fn has_finished(cx: &App) -> bool {

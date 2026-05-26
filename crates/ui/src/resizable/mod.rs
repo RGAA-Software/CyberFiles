@@ -16,11 +16,6 @@ pub fn h_resizable(id: impl Into<ElementId>) -> ResizablePanelGroup {
     ResizablePanelGroup::new(id).axis(Axis::Horizontal)
 }
 
-/// Create a [`ResizablePanelGroup`] with vertical resizing
-pub fn v_resizable(id: impl Into<ElementId>) -> ResizablePanelGroup {
-    ResizablePanelGroup::new(id).axis(Axis::Vertical)
-}
-
 /// Create a [`ResizablePanel`].
 pub fn resizable_panel() -> ResizablePanel {
     ResizablePanel::new()
@@ -50,77 +45,6 @@ impl Default for ResizableState {
 }
 
 impl ResizableState {
-    /// Get the size of the panels.
-    pub fn sizes(&self) -> &Vec<Pixels> {
-        &self.sizes
-    }
-
-    /// Programmatically resize the panel at `ix` to `size`, redistributing
-    /// space among siblings using the same logic as a drag.
-    ///
-    /// Sizes are clamped to the panel's `size_range` and to the container.
-    /// Emits `ResizablePanelEvent::Resized` so subscribers (e.g. preference
-    /// persistence) see the change just as if the user had dragged a handle.
-    ///
-    /// Out-of-range indices are a no-op. For the last panel, space is taken
-    /// from the previous sibling (the last panel has no handle of its own).
-    pub fn resize_panel(
-        &mut self,
-        ix: usize,
-        size: Pixels,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if ix >= self.sizes.len() {
-            return;
-        }
-        if ix + 1 < self.sizes.len() {
-            self.resize_panel_at_handle(ix, size, window, cx);
-        } else if ix > 0 {
-            // Last panel: drive its size by resizing the previous sibling so
-            // the freed space lands here.
-            let delta = self.sizes[ix] - size;
-            let prev = self.sizes[ix - 1];
-            self.resize_panel_at_handle(ix - 1, prev + delta, window, cx);
-        }
-        self.done_resizing(cx);
-    }
-
-    pub(crate) fn insert_panel(
-        &mut self,
-        size: Option<Pixels>,
-        ix: Option<usize>,
-        cx: &mut Context<Self>,
-    ) {
-        let panel_state = ResizablePanelState {
-            size,
-            ..Default::default()
-        };
-
-        let size = size.unwrap_or(PANEL_MIN_SIZE);
-
-        // We make sure that the size always sums up to the container size
-        // by reducing the size of all other panels first.
-        let container_size = self.container_size().max(px(1.));
-        let total_leftover_size = (container_size - size).max(px(1.));
-
-        for (i, panel) in self.panels.iter_mut().enumerate() {
-            let ratio = self.sizes[i] / container_size;
-            self.sizes[i] = total_leftover_size * ratio;
-            panel.size = Some(self.sizes[i]);
-        }
-
-        if let Some(ix) = ix {
-            self.panels.insert(ix, panel_state);
-            self.sizes.insert(ix, size);
-        } else {
-            self.panels.push(panel_state);
-            self.sizes.push(size);
-        };
-
-        cx.notify();
-    }
-
     pub(crate) fn sync_panels_count(
         &mut self,
         axis: Axis,
@@ -170,35 +94,6 @@ impl ResizableState {
         cx.notify();
     }
 
-    pub(crate) fn remove_panel(&mut self, panel_ix: usize, cx: &mut Context<Self>) {
-        self.panels.remove(panel_ix);
-        self.sizes.remove(panel_ix);
-        if let Some(resizing_panel_ix) = self.resizing_panel_ix {
-            if resizing_panel_ix > panel_ix {
-                self.resizing_panel_ix = Some(resizing_panel_ix - 1);
-            }
-        }
-        self.adjust_to_container_size(cx);
-    }
-
-    pub(crate) fn replace_panel(
-        &mut self,
-        panel_ix: usize,
-        panel: ResizablePanelState,
-        cx: &mut Context<Self>,
-    ) {
-        let old_size = self.sizes[panel_ix];
-
-        self.panels[panel_ix] = panel;
-        self.sizes[panel_ix] = old_size;
-        self.adjust_to_container_size(cx);
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.panels.clear();
-        self.sizes.clear();
-    }
-
     #[inline]
     pub(crate) fn container_size(&self) -> Pixels {
         self.bounds.size.along(self.axis)
@@ -224,11 +119,7 @@ impl ResizableState {
     }
 
     /// Resize the panel at `ix` by treating `ix` as the drag-handle position
-    /// (the handle that sits between panel `ix` and panel `ix + 1`). Returns
-    /// early on the last panel since there is no handle below it.
-    ///
-    /// This is the worker behind drag interactions and the public
-    /// [`Self::resize_panel`] API.
+    /// (the handle that sits between panel `ix` and panel `ix + 1`).
     fn resize_panel_at_handle(
         &mut self,
         ix: usize,

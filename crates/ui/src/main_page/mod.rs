@@ -123,7 +123,7 @@ impl MainPage {
             let next_id = restored.len() as u64;
             (restored, active, next_id)
         };
-        let mut this = Self {
+        let this = Self {
             focus_handle: cx.focus_handle(),
             tabs,
             active_tab,

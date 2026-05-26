@@ -61,7 +61,7 @@ pub fn compress_paths_to_zip_cancellable(
     sources: &[PathBuf],
     destination_dir: &Path,
     cancel: &AtomicBool,
-    mut on_progress: impl FnMut(u32, u32),
+    on_progress: impl FnMut(u32, u32),
 ) -> anyhow::Result<PathBuf> {
     if cancel.load(Ordering::Relaxed) {
         return Err(CompressCancelled.into());
