@@ -1,6 +1,5 @@
-use std::path::PathBuf;
 use cyberfiles_core::{
-    load_config, save_config, ClosedTabSession, SessionPaneLayout, APP_NAME,
+    load_config, APP_NAME,
 };
 
 const MAX_CLOSED_TABS: usize = 12;
@@ -8,7 +7,6 @@ use cyberfiles_commands::{
     CopyItems, CutItems, FocusOmnibar, NavigateBack, NavigateForward, NavigateUp, PasteItems,
     ReopenClosedTab, SelectAll, FILE_BROWSER,
 };
-use cyberfiles_fs::home_navigation_path;
 use gpui::{prelude::*, *};
 use gpui_component::{
     input::InputState,
@@ -19,16 +17,18 @@ use crate::info_pane::InfoPane;
 use crate::omnibar::OmnibarBreadcrumbCallbacks;
 use crate::shell::app_menus;
 use crate::shell::navigation::NavigationTarget;
-use crate::shell::preferences::persist_window_bounds;
 use crate::shell::ReopenClosedTabAt;
 use crate::shell::ShellPanes;
 use crate::sidebar::SidebarSection;
 
 mod omnibar;
+mod info;
 mod navigation;
 mod render;
 mod render_shell;
+mod session;
 mod sidebar;
+mod tabs;
 
 /// Matches Files `NavigationToolbar` height.
 const NAV_TOOLBAR_HEIGHT: Pixels = px(48.);
@@ -150,218 +150,6 @@ impl MainPage {
         let page = cx.new(|cx| Self::new(cx));
         crate::app_state::AppNavigation::set(page.clone(), cx);
         page
-    }
-
-    fn encode_session_target(target: &NavigationTarget, current_path: Option<&PathBuf>) -> String {
-        match target {
-            NavigationTarget::Home => "home".into(),
-            NavigationTarget::RecycleBin => "recycle".into(),
-            NavigationTarget::Settings => "settings".into(),
-            NavigationTarget::FileTag(name) => format!("tag:{name}"),
-            NavigationTarget::Path(_) => current_path
-                .cloned()
-                .unwrap_or_else(home_navigation_path)
-                .to_string_lossy()
-                .into_owned(),
-        }
-    }
-
-    fn decode_session_target(value: &str) -> NavigationTarget {
-        NavigationTarget::decode_session_tab(value)
-    }
-
-    fn capture_tab_session(&self, index: usize, cx: &App) -> ClosedTabSession {
-        let shell = self.tabs[index].shell.read(cx);
-        let pane = shell.active_pane().read(cx);
-        let current_path = match pane.target() {
-            NavigationTarget::Path(_) => {
-                Some(pane.file_browser().read(cx).current_directory().clone())
-            }
-            _ => None,
-        };
-        ClosedTabSession {
-            tab: Self::encode_session_target(pane.target(), current_path.as_ref()),
-            pane_layout: Self::capture_shell_layout(shell, cx),
-        }
-    }
-
-    fn record_closed_tab(&self, session: ClosedTabSession) {
-        let mut config = load_config().unwrap_or_default();
-        config
-            .session_closed_tabs
-            .retain(|closed| closed.tab != session.tab);
-        config.session_closed_tabs.insert(0, session);
-        config.session_closed_tabs.truncate(MAX_CLOSED_TABS);
-        let _ = save_config(&config);
-    }
-
-    pub fn reopen_closed_tab(&mut self, cx: &mut Context<Self>) {
-        self.reopen_closed_tab_at(0, cx);
-    }
-
-    pub fn reopen_closed_tab_at(&mut self, index: usize, cx: &mut Context<Self>) {
-        let mut config = load_config().unwrap_or_default();
-        if index >= config.session_closed_tabs.len() {
-            return;
-        }
-        let closed = config.session_closed_tabs.remove(index);
-        let _ = save_config(&config);
-
-        let target = Self::decode_session_target(&closed.tab);
-        let id = self.next_tab_id;
-        self.next_tab_id += 1;
-        let layout = closed.pane_layout;
-        let shell = cx.new(|cx| {
-            let mut shell = ShellPanes::new(cx, target);
-            shell.restore_layout(&layout, Self::decode_session_target, cx);
-            shell
-        });
-        self.tabs.push(TabEntry { id, shell });
-        self.active_tab = self.tabs.len() - 1;
-        self.pending_tab_scroll_to_ix = Some(self.active_tab);
-        self.persist_session(cx);
-        app_menus::reload(cx);
-        cx.notify();
-    }
-
-    fn capture_shell_layout(shell: &ShellPanes, cx: &App) -> SessionPaneLayout {
-        let secondary_tab = if shell.dual_pane() {
-            let pane = shell.secondary().read(cx);
-            let current_path = match pane.target() {
-                NavigationTarget::Path(_) => {
-                    Some(pane.file_browser().read(cx).current_directory().clone())
-                }
-                _ => None,
-            };
-            Self::encode_session_target(pane.target(), current_path.as_ref())
-        } else {
-            String::new()
-        };
-        let active_side = match shell.active_side() {
-            crate::shell::PaneSide::Secondary => "secondary",
-            crate::shell::PaneSide::Primary => "primary",
-        };
-        SessionPaneLayout {
-            dual_pane: shell.dual_pane(),
-            active_side: active_side.into(),
-            secondary_tab,
-        }
-    }
-
-    pub fn persist_session(&mut self, cx: &mut Context<Self>) {
-        let tabs: Vec<String> = self
-            .tabs
-            .iter()
-            .enumerate()
-            .map(|(index, _)| {
-                let pane = self.tabs[index].shell.read(cx).active_pane().read(cx);
-                let current_path = match pane.target() {
-                    NavigationTarget::Path(_) => {
-                        Some(pane.file_browser().read(cx).current_directory().clone())
-                    }
-                    _ => None,
-                };
-                Self::encode_session_target(pane.target(), current_path.as_ref())
-            })
-            .collect();
-        let layouts: Vec<SessionPaneLayout> = self
-            .tabs
-            .iter()
-            .map(|entry| Self::capture_shell_layout(&entry.shell.read(cx), cx))
-            .collect();
-        let mut config = load_config().unwrap_or_default();
-        config.session_tabs = tabs;
-        config.session_active_tab = self.active_tab;
-        config.session_pane_layouts = layouts;
-        let _ = save_config(&config);
-    }
-
-    fn toggle_info_pane(&mut self, cx: &mut Context<Self>) {
-        self.show_info_pane = !self.show_info_pane;
-        let mut config = load_config().unwrap_or_default();
-        config.show_info_pane = self.show_info_pane;
-        let _ = save_config(&config);
-        // Notify all file browsers so they can recalculate grid/card column counts.
-        for tab in &self.tabs {
-            let shell = tab.shell.clone();
-            let panes = {
-                let shell_ref = shell.read(cx);
-                let mut panes = Vec::new();
-                shell_ref.for_each_pane(|pane| {
-                    panes.push(pane.clone());
-                });
-                panes
-            };
-            for pane in panes {
-                let file_browser = pane.read(cx).file_browser();
-                file_browser.update(cx, |browser, cx| {
-                    browser.set_show_info_pane(self.show_info_pane, cx);
-                });
-            }
-        }
-        cx.notify();
-    }
-
-    fn info_selection(&self, cx: &App) -> Option<cyberfiles_fs::FileItem> {
-        let pane = self.active_pane(cx);
-        if !matches!(
-            pane.read(cx).target(),
-            NavigationTarget::Path(_) | NavigationTarget::RecycleBin
-        ) {
-            return None;
-        }
-        pane.read(cx)
-            .file_browser()
-            .read(cx)
-            .primary_selected_item()
-            .cloned()
-    }
-
-    fn add_tab(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
-        let id = self.next_tab_id;
-        self.next_tab_id += 1;
-        let shell = cx.new(|cx| ShellPanes::new(cx, target));
-        self.tabs.push(TabEntry { id, shell });
-        self.active_tab = self.tabs.len() - 1;
-        self.pending_tab_scroll_to_ix = Some(self.active_tab);
-        self.persist_session(cx);
-        cx.notify();
-    }
-
-    fn close_tab(&mut self, index: usize, cx: &mut Context<Self>) {
-        if self.tabs.len() <= 1 {
-            persist_window_bounds(cx);
-            cyberfiles_core::flush_config();
-            cx.quit();
-            return;
-        }
-        let closed = self.capture_tab_session(index, cx);
-        self.record_closed_tab(closed);
-        app_menus::reload(cx);
-        self.tabs.remove(index);
-        if self.active_tab >= self.tabs.len() {
-            self.active_tab = self.tabs.len() - 1;
-        } else if index < self.active_tab {
-            self.active_tab -= 1;
-        }
-        self.pending_tab_scroll_to_ix = Some(self.active_tab);
-        self.persist_session(cx);
-        cx.notify();
-    }
-
-    fn tab_title(&self, index: usize, cx: &App) -> SharedString {
-        let pane = self.tabs[index].shell.read(cx).active_pane().read(cx);
-        match pane.target() {
-            NavigationTarget::Path(_) => {
-                let path = pane.file_browser().read(cx).current_directory();
-                SharedString::from(
-                    path.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_else(|| path.to_string_lossy().to_string()),
-                )
-            }
-            target => target.tab_title(),
-        }
     }
 
 }
