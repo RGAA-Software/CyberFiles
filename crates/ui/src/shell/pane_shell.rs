@@ -44,6 +44,9 @@ impl PaneShell {
     }
 
     pub fn navigate(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
+        if self.current_navigation_target(cx) == target {
+            return;
+        }
         self.target = target.clone();
         self.file_browser.update(cx, |browser, cx| {
             match &target {

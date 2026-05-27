@@ -36,6 +36,7 @@ impl MainPage {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.cancel_breadcrumb_drag_preview();
         if paths.is_empty() || !dest.is_dir() {
             return;
         }
@@ -76,6 +77,9 @@ impl MainPage {
     }
 
     pub fn navigate_to(&mut self, target: NavigationTarget, cx: &mut Context<Self>) {
+        if self.active_navigation_target(cx) == target {
+            return;
+        }
         if let NavigationTarget::Path(ref path) = target {
             record_path_history(path);
         }

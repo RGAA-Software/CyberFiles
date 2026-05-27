@@ -67,6 +67,7 @@ impl FileBrowser {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        AppNavigation::cancel_breadcrumb_drag_preview(cx);
         if paths.is_empty() {
             return;
         }

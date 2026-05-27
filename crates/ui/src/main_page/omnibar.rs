@@ -26,6 +26,10 @@ use crate::omnibar::{OmnibarBreadcrumbCallbacks, BREADCRUMB_DRAG_HOVER_OPEN_MS};
 use crate::shell::navigation::NavigationTarget;
 
 impl MainPage {
+    pub fn cancel_breadcrumb_drag_preview(&mut self) {
+        self.breadcrumb_drag_generation = self.breadcrumb_drag_generation.wrapping_add(1);
+    }
+
     fn ensure_omnibar_breadcrumb_callbacks(&mut self, cx: &mut Context<Self>) {
         if self.omnibar_breadcrumb_callbacks.is_some() {
             return;

@@ -244,6 +244,13 @@ impl AppNavigation {
         page.update(cx, |page, cx| page.focus_search_input(window, cx));
     }
 
+    pub fn cancel_breadcrumb_drag_preview(cx: &mut (impl AppContext + BorrowMut<App>)) {
+        let page = cx.borrow_mut().global::<Self>().0.clone();
+        page.update(cx, |page, _cx| {
+            page.cancel_breadcrumb_drag_preview();
+        });
+    }
+
     /// Notify the shell so Omnibar breadcrumbs/path stay in sync with the active file browser.
     ///
     /// Deferred to avoid panics when called from nested updates (e.g. toolbar back inside `MainPage`).

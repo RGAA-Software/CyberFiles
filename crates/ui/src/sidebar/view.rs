@@ -202,8 +202,6 @@ fn push_shell_sidebar_entry(
     let drop_dest = drop_destination(&entry.target);
     if let Some(dest) = drop_dest {
         let page_drop = page.clone();
-        let page_hover = page.clone();
-        let dest_hover = dest.clone();
         let dest_drop = dest.clone();
         menu.push_shell_path_with_folder_drop(
             label,
@@ -212,12 +210,7 @@ fn push_shell_sidebar_entry(
             handler,
             middle_click,
             context_menu,
-            move |_, cx| {
-                let path = dest_hover.clone();
-                let _ = page_hover.update(cx, |page, cx| {
-                    page.schedule_breadcrumb_drag_preview(path, cx);
-                });
-            },
+            move |_, _| {},
             move |paths: &DraggedFilePaths, window, cx| {
                 let path = dest_drop.clone();
                 let _ = page_drop.update(cx, |page, cx| {
