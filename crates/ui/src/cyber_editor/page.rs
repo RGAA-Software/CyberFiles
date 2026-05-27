@@ -19,8 +19,9 @@ use crate::title_bar::TitleBar;
 
 use super::{
     display_language, display_name, display_path, load_document, EditorHost, EditorSession,
-    FindNext, FindPrevious, FindText, GoToLine, OpenFile, ReplaceText, SaveFile, SaveFileAs,
-    SearchMatch, APP_NAME, EDITOR_CONTEXT,
+    FindNext, FindPrevious, FindText, GoToLine, IndentSelection, OpenFile, OutdentSelection,
+    ReplaceAllText, ReplaceText, SaveFile, SaveFileAs, SearchMatch, ToggleComment, APP_NAME,
+    EDITOR_CONTEXT, line_comment_prefix,
 };
 
 pub struct CyberEditorPage {
@@ -56,18 +57,33 @@ impl CyberEditorPage {
         );
         editor.focus_deferred(window, cx);
 
-        let editor_for_subscription = editor.entity().clone();
-        let subscription = cx.subscribe(editor.entity(), move |this, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                let editor_state = editor_for_subscription.read(cx);
+        let editor_for_observation = editor.entity().clone();
+        let observe_subscription = cx.observe(editor.entity(), move |this, _, cx| {
+            let editor_state = editor_for_observation.read(cx);
+            let current_text = editor_state.value().to_string();
+            let text_changed = this.editor.sync_text_change(&current_text);
+            let cursor_changed = this.editor.sync_cursor_position(editor_state.cursor_position());
+            let selection_changed = this.editor.sync_selection(
+                editor_state.selected_range(),
+                editor_state.selected_value().chars().count(),
+            );
+            let dirty_changed = this.session.update_dirty_from_text(&current_text);
+
+            if text_changed || cursor_changed || selection_changed || dirty_changed {
+                cx.notify();
+            }
+        });
+        let enter_editor = editor.entity().clone();
+        let enter_subscription = cx.subscribe(editor.entity(), move |this, _, event: &InputEvent, cx| {
+            if let InputEvent::PressEnter {
+                secondary: false,
+                ..
+            } = event
+            {
+                let editor_state = enter_editor.read(cx);
                 let current_text = editor_state.value().to_string();
-                this.editor.sync_text_change(&current_text);
-                this.editor.sync_cursor_position(editor_state.cursor_position());
-                if this.session.update_dirty_from_text(&current_text) {
-                    cx.notify();
-                } else {
-                    cx.notify();
-                }
+                let cursor = editor_state.cursor_position();
+                this.maybe_auto_indent_after_enter(&current_text, cursor, cx);
             }
         });
 
@@ -79,7 +95,7 @@ impl CyberEditorPage {
             focus_handle: cx.focus_handle(),
             editor,
             session,
-            _subscriptions: vec![subscription],
+            _subscriptions: vec![observe_subscription, enter_subscription],
         }
     }
 
@@ -321,7 +337,12 @@ impl CyberEditorPage {
         });
     }
 
-    fn open_replace_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn open_replace_dialog(
+        &mut self,
+        replace_all: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let find_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .default_value(self.session.find_query().to_string())
@@ -343,8 +364,16 @@ impl CyberEditorPage {
             focus_input_once(&focus_once, find_input_for_focus, window, cx);
 
             alert
-                .title("Replace")
-                .description("Replace the next match from the current cursor position.")
+                .title(if replace_all {
+                    "Replace All"
+                } else {
+                    "Replace"
+                })
+                .description(if replace_all {
+                    "Replace every match in the current document."
+                } else {
+                    "Replace the next match from the current cursor position."
+                })
                 .show_cancel(true)
                 .child(
                     v_flex()
@@ -364,7 +393,11 @@ impl CyberEditorPage {
                         return false;
                     }
                     match page_for_submit.update(cx, |page, cx| {
-                        page.replace_next(&find, &replace_with, window, cx)
+                        if replace_all {
+                            page.replace_all(&find, &replace_with, window, cx)
+                        } else {
+                            page.replace_next(&find, &replace_with, window, cx)
+                        }
                     }) {
                         Ok(replaced) => replaced,
                         Err(_) => true,
@@ -446,6 +479,129 @@ impl CyberEditorPage {
         self.schedule_select_match(replacement_match, cx);
         cx.notify();
         true
+    }
+
+    fn replace_all(
+        &mut self,
+        query: &str,
+        replacement: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.session.set_find_query(query.to_string());
+        self.session.set_replace_query(replacement.to_string());
+
+        let current_text = self.editor.text(cx);
+        let Some((new_text, first_match, replacements)) =
+            replace_all_in_text(&current_text, query, replacement)
+        else {
+            window.push_notification(
+                Notification::warning(format!("No match found for \"{query}\".")),
+                cx,
+            );
+            cx.notify();
+            return false;
+        };
+
+        self.editor
+            .set_document(new_text.clone(), self.session.language().clone(), window, cx);
+        self.session.update_dirty_from_text(&new_text);
+        if let Some(search_match) = first_match {
+            self.schedule_select_match(search_match, cx);
+        } else {
+            cx.notify();
+        }
+        window.push_notification(
+            Notification::success(format!("Replaced {replacements} match(es).")),
+            cx,
+        );
+        true
+    }
+
+    fn toggle_comment(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(prefix) = line_comment_prefix(self.session.language().as_ref()) else {
+            window.push_notification(
+                Notification::warning("Line comment toggle is not available for this language."),
+                cx,
+            );
+            return;
+        };
+
+        let editor_state = self.editor.entity().read(cx);
+        let current_text = editor_state.value().to_string();
+        let selected_range = editor_state.selected_range();
+        let Some((new_text, affected_span)) =
+            toggle_line_comments_in_text(&current_text, selected_range, prefix)
+        else {
+            return;
+        };
+
+        self.editor
+            .set_document(new_text.clone(), self.session.language().clone(), window, cx);
+        self.session.update_dirty_from_text(&new_text);
+        self.schedule_select_match(affected_span, cx);
+        cx.notify();
+    }
+
+    fn indent_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.shift_indent(true, window, cx);
+    }
+
+    fn outdent_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.shift_indent(false, window, cx);
+    }
+
+    fn shift_indent(&mut self, indent: bool, _window: &mut Window, cx: &mut Context<Self>) {
+        let editor_state = self.editor.entity().read(cx);
+        let current_text = editor_state.value().to_string();
+        let selected_range = editor_state.selected_range();
+        let indent_unit = self.session.preferred_indent_unit();
+        let Some((new_text, affected_span)) =
+            shift_indent_in_text(&current_text, selected_range, &indent_unit, indent)
+        else {
+            return;
+        };
+
+        self.editor
+            .set_document(new_text.clone(), self.session.language().clone(), _window, cx);
+        self.session.update_dirty_from_text(&new_text);
+        self.schedule_select_match(affected_span, cx);
+        cx.notify();
+    }
+
+    fn maybe_auto_indent_after_enter(
+        &mut self,
+        text: &str,
+        cursor: gpui_component::input::Position,
+        cx: &mut Context<Self>,
+    ) {
+        let indent_unit = self.session.preferred_indent_unit();
+        let Some((new_text, new_cursor)) =
+            auto_indent_after_enter(text, cursor, self.session.language().as_ref(), &indent_unit)
+        else {
+            return;
+        };
+
+        self.apply_text_with_cursor(new_text, new_cursor, cx);
+    }
+
+    fn apply_text_with_cursor(
+        &mut self,
+        new_text: String,
+        cursor: gpui_component::input::Position,
+        cx: &mut Context<Self>,
+    ) {
+        let language = self.session.language().clone();
+        let editor = self.editor.clone();
+        cx.defer(move |cx| {
+            let Some(window) = cx.active_window() else {
+                return;
+            };
+            let _ = window.update(cx, |_, window, cx| {
+                editor.set_document(new_text, language, window, cx);
+                editor.set_cursor_position(cursor, window, cx);
+            });
+        });
     }
 
     fn schedule_select_match(&mut self, search_match: SearchMatch, cx: &mut Context<Self>) {
@@ -617,7 +773,43 @@ impl CyberEditorPage {
                             .ghost()
                             .label("Replace")
                             .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                                this.open_replace_dialog(window, cx);
+                                this.open_replace_dialog(false, window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("replace-all-text")
+                            .small()
+                            .ghost()
+                            .label("Replace All")
+                            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                this.open_replace_dialog(true, window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("toggle-comment")
+                            .small()
+                            .ghost()
+                            .label("Comment")
+                            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                this.toggle_comment(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("indent-selection")
+                            .small()
+                            .ghost()
+                            .label("Indent")
+                            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                this.indent_selection(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("outdent-selection")
+                            .small()
+                            .ghost()
+                            .label("Outdent")
+                            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                this.outdent_selection(window, cx);
                             })),
                     )
                     .child(
@@ -729,6 +921,13 @@ impl CyberEditorPage {
                             .text_xs()
                             .text_color(cx.theme().muted_foreground),
                     )
+                    .when(self.editor.has_selection(), |row| {
+                        row.child(
+                            Label::new(format!("Sel: {}", self.editor.selected_char_count()))
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground),
+                        )
+                    })
                     .child(
                         Label::new(format!("Rev: {}", self.editor.revision()))
                             .text_xs()
@@ -747,6 +946,21 @@ impl CyberEditorPage {
                                 this.go_to_line(window, cx);
                             })),
                     )
+                    .when(!self.session.find_query().is_empty(), |row| {
+                        let total = self.editor.match_count(self.session.find_query());
+                        let current = self.editor.current_match_index(self.session.find_query());
+                        row.child(
+                            Label::new(if total == 0 {
+                                "Matches: 0".to_string()
+                            } else if current == 0 {
+                                format!("Matches: 0/{total}")
+                            } else {
+                                format!("Matches: {current}/{total}")
+                            })
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground),
+                        )
+                    })
                     .child(
                         Label::new(self.session.line_ending_label())
                             .text_xs()
@@ -801,7 +1015,19 @@ impl Render for CyberEditorPage {
                 this.open_find_dialog(window, cx);
             }))
             .on_action(cx.listener(|this, _: &ReplaceText, window, cx| {
-                this.open_replace_dialog(window, cx);
+                this.open_replace_dialog(false, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ReplaceAllText, window, cx| {
+                this.open_replace_dialog(true, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleComment, window, cx| {
+                this.toggle_comment(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &IndentSelection, window, cx| {
+                this.indent_selection(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OutdentSelection, window, cx| {
+                this.outdent_selection(window, cx);
             }))
             .on_action(cx.listener(|this, _: &FindNext, window, cx| {
                 this.find_next_from_session(window, cx);
@@ -862,13 +1088,281 @@ fn replace_next_in_text(
     new_text.push_str(replacement);
     new_text.push_str(&text[match_end..]);
 
+    let replacement_match = SearchMatch {
+        start: byte_offset_to_position(&new_text, match_offset),
+        char_len: replacement.chars().count() as u32,
+    };
+
+    Some((new_text, replacement_match))
+}
+
+fn replace_all_in_text(
+    text: &str,
+    query: &str,
+    replacement: &str,
+) -> Option<(String, Option<SearchMatch>, usize)> {
+    if query.is_empty() {
+        return None;
+    }
+
+    let replacements = text.matches(query).count();
+    if replacements == 0 {
+        return None;
+    }
+
+    let new_text = text.replace(query, replacement);
+    let first_match = if replacement.is_empty() {
+        None
+    } else {
+        new_text.find(replacement).map(|offset| SearchMatch {
+            start: byte_offset_to_position(&new_text, offset),
+            char_len: replacement.chars().count() as u32,
+        })
+    };
+    Some((new_text, first_match, replacements))
+}
+
+fn auto_indent_after_enter(
+    text: &str,
+    cursor: gpui_component::input::Position,
+    language: &str,
+    indent_unit: &str,
+) -> Option<(String, gpui_component::input::Position)> {
+    let cursor_offset = position_to_byte_offset(text, cursor);
+    if cursor_offset == 0 || !text[..cursor_offset].ends_with('\n') {
+        return None;
+    }
+
+    let current_line_start = line_start_offset(text, cursor_offset);
+    let previous_line_end = current_line_start.saturating_sub(1);
+    let previous_line_start = line_start_offset(text, previous_line_end);
+    let previous_line = &text[previous_line_start..previous_line_end];
+    let current_line_end = line_end_offset(text, current_line_start);
+    let current_line = &text[current_line_start..current_line_end];
+
+    if !should_increase_indent(previous_line, language) {
+        return None;
+    }
+
+    let previous_indent = leading_indent(previous_line);
+    let current_indent = leading_indent(current_line);
+    let expected_indent = format!("{previous_indent}{indent_unit}");
+    if current_indent == expected_indent {
+        return None;
+    }
+
+    let trimmed_current = current_line.trim_start();
+    let mut new_text = String::with_capacity(text.len() + expected_indent.len().saturating_sub(current_indent.len()));
+    new_text.push_str(&text[..current_line_start]);
+    new_text.push_str(&expected_indent);
+    new_text.push_str(trimmed_current);
+    new_text.push_str(&text[current_line_end..]);
+
+    let new_cursor = gpui_component::input::Position::new(
+        cursor.line,
+        expected_indent.chars().count() as u32,
+    );
+    Some((new_text, new_cursor))
+}
+
+fn should_increase_indent(previous_line: &str, language: &str) -> bool {
+    let trimmed = previous_line.trim_end();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    if matches!(trimmed.chars().last(), Some('{') | Some('[') | Some('(')) {
+        return true;
+    }
+
+    if matches!(language, "python" | "yaml") && trimmed.ends_with(':') {
+        return true;
+    }
+
+    false
+}
+
+fn leading_indent(line: &str) -> String {
+    line.chars()
+        .take_while(|ch| *ch == ' ' || *ch == '\t')
+        .collect()
+}
+
+fn toggle_line_comments_in_text(
+    text: &str,
+    selected_range: std::ops::Range<usize>,
+    prefix: &str,
+) -> Option<(String, SearchMatch)> {
+    let line_start = line_start_offset(text, selected_range.start.min(text.len()));
+    let normalized_end = normalize_selection_end(text, &selected_range);
+    let line_end = line_end_offset(text, normalized_end);
+
+    let block = &text[line_start..line_end];
+    let lines: Vec<&str> = block.split('\n').collect();
+    if lines.is_empty() {
+        return None;
+    }
+
+    let non_empty_lines: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    if non_empty_lines.is_empty() {
+        return None;
+    }
+
+    let should_uncomment = non_empty_lines
+        .iter()
+        .all(|line| trimmed_comment_prefix(line, prefix).is_some());
+
+    let new_block = lines
+        .into_iter()
+        .map(|line| {
+            if line.trim().is_empty() {
+                return line.to_string();
+            }
+
+            let indent_len = line
+                .char_indices()
+                .find(|(_, ch)| !ch.is_whitespace())
+                .map(|(idx, _)| idx)
+                .unwrap_or(line.len());
+            let (indent, rest) = line.split_at(indent_len);
+
+            if should_uncomment {
+                let uncommented = trimmed_comment_prefix(line, prefix).unwrap_or(rest);
+                format!("{indent}{uncommented}")
+            } else {
+                format!("{indent}{prefix} {rest}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut new_text = String::with_capacity(text.len() + new_block.len().saturating_sub(block.len()));
+    new_text.push_str(&text[..line_start]);
+    new_text.push_str(&new_block);
+    new_text.push_str(&text[line_end..]);
+
+    let affected_span = SearchMatch {
+        start: byte_offset_to_position(&new_text, line_start),
+        char_len: new_block.chars().count() as u32,
+    };
+
+    Some((new_text, affected_span))
+}
+
+fn shift_indent_in_text(
+    text: &str,
+    selected_range: std::ops::Range<usize>,
+    indent_unit: &str,
+    indent: bool,
+) -> Option<(String, SearchMatch)> {
+    let line_start = line_start_offset(text, selected_range.start.min(text.len()));
+    let normalized_end = normalize_selection_end(text, &selected_range);
+    let line_end = line_end_offset(text, normalized_end);
+
+    let block = &text[line_start..line_end];
+    let lines: Vec<&str> = block.split('\n').collect();
+    if lines.is_empty() {
+        return None;
+    }
+
+    let new_block = lines
+        .into_iter()
+        .map(|line| {
+            if indent {
+                format!("{indent_unit}{line}")
+            } else {
+                outdent_line(line, indent_unit)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if new_block == block {
+        return None;
+    }
+
+    let mut new_text = String::with_capacity(text.len() + new_block.len().saturating_sub(block.len()));
+    new_text.push_str(&text[..line_start]);
+    new_text.push_str(&new_block);
+    new_text.push_str(&text[line_end..]);
+
     Some((
         new_text,
         SearchMatch {
-            start: byte_offset_to_position(text, match_offset),
-            char_len: replacement.chars().count() as u32,
+            start: byte_offset_to_position(text, line_start),
+            char_len: new_block.chars().count() as u32,
         },
     ))
+}
+
+fn outdent_line(line: &str, indent_unit: &str) -> String {
+    if line.is_empty() {
+        return String::new();
+    }
+    if let Some(rest) = line.strip_prefix(indent_unit) {
+        return rest.to_string();
+    }
+
+    let leading_whitespace = line
+        .chars()
+        .take_while(|ch| *ch == ' ' || *ch == '\t')
+        .collect::<String>();
+    if leading_whitespace.is_empty() {
+        return line.to_string();
+    }
+
+    let remove_len = if indent_unit == "\t" {
+        leading_whitespace
+            .chars()
+            .next()
+            .map(|ch| ch.len_utf8())
+            .unwrap_or(0)
+    } else {
+        leading_whitespace
+            .chars()
+            .take(indent_unit.chars().count())
+            .map(char::len_utf8)
+            .sum()
+    };
+
+    line[remove_len.min(line.len())..].to_string()
+}
+
+fn trimmed_comment_prefix<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
+    let indent_len = line
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, _)| idx)
+        .unwrap_or(line.len());
+    let (_, rest) = line.split_at(indent_len);
+    let rest = rest.strip_prefix(prefix)?;
+    Some(rest.strip_prefix(' ').unwrap_or(rest))
+}
+
+fn line_start_offset(text: &str, offset: usize) -> usize {
+    text[..offset].rfind('\n').map(|idx| idx + 1).unwrap_or(0)
+}
+
+fn line_end_offset(text: &str, offset: usize) -> usize {
+    text[offset..]
+        .find('\n')
+        .map(|idx| offset + idx)
+        .unwrap_or(text.len())
+}
+
+fn normalize_selection_end(text: &str, selected_range: &std::ops::Range<usize>) -> usize {
+    if selected_range.end > selected_range.start
+        && selected_range.end <= text.len()
+        && text.as_bytes()[selected_range.end - 1] == b'\n'
+    {
+        selected_range.end - 1
+    } else {
+        selected_range.end.min(text.len())
+    }
 }
 
 fn position_to_byte_offset(text: &str, position: gpui_component::input::Position) -> usize {

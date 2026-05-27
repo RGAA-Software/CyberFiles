@@ -15,7 +15,7 @@ pub(crate) use buffer_model::{EditorBufferModel, SearchMatch};
 pub(crate) use backend::ModelEditorBackend;
 pub(crate) use document::{display_language, display_name, display_path, load_document};
 pub(crate) use editor_host::EditorHost;
-pub(crate) use language::language_for_path;
+pub(crate) use language::{language_for_path, line_comment_prefix};
 pub(crate) use metadata::{detect_indent_style, detect_line_ending, IndentStyle, LineEndingKind};
 pub(crate) use session::EditorSession;
 
@@ -31,6 +31,10 @@ actions!(
         GoToLine,
         FindText,
         ReplaceText,
+        ReplaceAllText,
+        ToggleComment,
+        IndentSelection,
+        OutdentSelection,
         FindNext,
         FindPrevious
     ]
@@ -50,6 +54,14 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("ctrl-f", FindText, Some(EDITOR_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-h", ReplaceText, Some(EDITOR_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-shift-h", ReplaceAllText, Some(EDITOR_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-/", ToggleComment, Some(EDITOR_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("alt-]", IndentSelection, Some(EDITOR_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("alt-[", OutdentSelection, Some(EDITOR_CONTEXT)),
         KeyBinding::new("f3", FindNext, Some(EDITOR_CONTEXT)),
         KeyBinding::new("shift-f3", FindPrevious, Some(EDITOR_CONTEXT)),
         #[cfg(target_os = "macos")]
@@ -64,6 +76,14 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-f", FindText, Some(EDITOR_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-h", ReplaceText, Some(EDITOR_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-h", ReplaceAllText, Some(EDITOR_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-/", ToggleComment, Some(EDITOR_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("alt-]", IndentSelection, Some(EDITOR_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("alt-[", OutdentSelection, Some(EDITOR_CONTEXT)),
         KeyBinding::new("f3", FindNext, Some(EDITOR_CONTEXT)),
         KeyBinding::new("shift-f3", FindPrevious, Some(EDITOR_CONTEXT)),
     ]);

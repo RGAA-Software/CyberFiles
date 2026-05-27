@@ -78,6 +78,14 @@ impl EditorSession {
         self.indent_style.label()
     }
 
+    pub(crate) fn preferred_indent_unit(&self) -> String {
+        match &self.indent_style {
+            IndentStyle::Spaces(size) => " ".repeat((*size).max(1) as usize),
+            IndentStyle::Tabs => "\t".to_string(),
+            IndentStyle::Mixed | IndentStyle::Unknown => "    ".to_string(),
+        }
+    }
+
     pub(crate) fn update_dirty_from_text(&mut self, current_text: &str) -> bool {
         let dirty = current_text != self.saved_text;
         let changed = dirty != self.dirty;

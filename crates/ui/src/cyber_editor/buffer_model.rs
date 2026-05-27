@@ -14,6 +14,8 @@ pub(crate) struct EditorBufferModel {
     line_count: usize,
     char_count: usize,
     cursor: Position,
+    selected_range: std::ops::Range<usize>,
+    selected_char_count: usize,
 }
 
 impl EditorBufferModel {
@@ -25,6 +27,8 @@ impl EditorBufferModel {
             line_count: 1,
             char_count: 0,
             cursor: Position::new(0, 0),
+            selected_range: 0..0,
+            selected_char_count: 0,
         };
         this.recompute_metrics();
         this
@@ -44,6 +48,14 @@ impl EditorBufferModel {
 
     pub(crate) fn cursor(&self) -> Position {
         self.cursor
+    }
+
+    pub(crate) fn selected_char_count(&self) -> usize {
+        self.selected_char_count
+    }
+
+    pub(crate) fn has_selection(&self) -> bool {
+        self.selected_char_count > 0
     }
 
     pub(crate) fn find_next(&self, query: &str) -> Option<SearchMatch> {
@@ -79,11 +91,52 @@ impl EditorBufferModel {
             })
     }
 
+    pub(crate) fn match_count(&self, query: &str) -> usize {
+        if query.is_empty() {
+            return 0;
+        }
+
+        let mut count = 0usize;
+        let mut start = 0usize;
+        while let Some(offset) = self.text[start..].find(query) {
+            count += 1;
+            start += offset + query.len();
+            if start > self.text.len() {
+                break;
+            }
+        }
+        count
+    }
+
+    pub(crate) fn current_match_index(&self, query: &str) -> usize {
+        if query.is_empty() {
+            return 0;
+        }
+
+        let cursor_offset = position_to_byte_offset(&self.text, self.cursor);
+        let mut index = 0usize;
+        let mut start = 0usize;
+        while let Some(offset) = self.text[start..].find(query) {
+            let absolute_offset = start + offset;
+            if absolute_offset > cursor_offset {
+                break;
+            }
+            index += 1;
+            start = absolute_offset + query.len();
+            if start > self.text.len() {
+                break;
+            }
+        }
+        index
+    }
+
     pub(crate) fn set_document(&mut self, text: String, language: SharedString) {
         self.text = text;
         self.language = language;
         self.revision = self.revision.wrapping_add(1);
         self.cursor = Position::new(0, 0);
+        self.selected_range = 0..0;
+        self.selected_char_count = 0;
         self.recompute_metrics();
     }
 
@@ -92,18 +145,36 @@ impl EditorBufferModel {
         self.revision = self.revision.wrapping_add(1);
     }
 
-    pub(crate) fn sync_text(&mut self, text: &str) {
+    pub(crate) fn sync_text(&mut self, text: &str) -> bool {
         if self.text == text {
-            return;
+            return false;
         }
         self.text.clear();
         self.text.push_str(text);
         self.revision = self.revision.wrapping_add(1);
         self.recompute_metrics();
+        true
     }
 
-    pub(crate) fn sync_cursor(&mut self, cursor: Position) {
+    pub(crate) fn sync_cursor(&mut self, cursor: Position) -> bool {
+        if self.cursor == cursor {
+            return false;
+        }
         self.cursor = cursor;
+        true
+    }
+
+    pub(crate) fn sync_selection(
+        &mut self,
+        selected_range: std::ops::Range<usize>,
+        selected_char_count: usize,
+    ) -> bool {
+        if self.selected_range == selected_range && self.selected_char_count == selected_char_count {
+            return false;
+        }
+        self.selected_range = selected_range;
+        self.selected_char_count = selected_char_count;
+        true
     }
 
     fn recompute_metrics(&mut self) {

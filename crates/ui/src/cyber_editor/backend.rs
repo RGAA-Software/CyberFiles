@@ -57,12 +57,12 @@ impl ModelEditorBackend {
         self.input.read(cx).value().to_string()
     }
 
-    pub(super) fn set_document<T>(
+    pub(super) fn set_document(
         &self,
         text: String,
         language: gpui::SharedString,
         window: &mut Window,
-        cx: &mut Context<T>,
+        cx: &mut (impl AppContext + std::borrow::BorrowMut<App>),
     ) {
         self.buffer
             .borrow_mut()
@@ -102,21 +102,32 @@ impl ModelEditorBackend {
         });
     }
 
-    pub(super) fn sync_text_change(&self, text: &str) {
-        self.buffer.borrow_mut().sync_text(text);
+    pub(super) fn sync_text_change(&self, text: &str) -> bool {
+        self.buffer.borrow_mut().sync_text(text)
     }
 
-    pub(super) fn sync_cursor_position(&self, cursor: gpui_component::input::Position) {
-        self.buffer.borrow_mut().sync_cursor(cursor);
+    pub(super) fn sync_cursor_position(&self, cursor: gpui_component::input::Position) -> bool {
+        self.buffer.borrow_mut().sync_cursor(cursor)
     }
 
-    pub(super) fn set_cursor_position<T>(
+    pub(super) fn sync_selection(
+        &self,
+        selected_range: std::ops::Range<usize>,
+        selected_char_count: usize,
+    ) -> bool {
+        self.buffer
+            .borrow_mut()
+            .sync_selection(selected_range, selected_char_count)
+    }
+
+    pub(super) fn set_cursor_position(
         &self,
         position: gpui_component::input::Position,
         window: &mut Window,
-        cx: &mut Context<T>,
+        cx: &mut (impl AppContext + std::borrow::BorrowMut<App>),
     ) {
         self.buffer.borrow_mut().sync_cursor(position);
+        self.buffer.borrow_mut().sync_selection(0..0, 0);
         self.input.update(cx, |editor, cx| {
             editor.set_cursor_position(position, window, cx);
         });
@@ -138,12 +149,28 @@ impl ModelEditorBackend {
         self.buffer.borrow().cursor()
     }
 
+    pub(super) fn selected_char_count(&self) -> usize {
+        self.buffer.borrow().selected_char_count()
+    }
+
+    pub(super) fn has_selection(&self) -> bool {
+        self.buffer.borrow().has_selection()
+    }
+
     pub(super) fn find_next(&self, query: &str) -> Option<SearchMatch> {
         self.buffer.borrow().find_next(query)
     }
 
     pub(super) fn find_previous(&self, query: &str) -> Option<SearchMatch> {
         self.buffer.borrow().find_previous(query)
+    }
+
+    pub(super) fn match_count(&self, query: &str) -> usize {
+        self.buffer.borrow().match_count(query)
+    }
+
+    pub(super) fn current_match_index(&self, query: &str) -> usize {
+        self.buffer.borrow().current_match_index(query)
     }
 
     pub(super) fn select_match(
@@ -153,12 +180,18 @@ impl ModelEditorBackend {
         cx: &mut App,
     ) {
         self.buffer.borrow_mut().sync_cursor(search_match.start);
+        self.buffer.borrow_mut().sync_selection(0..0, 0);
         self.input.update(cx, |editor, cx| {
             editor.set_cursor_position(search_match.start, window, cx);
         });
         for _ in 0..search_match.char_len {
             let _ = window.dispatch_keystroke(Keystroke::parse("shift-right").unwrap(), cx);
         }
+        let editor = self.input.read(cx);
+        self.buffer.borrow_mut().sync_selection(
+            editor.selected_range(),
+            editor.selected_value().chars().count(),
+        );
     }
 
     pub(super) fn render<T>(&self, cx: &mut Context<T>) -> impl gpui::IntoElement {

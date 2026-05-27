@@ -1,4 +1,4 @@
-use gpui::{App, Context, Entity, Window};
+use gpui::{App, AppContext, Context, Entity, Window};
 use gpui_component::input::InputState;
 
 use super::{ModelEditorBackend, SearchMatch};
@@ -43,12 +43,12 @@ impl EditorHost {
         self.backend.text(cx)
     }
 
-    pub(crate) fn set_document<T>(
+    pub(crate) fn set_document(
         &self,
         text: String,
         language: gpui::SharedString,
         window: &mut Window,
-        cx: &mut Context<T>,
+        cx: &mut (impl AppContext + std::borrow::BorrowMut<App>),
     ) {
         self.backend.set_document(text, language, window, cx);
     }
@@ -83,19 +83,28 @@ impl EditorHost {
         self.backend.render(cx)
     }
 
-    pub(crate) fn sync_text_change(&self, text: &str) {
-        self.backend.sync_text_change(text);
+    pub(crate) fn sync_text_change(&self, text: &str) -> bool {
+        self.backend.sync_text_change(text)
     }
 
-    pub(crate) fn sync_cursor_position(&self, cursor: gpui_component::input::Position) {
-        self.backend.sync_cursor_position(cursor);
+    pub(crate) fn sync_cursor_position(&self, cursor: gpui_component::input::Position) -> bool {
+        self.backend.sync_cursor_position(cursor)
     }
 
-    pub(crate) fn set_cursor_position<T>(
+    pub(crate) fn sync_selection(
+        &self,
+        selected_range: std::ops::Range<usize>,
+        selected_char_count: usize,
+    ) -> bool {
+        self.backend
+            .sync_selection(selected_range, selected_char_count)
+    }
+
+    pub(crate) fn set_cursor_position(
         &self,
         cursor: gpui_component::input::Position,
         window: &mut Window,
-        cx: &mut Context<T>,
+        cx: &mut (impl AppContext + std::borrow::BorrowMut<App>),
     ) {
         self.backend.set_cursor_position(cursor, window, cx);
     }
@@ -116,12 +125,28 @@ impl EditorHost {
         self.backend.cursor_position()
     }
 
+    pub(crate) fn selected_char_count(&self) -> usize {
+        self.backend.selected_char_count()
+    }
+
+    pub(crate) fn has_selection(&self) -> bool {
+        self.backend.has_selection()
+    }
+
     pub(crate) fn find_next(&self, query: &str) -> Option<SearchMatch> {
         self.backend.find_next(query)
     }
 
     pub(crate) fn find_previous(&self, query: &str) -> Option<SearchMatch> {
         self.backend.find_previous(query)
+    }
+
+    pub(crate) fn match_count(&self, query: &str) -> usize {
+        self.backend.match_count(query)
+    }
+
+    pub(crate) fn current_match_index(&self, query: &str) -> usize {
+        self.backend.current_match_index(query)
     }
 
     pub(crate) fn select_match(

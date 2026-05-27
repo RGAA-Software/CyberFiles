@@ -455,3 +455,107 @@ When implementation begins:
 3. test `Buffer -> MultiBuffer -> Editor`
 4. validate file open, edit, save, scroll, selection
 5. document the dependency decision before phase 1 replacement
+
+## Current Progress Snapshot
+
+The original single-file editor implementation has already been split into a dedicated module directory:
+
+- `crates/ui/src/cyber_editor/mod.rs`
+- `crates/ui/src/cyber_editor/page.rs`
+- `crates/ui/src/cyber_editor/session.rs`
+- `crates/ui/src/cyber_editor/buffer_model.rs`
+- `crates/ui/src/cyber_editor/backend.rs`
+- `crates/ui/src/cyber_editor/editor_host.rs`
+- `crates/ui/src/cyber_editor/document.rs`
+- `crates/ui/src/cyber_editor/language.rs`
+- `crates/ui/src/cyber_editor/metadata.rs`
+
+The current editor is still rendered by `gpui_component::input::InputState`, but the page is no longer directly coupled to it.
+
+What is already in place:
+
+- backend boundary through `EditorHost`
+- internal buffer model for:
+  - text
+  - revision
+  - line count
+  - char count
+  - cursor position
+  - selection length
+- session-side document metadata for:
+  - language
+  - dirty state
+  - line endings
+  - indentation mode
+  - find query
+  - replace query
+- status bar reporting:
+  - line / column
+  - selection size
+  - revision
+  - line count
+  - char count
+  - matches
+  - encoding / line endings / indent mode
+- file actions:
+  - open
+  - save
+  - save as
+  - close with dirty confirmation
+- editor actions:
+  - go to line
+  - find
+  - find next / previous
+  - replace next
+  - replace all
+  - line comment toggle
+  - indent / outdent
+- post-enter auto-indent adjustment for block-opening lines
+
+This means the project has already moved beyond the old planning-only stage. The next work should focus on deepening the local editing model before replacing the rendering core.
+
+## Recommended Next Phase
+
+The most practical next implementation sequence is:
+
+1. Pair insertion and wrapping
+   - auto-close `()`, `{}`, `[]`, `""`, `''`
+   - if text is selected, wrap the selection instead of only inserting a pair
+
+2. Better enter handling
+   - keep the current extra-indent rule
+   - add block-aware newline behavior for closing delimiters
+   - make indentation restoration stable when pressing enter in nested code
+
+3. Selection-aware editing commands
+   - duplicate line / duplicate selection
+   - delete current line
+   - move line up / down
+
+4. Replace the current search UX shell
+   - move from alert-style dialogs toward an editor-native find/replace strip
+   - preserve the current backend/model flow while changing only the interaction shell
+
+5. Normalize undo-friendly edit application
+   - centralize programmatic text rewrites
+   - make comment/indent/replace/auto-indent share the same apply path
+
+6. Only then evaluate the rendering-core replacement again
+   - by that point the command surface and model expectations will be much clearer
+
+## Immediate Resume Point
+
+If work resumes later, the recommended first task is:
+
+1. implement pair insertion and selection wrapping
+2. then extend enter handling for closing delimiters
+3. then extract a shared text-transform helper so comment / indent / replace all stop doing page-local rewrites
+
+## Acceptance Targets For The Next Stage
+
+The next stage is successful if:
+
+- common typing pairs feel natural in source files
+- selection-based edits do not fight the current cursor/selection model
+- programmatic edits use fewer ad hoc code paths
+- no new re-entrancy or focus bugs are introduced
